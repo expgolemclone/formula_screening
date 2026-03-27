@@ -16,6 +16,7 @@ from formula_screening.db.repository import (
     get_latest_price_with_shares,
     upsert_price,
 )
+from formula_screening.proxy import ProxyPool
 
 logger = logging.getLogger("formula_screening.yfinance_price")
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
@@ -66,6 +67,10 @@ def is_price_stale(updated_at: str | None) -> bool:
         return True
 
 
+class _RateLimited(Exception):
+    """Raised internally when a batch gets rate-limited."""
+
+
 def _download_prices_batch(
     symbols: list[str],
     proxy: str | None = None,
@@ -73,7 +78,7 @@ def _download_prices_batch(
     """Batch-download close prices via yf.download.
 
     Raises:
-        SystemExit: If rate-limited (< 30% success).
+        _RateLimited: If < 30% of symbols returned data.
     """
     if not symbols:
         return {}
@@ -82,7 +87,7 @@ def _download_prices_batch(
         kwargs["proxy"] = proxy
     data = yf.download(symbols, **kwargs)
     if data.empty:
-        return {}
+        raise _RateLimited("Empty response")
     close = data["Close"]
     if isinstance(close, pd.Series):
         val = close.iloc[-1]
@@ -90,8 +95,7 @@ def _download_prices_batch(
     row = close.iloc[-1]
     valid = row.dropna()
     if len(valid) < len(symbols) * 0.3:
-        print(f"ABORT: rate-limited — only {len(valid)}/{len(symbols)} prices returned", file=sys.stderr)
-        sys.exit(1)
+        raise _RateLimited(f"Only {len(valid)}/{len(symbols)} prices returned")
     return {
         sym: float(row[sym]) if pd.notna(row[sym]) else None
         for sym in row.index
@@ -122,27 +126,86 @@ def _fetch_shares_batch(
     return result
 
 
+_MAX_BATCH_RETRIES = 3
+
+
+def _process_batch(
+    conn: sqlite3.Connection,
+    batch: list[str],
+    symbols: list[str],
+    pool: ProxyPool,
+    today: str,
+) -> tuple[int, int]:
+    """Download prices + shares for one batch, with proxy retry.
+
+    Returns:
+        (fetched_count, failed_count)
+    """
+    for attempt in range(_MAX_BATCH_RETRIES):
+        proxy = pool.get()
+        try:
+            prices = _download_prices_batch(symbols, proxy=proxy)
+            break
+        except _RateLimited as e:
+            print(f"  Rate-limited ({e}), rotating proxy... (attempt {attempt + 1}/{_MAX_BATCH_RETRIES})")
+            pool.report_failure()
+            if pool.exhausted:
+                print("  All proxies exhausted, falling back to direct", file=sys.stderr)
+    else:
+        # All retries failed
+        print("  ABORT: rate-limited after all retries", file=sys.stderr)
+        sys.exit(1)
+
+    shares = _fetch_shares_batch(symbols, proxy=pool.get())
+
+    fetched = 0
+    failed = 0
+    for ticker, sym in zip(batch, symbols):
+        price = prices.get(sym)
+        share_count = shares.get(sym)
+        if price is None and share_count is None:
+            failed += 1
+            continue
+        try:
+            upsert_price(
+                conn, ticker, today,
+                close=price,
+                volume=None,
+                shares_outstanding=share_count,
+            )
+            fetched += 1
+        except Exception:
+            failed += 1
+
+    conn.commit()
+    return fetched, failed
+
+
 def fetch_and_cache_prices(
     conn: sqlite3.Connection,
     tickers: list[str],
     *,
     force: bool = False,
-    proxy: str | None = None,
+    pool: ProxyPool | None = None,
 ) -> dict[str, int]:
     """Fetch prices from yfinance and cache in DB.
 
     Uses ``yf.download`` for batch price retrieval and parallel
-    ``fast_info`` calls for shares outstanding.  Exits on rate-limit.
+    ``fast_info`` calls for shares outstanding.  Rotates proxies
+    on rate-limit, exits if all retries fail.
 
     Args:
         conn: Database connection.
         tickers: List of bare ticker codes.
         force: If True, re-fetch even if cached < 1 day.
-        proxy: Optional HTTP proxy URL.
+        pool: ProxyPool instance. If None, uses direct connection.
 
     Returns:
         {"fetched": N, "skipped": N, "failed": N}
     """
+    if pool is None:
+        pool = ProxyPool.direct()
+
     if force:
         targets = list(tickers)
     else:
@@ -153,42 +216,24 @@ def fetch_and_cache_prices(
                 targets.append(ticker)
 
     skipped = len(tickers) - len(targets)
-    fetched = 0
-    failed = 0
+    total_fetched = 0
+    total_failed = 0
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     print(f"Targets: {len(targets)} tickers ({skipped} skipped)")
-    if proxy:
-        print(f"Proxy: {proxy}")
+    print(f"Proxy: {pool.get() or 'direct'}")
 
     for batch_start in range(0, len(targets), _BATCH_SIZE):
         batch = targets[batch_start : batch_start + _BATCH_SIZE]
         symbols = [f"{t}.T" for t in batch]
 
-        print(f"[{batch_start + 1}-{batch_start + len(batch)}/{len(targets)}] prices...")
-        prices = _download_prices_batch(symbols, proxy=proxy)
+        label = f"[{batch_start + 1}-{batch_start + len(batch)}/{len(targets)}]"
+        print(f"{label} prices + shares...")
 
-        print(f"[{batch_start + 1}-{batch_start + len(batch)}/{len(targets)}] shares ({_SHARES_WORKERS} workers)...")
-        shares = _fetch_shares_batch(symbols, proxy=proxy)
+        fetched, failed = _process_batch(conn, batch, symbols, pool, today)
+        total_fetched += fetched
+        total_failed += failed
 
-        for ticker, sym in zip(batch, symbols):
-            price = prices.get(sym)
-            share_count = shares.get(sym)
-            if price is None and share_count is None:
-                failed += 1
-                continue
-            try:
-                upsert_price(
-                    conn, ticker, today,
-                    close=price,
-                    volume=None,
-                    shares_outstanding=share_count,
-                )
-                fetched += 1
-            except Exception:
-                failed += 1
+        print(f"  => fetched={total_fetched}, failed={total_failed}")
 
-        conn.commit()
-        print(f"  => fetched={fetched}, failed={failed}")
-
-    return {"fetched": fetched, "skipped": skipped, "failed": failed}
+    return {"fetched": total_fetched, "skipped": skipped, "failed": total_failed}

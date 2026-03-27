@@ -30,32 +30,28 @@ def _cmd_import_irbank(args: argparse.Namespace) -> None:
         conn.close()
 
 
-def _resolve_proxy(args: argparse.Namespace) -> str | None:
-    """Return a proxy URL from CLI args, or None."""
-    if args.proxy:
-        return args.proxy
-    if args.auto_proxy:
-        from formula_screening.proxy import fetch_live_proxies
+def _resolve_proxy_pool(args: argparse.Namespace):  # noqa: ANN205
+    """Build a ProxyPool from CLI args."""
+    from formula_screening.proxy import ProxyPool
 
-        print("Fetching and validating proxies...")
-        proxies = fetch_live_proxies()
-        if not proxies:
-            print("WARNING: No live proxies found. Using direct connection.", file=sys.stderr)
-            return None
-        return f"http://{proxies[0]}"
-    return None
+    if args.proxy:
+        return ProxyPool.from_url(args.proxy)
+    if args.no_proxy:
+        return ProxyPool.direct()
+    # Default: auto-proxy
+    return ProxyPool.from_auto()
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
     from formula_screening.datasources.yfinance_price import fetch_and_cache_prices
     from formula_screening.db.repository import get_all_tickers
 
-    proxy = _resolve_proxy(args)
+    pool = _resolve_proxy_pool(args)
     conn = get_connection()
     try:
         tickers = args.ticker if args.ticker else get_all_tickers(conn)
         print(f"Fetching prices for {len(tickers)} tickers...")
-        result = fetch_and_cache_prices(conn, tickers, force=args.force, proxy=proxy)
+        result = fetch_and_cache_prices(conn, tickers, force=args.force, pool=pool)
         print(f"\nDone: {result['fetched']} fetched, {result['skipped']} skipped, {result['failed']} failed.")
     finally:
         conn.close()
@@ -154,7 +150,7 @@ def main() -> None:
     p_prices.add_argument("--ticker", nargs="+", help="Specific ticker(s) to fetch")
     p_prices.add_argument("--force", action="store_true", help="Re-fetch even if cached <1 day")
     p_prices.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
-    p_prices.add_argument("--auto-proxy", action="store_true", help="Auto-fetch public proxies")
+    p_prices.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
