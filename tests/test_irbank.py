@@ -141,3 +141,63 @@ def test_import_years_filter(conn, irbank_dir):
     tickers = get_all_tickers(conn)
     assert "9999" not in tickers
     assert "7203" in tickers
+
+
+# ---------- Quarterly data tests ----------
+
+
+@pytest.fixture()
+def irbank_dir_with_quarterly(irbank_dir):
+    """Extend irbank_dir with a quarterly/ subdirectory."""
+    qy_dir = irbank_dir / "quarterly"
+    qy_dir.mkdir()
+
+    _write_json(
+        qy_dir / "qy-net-sales.json",
+        "売上高,四半期,累計",
+        ["年度", "1Q", "2Q", "3Q", "4Q"],
+        {
+            "7203": ["2026/03", 250000, 520000, None, None],
+            "6861": ["2026/03", 200000, 410000, 630000, None],
+        },
+    )
+    _write_json(
+        qy_dir / "qy-operating-income.json",
+        "営業利益,四半期,累計",
+        ["年度", "1Q", "2Q", "3Q", "4Q"],
+        {
+            "7203": ["2026/03", 40000, 85000, None, None],
+        },
+    )
+    return irbank_dir
+
+
+def test_import_quarterly_values(conn, irbank_dir_with_quarterly):
+    import_irbank_json(conn, irbank_dir_with_quarterly)
+    fd = get_financial_dict(conn, "7203", period="2026-03")
+    assert fd["qy"]["revenue_1q"] == 250000.0
+    assert fd["qy"]["revenue_2q"] == 520000.0
+    assert fd["qy"]["revenue_3q"] is None
+    assert fd["qy"]["operating_income_1q"] == 40000.0
+
+
+def test_import_quarterly_null_stored_as_none(conn, irbank_dir_with_quarterly):
+    import_irbank_json(conn, irbank_dir_with_quarterly)
+    fd = get_financial_dict(conn, "7203", period="2026-03")
+    assert fd["qy"]["revenue_4q"] is None
+
+
+def test_import_quarterly_registers_tickers(conn, irbank_dir_with_quarterly):
+    import_irbank_json(conn, irbank_dir_with_quarterly)
+    tickers = get_all_tickers(conn)
+    assert "7203" in tickers
+    assert "6861" in tickers
+
+
+def test_import_quarterly_does_not_break_fy_latest(conn, irbank_dir_with_quarterly):
+    """Quarterly data must not interfere with get_financial_dict's latest-period logic."""
+    import_irbank_json(conn, irbank_dir_with_quarterly)
+    # get_financial_dict without period should return latest PL period (2025-03)
+    fd = get_financial_dict(conn, "7203")
+    assert "pl" in fd
+    assert fd["pl"]["revenue"] == 1000000.0

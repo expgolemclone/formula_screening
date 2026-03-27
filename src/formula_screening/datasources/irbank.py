@@ -59,6 +59,17 @@ _FILE_MAPPINGS: dict[str, list[tuple[int, str, str]]] = {
     "fy-stock-dividend.json": _DIVIDEND_MAPPING,
 }
 
+# Quarterly (cumulative) mappings.
+# Each file contains one metric with values [年度, 1Q, 2Q, 3Q, 4Q].
+# We store as statement="qy", item_name="{metric}_{quarter}".
+_QY_ITEM_NAMES: dict[str, str] = {
+    "qy-net-sales.json": "revenue",
+    "qy-operating-income.json": "operating_income",
+    "qy-ordinary-income.json": "ordinary_income",
+    "qy-profit-loss.json": "net_income",
+}
+_QY_QUARTERS = ["1q", "2q", "3q", "4q"]
+
 
 def _parse_value(raw: object) -> float | None:
     """Convert a raw JSON value to float, treating '-' and non-numeric as None."""
@@ -116,6 +127,48 @@ def _import_json_file(
     return len(rows), tickers_found
 
 
+def _import_quarterly_file(
+    conn: sqlite3.Connection,
+    path: Path,
+    base_item_name: str,
+) -> tuple[int, set[str]]:
+    """Import a single quarterly cumulative JSON file.
+
+    Returns:
+        (number of financial items inserted, set of ticker codes found)
+    """
+    data = json.loads(path.read_bytes())
+    items = data.get("item", {})
+    tickers_found: set[str] = set()
+    rows: list[dict] = []
+
+    for ticker, values in items.items():
+        tickers_found.add(ticker)
+        if not isinstance(values, list) or len(values) < 2:
+            continue
+
+        period = _normalize_period(str(values[0]))
+
+        for qi, quarter in enumerate(_QY_QUARTERS):
+            idx = qi + 1  # values[0] is 年度, 1Q=values[1], ...
+            if idx >= len(values):
+                continue
+            value = _parse_value(values[idx])
+            rows.append({
+                "ticker": ticker,
+                "period": period,
+                "statement": "qy",
+                "item_name": f"{base_item_name}_{quarter}",
+                "value": value,
+                "source": "irbank",
+            })
+
+    if rows:
+        upsert_financial_items_bulk(conn, rows)
+
+    return len(rows), tickers_found
+
+
 def import_irbank_json(
     conn: sqlite3.Connection,
     data_dir: Path,
@@ -125,8 +178,11 @@ def import_irbank_json(
     """Import IR BANK JSON data into the database.
 
     Scans year-code subdirectories under *data_dir* and imports all
-    four JSON files per year.  Tickers found in the JSON are automatically
-    registered in the ``stocks`` table.
+    four JSON files per year.  Also imports quarterly cumulative data
+    from the ``quarterly/`` subdirectory if present.
+
+    Tickers found in the JSON are automatically registered in the
+    ``stocks`` table.
 
     Args:
         conn: Database connection.
@@ -137,7 +193,7 @@ def import_irbank_json(
         Total number of financial items imported.
     """
     year_dirs = sorted(
-        [d for d in data_dir.iterdir() if d.is_dir()],
+        [d for d in data_dir.iterdir() if d.is_dir() and d.name != "quarterly"],
         key=lambda d: d.name,
     )
     if years is not None:
@@ -154,6 +210,19 @@ def import_irbank_json(
                 logger.warning("Missing %s in %s", filename, year_dir.name)
                 continue
             count, tickers = _import_json_file(conn, path, mapping)
+            all_tickers.update(tickers)
+            total_items += count
+
+    # Import quarterly cumulative data
+    qy_dir = data_dir / "quarterly"
+    if qy_dir.is_dir():
+        logger.info("Importing quarterly data")
+        for filename, base_item_name in _QY_ITEM_NAMES.items():
+            path = qy_dir / filename
+            if not path.exists():
+                logger.warning("Missing %s in quarterly/", filename)
+                continue
+            count, tickers = _import_quarterly_file(conn, path, base_item_name)
             all_tickers.update(tickers)
             total_items += count
 

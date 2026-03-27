@@ -31,11 +31,17 @@ truststore.inject_into_ssl()
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
 
 _BASE_URL = "https://f.irbank.net/files"
-_JSON_FILES = [
+_FY_FILES = [
     "fy-profit-and-loss.json",
     "fy-balance-sheet.json",
     "fy-cash-flow-statement.json",
     "fy-stock-dividend.json",
+]
+_QY_FILES = [
+    "qy-net-sales.json",
+    "qy-operating-income.json",
+    "qy-ordinary-income.json",
+    "qy-profit-loss.json",
 ]
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -57,7 +63,7 @@ _PROXY_TARGET_COUNT = 100  # stop checking once we have enough
 
 
 def _year_codes(years: int) -> list[str]:
-    latest = datetime.now(timezone.utc).year - 1
+    latest = datetime.now(timezone.utc).year
     return [f"{y % 100:04d}" for y in range(latest - years + 1, latest + 1)]
 
 
@@ -197,48 +203,54 @@ def main() -> None:
         print("WARNING: No live proxies found. Using direct connection.", file=sys.stderr)
 
     codes = _year_codes(args.years)
-    total = len(codes) * len(_JSON_FILES)
+
+    # Build download jobs: (url, target_path) pairs
+    jobs: list[tuple[str, Path]] = []
+    for code in codes:
+        out_dir = dest / code
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for filename in _FY_FILES:
+            jobs.append((f"{_BASE_URL}/{code}/{filename}", out_dir / filename))
+
+    # Quarterly (cumulative) data from the "0000" (all-years) endpoint
+    qy_dir = dest / "quarterly"
+    qy_dir.mkdir(parents=True, exist_ok=True)
+    for filename in _QY_FILES:
+        jobs.append((f"{_BASE_URL}/0000/{filename}", qy_dir / filename))
+
+    total = len(jobs)
     ok = 0
     skip = 0
     fail = 0
 
-    print(f"Downloading {total} files for years: {', '.join(codes)}")
+    print(f"Downloading {total} files for years: {', '.join(codes)} + quarterly")
     print(f"Destination: {dest}")
 
-    count = 0
-    for code in codes:
-        out_dir = dest / code
-        out_dir.mkdir(parents=True, exist_ok=True)
+    for count, (url, target) in enumerate(jobs, 1):
+        if not args.force and _is_valid_json_file(target):
+            print(f"[{count}/{total}] SKIP {target.name}")
+            skip += 1
+            continue
 
-        for filename in _JSON_FILES:
-            url = f"{_BASE_URL}/{code}/{filename}"
-            target = out_dir / filename
-            count += 1
+        # Refresh proxy list if running low
+        if len(proxies) < _MAX_PROXY_TRIES:
+            print("  Refreshing proxies...")
+            proxies = _fetch_live_proxies()
 
-            if not args.force and _is_valid_json_file(target):
-                print(f"[{count}/{total}] SKIP {target.name}")
-                skip += 1
-                continue
+        print(f"[{count}/{total}] {url}")
+        if _download_file(url, target, proxies):
+            ok += 1
+        else:
+            fail += 1
 
-            # Refresh proxy list if running low
-            if len(proxies) < _MAX_PROXY_TRIES:
-                print("  Refreshing proxies...")
-                proxies = _fetch_live_proxies()
-
-            print(f"[{count}/{total}] {url}")
-            if _download_file(url, target, proxies):
-                ok += 1
-            else:
-                fail += 1
-
-            if count < total:
-                time.sleep(args.interval)
+        if count < total:
+            time.sleep(args.interval)
 
     print(f"\nDone: {ok} downloaded, {skip} skipped, {fail} failed.")
     if fail > 0:
         print("Re-run to retry failed files (already downloaded files are skipped).", file=sys.stderr)
     if ok + skip > 0:
-        print(f"Import with:\n  uv run python -m formula_screening import-data --dir {dest} --all")
+        print(f"Import with:\n  uv run python -m formula_screening import-irbank --dir {dest}")
     sys.exit(1 if fail > 0 else 0)
 
 
