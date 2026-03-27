@@ -172,16 +172,20 @@ def upsert_price(
     date: str,
     close: float | None,
     volume: int | None,
+    *,
+    shares_outstanding: int | None = None,
 ) -> None:
     conn.execute(
         """
-        INSERT INTO prices (ticker, date, close, volume)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO prices (ticker, date, close, volume, shares_outstanding, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(ticker, date) DO UPDATE SET
             close=excluded.close,
-            volume=excluded.volume
+            volume=excluded.volume,
+            shares_outstanding=excluded.shares_outstanding,
+            updated_at=excluded.updated_at
         """,
-        (ticker, date, close, volume),
+        (ticker, date, close, volume, shares_outstanding, _now()),
     )
 
 
@@ -194,3 +198,25 @@ def get_latest_price(
         (ticker,),
     ).fetchone()
     return row["close"] if row else None
+
+
+def get_latest_price_with_shares(
+    conn: sqlite3.Connection,
+    ticker: str,
+) -> dict[str, float | int | str | None]:
+    """Return latest cached price, shares_outstanding, and updated_at."""
+    row = conn.execute(
+        """
+        SELECT close, shares_outstanding, updated_at
+        FROM prices WHERE ticker = ?
+        ORDER BY date DESC LIMIT 1
+        """,
+        (ticker,),
+    ).fetchone()
+    if row is None:
+        return {"price": None, "shares_outstanding": None, "updated_at": None}
+    return {
+        "price": row["close"],
+        "shares_outstanding": row["shares_outstanding"],
+        "updated_at": row["updated_at"],
+    }

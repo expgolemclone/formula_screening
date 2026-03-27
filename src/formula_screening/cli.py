@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -13,42 +12,34 @@ from formula_screening.db.schema import get_connection, init_db
 from formula_screening.log import setup_logging
 
 
-def _cmd_fetch_list(args: argparse.Namespace) -> None:
-    from formula_screening.datasources.stocklist import (
-        fetch_edinetdb_companies,
-        load_manual_stocklist,
-    )
+def _cmd_import_irbank(args: argparse.Namespace) -> None:
+    from formula_screening.config import DATA_DIR
+    from formula_screening.datasources.irbank import import_irbank_json
+
+    data_dir = Path(args.dir) if args.dir else DATA_DIR / "irbank"
+    if not data_dir.is_dir():
+        print(f"IR BANK data directory not found: {data_dir}", file=sys.stderr)
+        sys.exit(1)
 
     conn = get_connection()
     try:
-        if args.file:
-            count = load_manual_stocklist(conn, Path(args.file))
-        else:
-            count = fetch_edinetdb_companies(conn)
-        print(f"{count} stocks registered.")
+        years = args.years if args.years else None
+        total = import_irbank_json(conn, data_dir, years=years)
+        print(f"{total} financial items imported.")
     finally:
         conn.close()
 
 
-def _resolve_tickers(conn: sqlite3.Connection, args: argparse.Namespace) -> set[str] | None:
-    """Resolve ticker filter from CLI args."""
+def _cmd_fetch_prices(args: argparse.Namespace) -> None:
+    from formula_screening.datasources.yfinance_price import fetch_and_cache_prices
     from formula_screening.db.repository import get_all_tickers
-
-    if args.ticker:
-        return set(args.ticker)
-    if not args.all:
-        return set(get_all_tickers(conn))
-    return None
-
-
-def _cmd_fetch_data(args: argparse.Namespace) -> None:
-    from formula_screening.datasources.edinetdb import fetch_all_financials
 
     conn = get_connection()
     try:
-        tickers = _resolve_tickers(conn, args)
-        total = fetch_all_financials(conn, tickers=tickers, years=args.years)
-        print(f"{total} financial items saved.")
+        tickers = args.ticker if args.ticker else get_all_tickers(conn)
+        print(f"Fetching prices for {len(tickers)} tickers...")
+        result = fetch_and_cache_prices(conn, tickers, force=args.force)
+        print(f"\nDone: {result['fetched']} fetched, {result['skipped']} skipped, {result['failed']} failed.")
     finally:
         conn.close()
 
@@ -136,15 +127,15 @@ def main() -> None:
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # fetch-list
-    p_list = sub.add_parser("fetch-list", help="Download/update stock list from EDINET DB")
-    p_list.add_argument("--file", help="Path to a manual ticker list (one per line)")
+    # import-irbank
+    p_import = sub.add_parser("import-irbank", help="Import IR BANK JSON data into DB")
+    p_import.add_argument("--dir", help="IR BANK data directory (default: data/irbank)")
+    p_import.add_argument("--years", type=int, help="Only import the most recent N years")
 
-    # fetch-data
-    p_data = sub.add_parser("fetch-data", help="Download financial data from EDINET DB")
-    p_data.add_argument("--ticker", nargs="+", help="Specific ticker(s) to fetch")
-    p_data.add_argument("--all", action="store_true", help="Fetch all tickers (ignore DB stock list)")
-    p_data.add_argument("--years", type=int, default=6, help="Number of fiscal years to fetch (default: 6, max: 6)")
+    # fetch-prices
+    p_prices = sub.add_parser("fetch-prices", help="Fetch and cache stock prices from yfinance")
+    p_prices.add_argument("--ticker", nargs="+", help="Specific ticker(s) to fetch")
+    p_prices.add_argument("--force", action="store_true", help="Re-fetch even if cached <1 day")
 
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
@@ -157,8 +148,8 @@ def main() -> None:
     init_db()
 
     cmds = {
-        "fetch-list": _cmd_fetch_list,
-        "fetch-data": _cmd_fetch_data,
+        "import-irbank": _cmd_import_irbank,
+        "fetch-prices": _cmd_fetch_prices,
         "screen": _cmd_screen,
     }
     cmds[args.command](args)

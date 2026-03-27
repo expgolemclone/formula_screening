@@ -35,10 +35,12 @@ CREATE INDEX IF NOT EXISTS idx_fi_ticker
     ON financial_items (ticker);
 
 CREATE TABLE IF NOT EXISTS prices (
-    ticker TEXT    NOT NULL,
-    date   TEXT    NOT NULL,
-    close  REAL,
-    volume INTEGER,
+    ticker             TEXT    NOT NULL,
+    date               TEXT    NOT NULL,
+    close              REAL,
+    volume             INTEGER,
+    shares_outstanding INTEGER,
+    updated_at         TEXT,
     PRIMARY KEY (ticker, date)
 );
 """
@@ -54,18 +56,29 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Return column names for a table, or empty set if table doesn't exist."""
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
+    return {row[1] for row in rows}
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
     """Apply schema migrations for existing databases."""
-    rows = conn.execute("PRAGMA table_info(stocks)").fetchall()
-    if not rows:
+    stock_cols = _table_columns(conn, "stocks")
+    if not stock_cols:
         return  # table does not exist yet; _SCHEMA_SQL will create it
-    cols = {row[1] for row in rows}
-    if "edinet_code" not in cols:
+    if "edinet_code" not in stock_cols:
         conn.execute("ALTER TABLE stocks ADD COLUMN edinet_code TEXT")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_stocks_edinet_code "
             "ON stocks (edinet_code) WHERE edinet_code IS NOT NULL"
         )
+        conn.commit()
+
+    price_cols = _table_columns(conn, "prices")
+    if price_cols and "shares_outstanding" not in price_cols:
+        conn.execute("ALTER TABLE prices ADD COLUMN shares_outstanding INTEGER")
+        conn.execute("ALTER TABLE prices ADD COLUMN updated_at TEXT")
         conn.commit()
 
 

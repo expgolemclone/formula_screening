@@ -9,8 +9,11 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-from formula_screening.datasources.yfinance_price import fetch_current
-from formula_screening.db.repository import get_all_tickers, get_financial_dict
+from formula_screening.db.repository import (
+    get_all_tickers,
+    get_financial_dict,
+    get_latest_price_with_shares,
+)
 from formula_screening.metrics import compute_metrics
 
 logger = logging.getLogger("formula_screening.screener")
@@ -46,7 +49,7 @@ def build_stock_dict(
     Fetches cached financials from DB and live price from yfinance.
     """
     financials = get_financial_dict(conn, ticker)
-    price_data = fetch_current(ticker)
+    price_data = get_latest_price_with_shares(conn, ticker)
 
     price = price_data["price"]
     shares = price_data["shares_outstanding"]
