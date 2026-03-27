@@ -1,0 +1,98 @@
+"""Tests for db.repository."""
+
+import sqlite3
+
+import pytest
+
+from formula_screening.db.repository import (
+    get_all_tickers,
+    get_cached_periods,
+    get_financial_dict,
+    upsert_financial_item,
+    upsert_financial_items_bulk,
+    upsert_stock,
+)
+from formula_screening.db.schema import _SCHEMA_SQL
+
+
+@pytest.fixture()
+def conn():
+    """In-memory SQLite connection with schema applied."""
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    c.executescript(_SCHEMA_SQL)
+    yield c
+    c.close()
+
+
+def test_upsert_stock_and_get_tickers(conn):
+    upsert_stock(conn, "7203", "トヨタ", "輸送用機器", "プライム")
+    upsert_stock(conn, "6861", "キーエンス", "電気機器", "プライム")
+    conn.commit()
+
+    tickers = get_all_tickers(conn)
+    assert tickers == ["6861", "7203"]
+
+
+def test_upsert_stock_updates_on_conflict(conn):
+    upsert_stock(conn, "7203", "Old", "Old", "Old")
+    upsert_stock(conn, "7203", "New", "New", "New")
+    conn.commit()
+
+    row = conn.execute("SELECT name FROM stocks WHERE ticker='7203'").fetchone()
+    assert row["name"] == "New"
+
+
+def test_upsert_financial_item_and_get_dict(conn):
+    upsert_financial_item(conn, "7203", "2024-03", "pl", "revenue", 48036704, "edinetdb")
+    upsert_financial_item(conn, "7203", "2024-03", "bs", "total_assets", 93601350, "edinetdb")
+    conn.commit()
+
+    result = get_financial_dict(conn, "7203")
+    assert result["pl"]["revenue"] == 48036704.0
+    assert result["bs"]["total_assets"] == 93601350.0
+
+
+def test_get_financial_dict_latest_period(conn):
+    upsert_financial_item(conn, "7203", "2023-03", "pl", "revenue", 100, "edinetdb")
+    upsert_financial_item(conn, "7203", "2024-03", "pl", "revenue", 200, "edinetdb")
+    conn.commit()
+
+    result = get_financial_dict(conn, "7203")
+    assert result["pl"]["revenue"] == 200.0
+
+
+def test_get_financial_dict_specific_period(conn):
+    upsert_financial_item(conn, "7203", "2023-03", "pl", "revenue", 100, "edinetdb")
+    upsert_financial_item(conn, "7203", "2024-03", "pl", "revenue", 200, "edinetdb")
+    conn.commit()
+
+    result = get_financial_dict(conn, "7203", period="2023-03")
+    assert result["pl"]["revenue"] == 100.0
+
+
+def test_bulk_upsert(conn):
+    rows = [
+        {"ticker": "7203", "period": "2024-03", "statement": "pl", "item_name": "revenue", "value": 100, "source": "edinetdb"},
+        {"ticker": "7203", "period": "2024-03", "statement": "pl", "item_name": "net_income", "value": 50, "source": "edinetdb"},
+    ]
+    upsert_financial_items_bulk(conn, rows)
+    conn.commit()
+
+    result = get_financial_dict(conn, "7203")
+    assert result["pl"]["revenue"] == 100.0
+    assert result["pl"]["net_income"] == 50.0
+
+
+def test_get_cached_periods(conn):
+    upsert_financial_item(conn, "7203", "2023-03", "pl", "revenue", 100, "edinetdb")
+    upsert_financial_item(conn, "7203", "2024-03", "pl", "revenue", 200, "edinetdb")
+    conn.commit()
+
+    periods = get_cached_periods(conn, "7203", "pl")
+    assert periods == {"2023-03", "2024-03"}
+
+
+def test_get_financial_dict_empty(conn):
+    result = get_financial_dict(conn, "9999")
+    assert result == {}

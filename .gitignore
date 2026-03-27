@@ -4,3 +4,17 @@
 # 許可するファイル
 !.gitignore
 !plan.md
+!pyproject.toml
+!uv.lock
+!src/
+!src/**
+!strategies/
+!strategies/**
+!tests/
+!tests/**
+!scripts/
+!scripts/**
+
+# バイナリ・キャッシュは常に除外
+__pycache__/
+*.pyc
