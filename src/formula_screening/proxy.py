@@ -13,8 +13,10 @@ print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
 _PROXY_SOURCES = [
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
     "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+    "https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/http.txt",
+    "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
 ]
-_PROXY_CHECK_URL = "https://query2.finance.yahoo.com/v1/test/getcrumb"
+_PROXY_CHECK_URL = "https://finance.yahoo.com/quote/AAPL/"
 _DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
@@ -32,7 +34,14 @@ def _fetch_proxy_candidates() -> list[str]:
             resp = session.get(url, timeout=10)
             for line in resp.text.strip().splitlines():
                 addr = line.strip()
-                if addr and ":" in addr and not addr.startswith("<"):
+                if not addr or addr.startswith("<"):
+                    continue
+                # Strip protocol prefix (e.g. "http://1.2.3.4:8080" → "1.2.3.4:8080")
+                for prefix in ("http://", "https://"):
+                    if addr.startswith(prefix):
+                        addr = addr[len(prefix):]
+                        break
+                if ":" in addr:
                     proxies.append(addr)
         except requests.RequestException:
             continue

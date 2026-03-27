@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import functools
 import logging
+import random
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -215,6 +216,7 @@ def fetch_and_cache_prices(
             if is_price_stale(cached["updated_at"]):
                 targets.append(ticker)
 
+    random.shuffle(targets)
     skipped = len(tickers) - len(targets)
     total_fetched = 0
     total_failed = 0
