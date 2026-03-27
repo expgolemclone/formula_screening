@@ -15,10 +15,8 @@ After download completes, import into DB with:
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import functools
 import json
-import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -26,6 +24,12 @@ from pathlib import Path
 
 import requests
 import truststore
+
+# Ensure the project package is importable when run as a script.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT / "src"))
+
+from formula_screening.proxy import fetch_live_proxies
 
 truststore.inject_into_ssl()
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
@@ -50,82 +54,13 @@ _HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://irbank.net/download",
 }
-_PROXY_SOURCES = [
-    "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
-    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
-]
 _MAX_PROXY_TRIES = 10
 _RATE_LIMIT_WAIT = 30.0
-_PROXY_CHECK_URL = "https://httpbin.org/ip"
-_PROXY_CHECK_WORKERS = 200
-_PROXY_CHECK_TIMEOUT = 2
-_PROXY_TARGET_COUNT = 100  # stop checking once we have enough
 
 
 def _year_codes(years: int) -> list[str]:
     latest = datetime.now(timezone.utc).year
     return [f"{y % 100:04d}" for y in range(latest - years + 1, latest + 1)]
-
-
-def _fetch_proxy_candidates() -> list[str]:
-    """Fetch raw proxy lists from public sources."""
-    proxies: list[str] = []
-    session = requests.Session()
-    session.headers.update({"User-Agent": _HEADERS["User-Agent"]})
-
-    for url in _PROXY_SOURCES:
-        try:
-            resp = session.get(url, timeout=10)
-            for line in resp.text.strip().splitlines():
-                addr = line.strip()
-                if addr and ":" in addr and not addr.startswith("<"):
-                    proxies.append(addr)
-        except requests.RequestException:
-            continue
-
-    random.shuffle(proxies)
-    return proxies
-
-
-def _check_proxy(addr: str) -> str | None:
-    """Return addr if proxy is alive, else None."""
-    proxy_url = f"http://{addr}"
-    try:
-        resp = requests.get(
-            _PROXY_CHECK_URL,
-            proxies={"http": proxy_url, "https": proxy_url},
-            timeout=_PROXY_CHECK_TIMEOUT,
-        )
-        if resp.status_code == 200:
-            return addr
-    except requests.RequestException:
-        pass
-    return None
-
-
-def _fetch_live_proxies() -> list[str]:
-    """Fetch proxy lists, then validate in parallel. Returns only working proxies."""
-    candidates = _fetch_proxy_candidates()
-    print(f"  {len(candidates)} candidates, checking liveness...")
-
-    alive: list[str] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_PROXY_CHECK_WORKERS) as pool:
-        futures = {pool.submit(_check_proxy, addr): addr for addr in candidates}
-        for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            if result is not None:
-                alive.append(result)
-                if len(alive) % 10 == 0:
-                    print(f"  ... {len(alive)} alive so far")
-                if len(alive) >= _PROXY_TARGET_COUNT:
-                    # Cancel remaining checks
-                    for f in futures:
-                        f.cancel()
-                    break
-
-    random.shuffle(alive)
-    print(f"  {len(alive)} live proxies ready")
-    return alive
 
 
 def _is_rate_limited(resp: requests.Response) -> bool:
@@ -198,7 +133,7 @@ def main() -> None:
     dest = Path(args.dest) if args.dest else project_root / "data" / "irbank"
 
     print("Fetching and validating proxies...")
-    proxies = _fetch_live_proxies()
+    proxies = fetch_live_proxies()
     if not proxies:
         print("WARNING: No live proxies found. Using direct connection.", file=sys.stderr)
 
@@ -235,7 +170,7 @@ def main() -> None:
         # Refresh proxy list if running low
         if len(proxies) < _MAX_PROXY_TRIES:
             print("  Refreshing proxies...")
-            proxies = _fetch_live_proxies()
+            proxies = fetch_live_proxies()
 
         print(f"[{count}/{total}] {url}")
         if _download_file(url, target, proxies):
