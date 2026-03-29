@@ -413,3 +413,17 @@ class ProxyPool:
         """True if all proxies have been removed due to failures."""
         with self._lock:
             return len(self._proxies) == 0
+
+    def split(self, n: int) -> list[ProxyPool]:
+        """Split the proxy list into *n* sub-pools (round-robin distribution).
+
+        Each sub-pool gets its own browser profile.  If there are fewer
+        proxies than *n*, some sub-pools will be empty (direct connection).
+        """
+        if n <= 0:
+            raise ValueError("n must be positive")
+        with self._lock:
+            buckets: list[list[str]] = [[] for _ in range(n)]
+            for i, addr in enumerate(self._proxies):
+                buckets[i % n].append(addr)
+        return [ProxyPool(b) for b in buckets]
