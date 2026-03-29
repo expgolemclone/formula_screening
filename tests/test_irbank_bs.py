@@ -6,8 +6,7 @@ import sqlite3
 
 import pytest
 
-from formula_screening.datasources.irbank_bs import parse_bs_charts, scrape_bs
-from formula_screening.db.repository import get_financial_dict
+from formula_screening.datasources.irbank_bs import build_bs_rows, parse_bs_charts
 from formula_screening.db.schema import _SCHEMA_SQL
 
 
@@ -119,7 +118,70 @@ def test_parse_period_format():
     assert all(it["period"] == "2025-03" for it in debit)
 
 
-# --- scrape_bs integration tests (using DB) -----------------------------------
+# --- build_bs_rows tests ------------------------------------------------------
+
+
+def test_build_bs_rows_dedup():
+    """Percentage chart items should take priority over debit/credit."""
+    rows = build_bs_rows("3003", _MOCK_HTML_JP_GAAP)
+    ca_rows = [r for r in rows if r["item_name"] == "current_assets"]
+    # current_assets comes from percentage chart; should not duplicate
+    periods = [r["period"] for r in ca_rows]
+    assert len(periods) == len(set(periods))
+
+
+def test_build_bs_rows_years_filter():
+    rows = build_bs_rows("3003", _MOCK_HTML_JP_GAAP, years=1)
+    periods = {r["period"] for r in rows}
+    assert periods == {"2025-12"}
+
+
+def test_build_bs_rows_metadata():
+    rows = build_bs_rows("7203", _MOCK_HTML_IFRS)
+    assert all(r["ticker"] == "7203" for r in rows)
+    assert all(r["statement"] == "bs" for r in rows)
+    assert all(r["source"] == "irbank_bs" for r in rows)
+
+
+# --- net_cash metrics tests ---------------------------------------------------
+
+
+def test_net_cash_full_formula():
+    """When detailed BS is available, use 清原式: current_assets + investment_securities*0.7 - liabilities."""
+    from formula_screening.metrics import compute_metrics
+
+    financials = {
+        "pl": {"net_income": 100},
+        "bs": {
+            "current_assets": 500,
+            "investment_securities": 200,
+            "current_liabilities": 300,
+            "non_current_liabilities": 100,
+            "total_assets": 1000,
+            "total_equity": 600,
+        },
+        "cf": {"cash_equivalents": 50},
+    }
+    m = compute_metrics(financials, price=None, shares_outstanding=None)
+    # 500 + 200*0.7 - (300+100) = 500 + 140 - 400 = 240
+    assert m["net_cash"] == 240.0
+
+
+def test_net_cash_fallback():
+    """Without detailed BS, fall back to cash_equivalents - total_liabilities."""
+    from formula_screening.metrics import compute_metrics
+
+    financials = {
+        "pl": {},
+        "bs": {"total_assets": 1000, "total_equity": 600},
+        "cf": {"cash_equivalents": 50},
+    }
+    m = compute_metrics(financials, price=None, shares_outstanding=None)
+    # 50 - (1000 - 600) = 50 - 400 = -350
+    assert m["net_cash"] == -350.0
+
+
+# --- DB integration tests ----------------------------------------------------
 
 
 @pytest.fixture()

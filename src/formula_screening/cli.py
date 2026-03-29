@@ -57,6 +57,63 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
         conn.close()
 
 
+def _cmd_scrape_bs(args: argparse.Namespace) -> None:
+    import random
+
+    from formula_screening.datasources.irbank_bs import build_bs_rows, fetch_bs_html
+    from formula_screening.db.repository import get_all_tickers, upsert_financial_items_bulk
+    from formula_screening.stealth import random_delay
+
+    pool = _resolve_proxy_pool(args)
+    conn = get_connection()
+    try:
+        tickers = args.ticker if args.ticker else get_all_tickers(conn)
+        if not tickers:
+            print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
+            sys.exit(1)
+
+        tickers = list(tickers)
+        random.shuffle(tickers)
+        total = len(tickers)
+        ok = skip = fail = 0
+
+        print(f"Scraping BS for {total} tickers (years={args.years})")
+
+        for count, ticker in enumerate(tickers, 1):
+            if not args.force:
+                existing = conn.execute(
+                    "SELECT 1 FROM financial_items WHERE ticker = ? AND source = 'irbank_bs' LIMIT 1",
+                    (ticker,),
+                ).fetchone()
+                if existing:
+                    skip += 1
+                    continue
+
+            print(f"[{count}/{total}] {ticker}", end=" ", flush=True)
+
+            html = fetch_bs_html(ticker, pool)
+            if html is None:
+                print("FAILED")
+                fail += 1
+                continue
+
+            rows = build_bs_rows(ticker, html, years=args.years)
+            if rows:
+                upsert_financial_items_bulk(conn, rows)
+                conn.commit()
+                print(f"OK ({len(rows)} items)")
+                ok += 1
+            else:
+                print("NO DATA")
+                fail += 1
+
+            random_delay(3.0, 6.0)
+
+        print(f"\nDone: {ok} scraped, {skip} skipped, {fail} failed.")
+    finally:
+        conn.close()
+
+
 def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening.screener import run_screening
 
@@ -152,6 +209,14 @@ def main() -> None:
     p_prices.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_prices.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 
+    # scrape-bs
+    p_bs = sub.add_parser("scrape-bs", help="Scrape detailed BS from IRBank individual pages")
+    p_bs.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
+    p_bs.add_argument("--years", type=int, default=1, help="Store most recent N years (default: 1)")
+    p_bs.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
+    p_bs.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
+    p_bs.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
+
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
     p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
@@ -165,6 +230,7 @@ def main() -> None:
     cmds = {
         "import-irbank": _cmd_import_irbank,
         "fetch-prices": _cmd_fetch_prices,
+        "scrape-bs": _cmd_scrape_bs,
         "screen": _cmd_screen,
     }
     cmds[args.command](args)

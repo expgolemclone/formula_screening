@@ -177,6 +177,55 @@ def parse_bs_charts(html: str) -> dict[str, list[dict]]:
     return result
 
 
+# --- HTTP fetch ---------------------------------------------------------------
+
+_MAX_RETRIES = 3
+
+
+def fetch_bs_html(
+    ticker: str,
+    pool: object,
+    *,
+    timeout: int = 15,
+) -> str | None:
+    """Fetch /bs page HTML using requests + ProxyPool.
+
+    Args:
+        ticker: Stock ticker code.
+        pool: A ``ProxyPool`` instance (uses ``.get()`` and ``.report_failure()``).
+        timeout: HTTP request timeout in seconds.
+
+    Returns:
+        HTML string if successful, None on failure.
+    """
+    import requests
+
+    from formula_screening.stealth import random_delay, random_ua
+
+    for attempt in range(_MAX_RETRIES):
+        proxy_url = pool.get()
+        proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
+        try:
+            resp = requests.get(
+                _BS_URL_TEMPLATE.format(ticker=ticker),
+                headers={"User-Agent": random_ua()},
+                proxies=proxies,
+                timeout=timeout,
+            )
+            if resp.status_code == 200 and "gGm(" in resp.text:
+                return resp.text
+            if resp.status_code == 429 or "html" in resp.headers.get("Content-Type", ""):
+                logger.info("Rate-limited for %s (attempt %d), rotating...", ticker, attempt + 1)
+                pool.report_failure()
+                random_delay(5.0, 15.0)
+                continue
+            return None
+        except requests.RequestException:
+            pool.report_failure()
+            continue
+    return None
+
+
 # --- Row building (shared between script and CLI) ----------------------------
 
 
