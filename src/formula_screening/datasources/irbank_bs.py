@@ -17,6 +17,17 @@ logger = logging.getLogger("formula_screening.irbank_bs")
 
 _BS_URL_TEMPLATE = "https://irbank.net/{ticker}/bs"
 
+_TITLE_RE = re.compile(r"^(.+?)（\d+[A-Z]?）")
+
+
+def parse_company_name(html: str) -> str | None:
+    """Extract company name from IRBank BS page ``<title>``."""
+    m = re.search(r"<title>(.*?)</title>", html)
+    if m is None:
+        return None
+    tm = _TITLE_RE.match(m.group(1))
+    return tm.group(1) if tm else None
+
 # --- Column-name normalisation ------------------------------------------------
 
 # Maps Japanese column names (as they appear in gGm chart data) to canonical
@@ -294,7 +305,7 @@ def scrape_bs_worker(
     Designed to run inside a ``ThreadPoolExecutor``.  Each worker opens
     its own DB connection and uses its own proxy sub-pool.
     """
-    from formula_screening.db.repository import upsert_financial_items_bulk
+    from formula_screening.db.repository import upsert_financial_items_bulk, upsert_stock
     from formula_screening.db.schema import get_connection
     from formula_screening.stealth import random_delay
 
@@ -321,6 +332,10 @@ def scrape_bs_worker(
                     print(f"[{seq}/{total}] {ticker} FAILED", flush=True)
                     stats["fail"] += 1
                 continue
+
+            name = parse_company_name(html)
+            if name:
+                upsert_stock(conn, ticker, name=name, sector="", market="")
 
             rows = build_bs_rows(ticker, html, years=years)
 
