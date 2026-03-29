@@ -53,6 +53,15 @@ def build_stock_dict(
 
     price = price_data["price"]
     shares = price_data["shares_outstanding"]
+
+    # Fallback: estimate shares from BS data (株主資本 / BPS)
+    if shares is None:
+        bs = financials.get("bs", {})
+        equity = bs.get("stockholders_equity")
+        bps = bs.get("bps")
+        if equity and bps and bps > 0:
+            shares = int(equity / bps)
+
     metrics = compute_metrics(financials, price, shares)
 
     return {

@@ -85,4 +85,26 @@ def compute_metrics(
     metrics["operating_cf_margin"] = cf.get("operating_cf_margin") or _pct(cf.get("operating_cf"), revenue)
     metrics["free_cf_ratio"] = _pct(free_cf, revenue)
 
+    # Net cash (清原達郎 simplified)
+    # Original: 流動資産 + 投資有価証券×70% − 負債
+    # Simplified: 現金同等物 − 負債 (conservative; IR BANK lacks current_assets/investment_securities)
+    cash_equivalents = cf.get("cash_equivalents")
+    total_liabilities = None
+    if total_assets is not None and total_equity is not None:
+        total_liabilities = total_assets - total_equity
+    metrics["total_liabilities"] = total_liabilities
+
+    short_term_debt = bs.get("short_term_debt")
+    long_term_debt = bs.get("long_term_debt")
+    interest_bearing_debt = None
+    if short_term_debt is not None or long_term_debt is not None:
+        interest_bearing_debt = (short_term_debt or 0) + (long_term_debt or 0)
+    metrics["interest_bearing_debt"] = interest_bearing_debt
+
+    net_cash = None
+    if cash_equivalents is not None and total_liabilities is not None:
+        net_cash = cash_equivalents - total_liabilities
+    metrics["net_cash"] = net_cash
+    metrics["net_cash_ratio"] = _safe_div(net_cash, market_cap)
+
     return metrics
