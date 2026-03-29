@@ -6,10 +6,16 @@ from __future__ import annotations
 import concurrent.futures
 import functools
 import random
+import re
+import threading
 import time
 
 from curl_cffi import requests as cffi_requests
 import requests
+
+_HOST_PORT_RE = re.compile(
+    r"^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$",
+)
 
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
 
@@ -117,6 +123,14 @@ _ANON_CHECK_URLS = [
     "https://httpbin.org/headers",
 ]
 
+_PROXY_LEAK_HEADERS = (
+    "X-Forwarded-For",
+    "Via",
+    "X-Real-IP",
+    "Forwarded",
+    "X-Proxy-ID",
+)
+
 # --- Quality check URLs (moderately strict sites) --------------------------------
 
 _CHECK_URLS = [
@@ -217,7 +231,7 @@ def _fetch_proxy_candidates() -> list[str]:
                     if addr.startswith(prefix):
                         addr = addr[len(prefix):]
                         break
-                if ":" in addr:
+                if _HOST_PORT_RE.match(addr):
                     proxies.append(addr)
         except requests.RequestException:
             continue
@@ -238,18 +252,23 @@ def _check_proxy(addr: str, *, timeout: int = 5) -> str | None:
     proxies = {"http": proxy_url, "https": proxy_url}
     headers = {"User-Agent": ua}
 
-    # Phase 1: anonymity check
-    anon_url = random.choice(_ANON_CHECK_URLS)
-    try:
-        resp = requests.get(
-            anon_url, proxies=proxies, headers=headers, timeout=timeout,
-        )
-        if resp.status_code != 200:
-            return None
-        echoed = resp.json().get("headers", {})
-        if echoed.get("X-Forwarded-For") or echoed.get("Via"):
-            return None
-    except (requests.RequestException, ValueError):
+    # Phase 1: anonymity check (try each endpoint until one succeeds)
+    anon_passed = False
+    for anon_url in random.sample(_ANON_CHECK_URLS, len(_ANON_CHECK_URLS)):
+        try:
+            resp = requests.get(
+                anon_url, proxies=proxies, headers=headers, timeout=timeout,
+            )
+            if resp.status_code != 200:
+                continue
+            echoed = resp.json().get("headers", {})
+            if any(echoed.get(h) for h in _PROXY_LEAK_HEADERS):
+                return None
+            anon_passed = True
+            break
+        except (requests.RequestException, ValueError):
+            continue
+    if not anon_passed:
         return None
 
     # Phase 2: quality check against a random tough site
@@ -285,11 +304,12 @@ def fetch_live_proxies(
     print(f"  {len(candidates)} proxy candidates, validating (anonymity + quality)...")
 
     alive: list[str] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=check_workers) as pool:
-        futures = {
-            pool.submit(_check_proxy, addr, timeout=check_timeout): addr
-            for addr in candidates
-        }
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
+    futures = {
+        executor.submit(_check_proxy, addr, timeout=check_timeout): addr
+        for addr in candidates
+    }
+    try:
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
             if result is not None:
@@ -297,9 +317,9 @@ def fetch_live_proxies(
                 if len(alive) % 10 == 0:
                     print(f"  ... {len(alive)} elite proxies so far")
                 if len(alive) >= target_count:
-                    for f in futures:
-                        f.cancel()
                     break
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     random.shuffle(alive)
     print(f"  {len(alive)} elite-anonymous proxies ready")
@@ -318,6 +338,7 @@ class ProxyPool:
     """
 
     def __init__(self, proxies: list[str]) -> None:
+        self._lock = threading.Lock()
         self._proxies = list(proxies)
         self._index = 0
         self._failures: dict[str, int] = {}
@@ -346,38 +367,47 @@ class ProxyPool:
 
     def get(self) -> str | None:
         """Return the current proxy URL, or None for direct connection."""
-        if not self._proxies:
-            return None
-        return f"http://{self._proxies[self._index % len(self._proxies)]}"
+        with self._lock:
+            if not self._proxies:
+                return None
+            return f"http://{self._proxies[self._index % len(self._proxies)]}"
 
     @property
     def profile(self) -> tuple[str, str, dict[str, str]]:
         """Return the browser profile pinned to the current proxy."""
-        return _BROWSER_PROFILES[self._profile_idx % len(_BROWSER_PROFILES)]
+        with self._lock:
+            return _BROWSER_PROFILES[self._profile_idx % len(_BROWSER_PROFILES)]
 
-    def rotate(self) -> None:
-        """Move to the next proxy and browser profile in the pool."""
+    def _rotate_locked(self) -> None:
+        """Advance to the next proxy (caller must hold ``_lock``)."""
         if self._proxies:
             self._index += 1
             self._profile_idx = random.randrange(len(_BROWSER_PROFILES))
-            proxy = self.get()
-            print(f"  Rotated to proxy: {proxy}")
+            proxy_url = f"http://{self._proxies[self._index % len(self._proxies)]}"
+            print(f"  Rotated to proxy: {proxy_url}")
+
+    def rotate(self) -> None:
+        """Move to the next proxy and browser profile in the pool."""
+        with self._lock:
+            self._rotate_locked()
 
     def report_failure(self) -> None:
         """Record a failure for the current proxy; rotate if too many."""
-        if not self._proxies:
-            return
-        addr = self._proxies[self._index % len(self._proxies)]
-        self._failures[addr] = self._failures.get(addr, 0) + 1
-        if self._failures[addr] >= self._max_failures:
-            print(f"  Proxy {addr} failed {self._max_failures} times, removing")
-            self._proxies = [p for p in self._proxies if p != addr]
-            if self._proxies:
-                self._index = self._index % len(self._proxies)
-        else:
-            self.rotate()
+        with self._lock:
+            if not self._proxies:
+                return
+            addr = self._proxies[self._index % len(self._proxies)]
+            self._failures[addr] = self._failures.get(addr, 0) + 1
+            if self._failures[addr] >= self._max_failures:
+                print(f"  Proxy {addr} failed {self._max_failures} times, removing")
+                self._proxies = [p for p in self._proxies if p != addr]
+                if self._proxies:
+                    self._index = self._index % len(self._proxies)
+            else:
+                self._rotate_locked()
 
     @property
     def exhausted(self) -> bool:
         """True if all proxies have been removed due to failures."""
-        return len(self._proxies) == 0
+        with self._lock:
+            return len(self._proxies) == 0
