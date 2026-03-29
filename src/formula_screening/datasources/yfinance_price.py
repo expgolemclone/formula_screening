@@ -17,7 +17,7 @@ from formula_screening.db.repository import (
     get_latest_price_with_shares,
     upsert_price,
 )
-from formula_screening.proxy import ProxyPool
+from formula_screening.stealth import ProxyPool, create_session, random_delay
 
 logger = logging.getLogger("formula_screening.yfinance_price")
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
@@ -26,13 +26,17 @@ _BATCH_SIZE = 100
 _SHARES_WORKERS = 10
 
 
-def fetch_current(ticker: str, *, proxy: str | None = None) -> dict[str, float | int | None]:
+def fetch_current(
+    ticker: str,
+    *,
+    pool: ProxyPool | None = None,
+) -> dict[str, float | int | None]:
     """Fetch the latest price and shares outstanding for a Japanese stock.
 
     Args:
         ticker: Bare ticker code (e.g. "7203"). The ".T" suffix is appended
                 automatically for Tokyo Stock Exchange.
-        proxy: Optional HTTP proxy URL (e.g. ``http://host:port``).
+        pool: Optional ProxyPool for stealth session creation.
 
     Returns:
         {"price": float | None, "shares_outstanding": int | None}
@@ -41,7 +45,8 @@ def fetch_current(ticker: str, *, proxy: str | None = None) -> dict[str, float |
     logger.debug("Fetching price for %s", symbol)
 
     try:
-        t = yf.Ticker(symbol, proxy=proxy)
+        session = create_session(pool)
+        t = yf.Ticker(symbol, session=session)
         info = t.info
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         shares = info.get("sharesOutstanding")
@@ -74,7 +79,7 @@ class _RateLimited(Exception):
 
 def _download_prices_batch(
     symbols: list[str],
-    proxy: str | None = None,
+    session: object | None = None,
 ) -> dict[str, float | None]:
     """Batch-download close prices via yf.download.
 
@@ -84,8 +89,8 @@ def _download_prices_batch(
     if not symbols:
         return {}
     kwargs: dict = {"period": "1d", "progress": False}
-    if proxy:
-        kwargs["proxy"] = proxy
+    if session is not None:
+        kwargs["session"] = session
     data = yf.download(symbols, **kwargs)
     if data.empty:
         raise _RateLimited("Empty response")
@@ -103,11 +108,11 @@ def _download_prices_batch(
     }
 
 
-def _fetch_shares_one(args: tuple[str, str | None]) -> tuple[str, int | None]:
+def _fetch_shares_one(args: tuple[str, object | None]) -> tuple[str, int | None]:
     """Fetch shares_outstanding for a single symbol. Thread-safe."""
-    sym, proxy = args
+    sym, session = args
     try:
-        fi = yf.Ticker(sym, proxy=proxy).fast_info
+        fi = yf.Ticker(sym, session=session).fast_info
         shares = fi.get("shares")
         return (sym, int(shares) if shares is not None else None)
     except Exception:
@@ -116,13 +121,13 @@ def _fetch_shares_one(args: tuple[str, str | None]) -> tuple[str, int | None]:
 
 def _fetch_shares_batch(
     symbols: list[str],
-    proxy: str | None = None,
+    session: object | None = None,
 ) -> dict[str, int | None]:
     """Fetch shares_outstanding in parallel via ThreadPoolExecutor."""
     result: dict[str, int | None] = {}
-    work = [(sym, proxy) for sym in symbols]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_SHARES_WORKERS) as pool:
-        for sym, shares in pool.map(_fetch_shares_one, work):
+    work = [(sym, session) for sym in symbols]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_SHARES_WORKERS) as executor:
+        for sym, shares in executor.map(_fetch_shares_one, work):
             result[sym] = shares
     return result
 
@@ -142,14 +147,15 @@ def _process_batch(
     Returns:
         (fetched_count, failed_count)
     """
+    session = create_session(pool)
     for attempt in range(_MAX_BATCH_RETRIES):
-        proxy = pool.get()
         try:
-            prices = _download_prices_batch(symbols, proxy=proxy)
+            prices = _download_prices_batch(symbols, session=session)
             break
         except _RateLimited as e:
             print(f"  Rate-limited ({e}), rotating proxy... (attempt {attempt + 1}/{_MAX_BATCH_RETRIES})")
             pool.report_failure()
+            session = create_session(pool)
             if pool.exhausted:
                 print("  All proxies exhausted, falling back to direct", file=sys.stderr)
     else:
@@ -157,7 +163,7 @@ def _process_batch(
         print("  ABORT: rate-limited after all retries", file=sys.stderr)
         sys.exit(1)
 
-    shares = _fetch_shares_batch(symbols, proxy=pool.get())
+    shares = _fetch_shares_batch(symbols, session=session)
 
     fetched = 0
     failed = 0
@@ -226,6 +232,9 @@ def fetch_and_cache_prices(
     print(f"Proxy: {pool.get() or 'direct'}")
 
     for batch_start in range(0, len(targets), _BATCH_SIZE):
+        if batch_start > 0:
+            random_delay()
+
         batch = targets[batch_start : batch_start + _BATCH_SIZE]
         symbols = [f"{t}.T" for t in batch]
 

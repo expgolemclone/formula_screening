@@ -32,7 +32,7 @@ def _cmd_import_irbank(args: argparse.Namespace) -> None:
 
 def _resolve_proxy_pool(args: argparse.Namespace):  # noqa: ANN205
     """Build a ProxyPool from CLI args."""
-    from formula_screening.proxy import ProxyPool
+    from formula_screening.stealth import ProxyPool
 
     if args.proxy:
         return ProxyPool.from_url(args.proxy)

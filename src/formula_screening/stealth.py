@@ -1,11 +1,14 @@
-"""Shared proxy management: fetch, validate, and rotate HTTP proxies."""
+"""Anti-detection HTTP infrastructure: proxy rotation, TLS fingerprint
+mimicry, User-Agent rotation, and request throttling."""
 
 from __future__ import annotations
 
 import concurrent.futures
 import functools
 import random
+import time
 
+from curl_cffi import requests as cffi_requests
 import requests
 
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
@@ -120,6 +123,52 @@ def random_ua() -> str:
     """Return a randomly chosen browser User-Agent string."""
     return random.choice(_USER_AGENTS)
 
+
+# --- TLS fingerprint (curl_cffi impersonate values) ---------------------------
+
+_BROWSER_FINGERPRINTS = [
+    "chrome",
+    "chrome110",
+    "chrome116",
+    "chrome120",
+    "chrome124",
+    "edge99",
+    "edge101",
+    "safari15_5",
+    "safari17_0",
+]
+
+
+def create_session(
+    pool: ProxyPool | None = None,
+) -> cffi_requests.Session:
+    """Create a ``curl_cffi`` session with randomised TLS fingerprint and UA.
+
+    The session mimics a real browser at the TLS layer (JA3/JA4) and
+    sets a random User-Agent header.  If *pool* is provided the current
+    proxy is attached to the session.
+
+    Works with any HTTP target — yfinance, IR BANK, etc.
+    """
+    session = cffi_requests.Session(
+        impersonate=random.choice(_BROWSER_FINGERPRINTS),
+    )
+    session.headers["User-Agent"] = random_ua()
+
+    if pool is not None:
+        proxy_url = pool.get()
+        if proxy_url:
+            session.proxies = {"http": proxy_url, "https": proxy_url}
+
+    return session
+
+
+def random_delay(min_s: float = 1.0, max_s: float = 5.0) -> None:
+    """Sleep for a random duration to break request-timing correlation."""
+    time.sleep(random.uniform(min_s, max_s))
+
+
+# --- Proxy fetching & validation ----------------------------------------------
 
 def _fetch_proxy_candidates() -> list[str]:
     """Fetch raw proxy lists from public sources."""
