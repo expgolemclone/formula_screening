@@ -25,66 +25,12 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
-from formula_screening.datasources.irbank_bs import build_bs_rows, fetch_bs_html
-from formula_screening.db.repository import get_all_tickers, upsert_financial_items_bulk
+from formula_screening.datasources.irbank_bs import scrape_bs_worker
+from formula_screening.db.repository import get_all_tickers
 from formula_screening.db.schema import get_connection, init_db
-from formula_screening.stealth import ProxyPool, random_delay
+from formula_screening.stealth import ProxyPool
 
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
-
-
-def _scrape_worker(
-    tickers: list[str],
-    pool: ProxyPool,
-    years: int,
-    interval: float,
-    force: bool,
-    stats: dict[str, int],
-    stats_lock: threading.Lock,
-    total: int,
-    counter: list[int],
-) -> None:
-    """Process a chunk of tickers using a dedicated proxy sub-pool."""
-    conn = get_connection()
-    try:
-        for ticker in tickers:
-            with stats_lock:
-                counter[0] += 1
-                seq = counter[0]
-
-            if not force:
-                existing = conn.execute(
-                    "SELECT 1 FROM financial_items WHERE ticker = ? AND source = 'irbank_bs' LIMIT 1",
-                    (ticker,),
-                ).fetchone()
-                if existing:
-                    with stats_lock:
-                        stats["skip"] += 1
-                    continue
-
-            html = fetch_bs_html(ticker, pool)
-            if html is None:
-                with stats_lock:
-                    print(f"[{seq}/{total}] {ticker} FAILED")
-                    stats["fail"] += 1
-                continue
-
-            rows = build_bs_rows(ticker, html, years=years)
-
-            if rows:
-                upsert_financial_items_bulk(conn, rows)
-                conn.commit()
-                with stats_lock:
-                    stats["ok"] += 1
-                    print(f"[{seq}/{total}] {ticker} OK ({len(rows)} items)")
-            else:
-                with stats_lock:
-                    stats["fail"] += 1
-                    print(f"[{seq}/{total}] {ticker} NO DATA")
-
-            random_delay(interval, interval + 3.0)
-    finally:
-        conn.close()
 
 
 def main() -> None:
@@ -137,26 +83,25 @@ def main() -> None:
 
     stats: dict[str, int] = {"ok": 0, "skip": 0, "fail": 0}
     stats_lock = threading.Lock()
-    counter = [0]  # mutable shared counter
+    counter = [0]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [
             executor.submit(
-                _scrape_worker,
+                scrape_bs_worker,
                 chunk,
                 sub_pool,
-                args.years,
-                args.interval,
-                args.force,
-                stats,
-                stats_lock,
-                total,
-                counter,
+                years=args.years,
+                interval=args.interval,
+                force=args.force,
+                stats=stats,
+                stats_lock=stats_lock,
+                total=total,
+                counter=counter,
             )
             for chunk, sub_pool in zip(chunks, sub_pools)
         ]
         concurrent.futures.wait(futures)
-        # Re-raise any worker exceptions
         for f in futures:
             f.result()
 

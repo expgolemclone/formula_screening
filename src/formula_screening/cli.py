@@ -58,11 +58,12 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
 
 
 def _cmd_scrape_bs(args: argparse.Namespace) -> None:
+    import concurrent.futures
     import random
+    import threading
 
-    from formula_screening.datasources.irbank_bs import build_bs_rows, fetch_bs_html
-    from formula_screening.db.repository import get_all_tickers, upsert_financial_items_bulk
-    from formula_screening.stealth import random_delay
+    from formula_screening.datasources.irbank_bs import scrape_bs_worker
+    from formula_screening.db.repository import get_all_tickers
 
     pool = _resolve_proxy_pool(args)
     conn = get_connection()
@@ -71,47 +72,46 @@ def _cmd_scrape_bs(args: argparse.Namespace) -> None:
         if not tickers:
             print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
             sys.exit(1)
-
-        tickers = list(tickers)
-        random.shuffle(tickers)
-        total = len(tickers)
-        ok = skip = fail = 0
-
-        print(f"Scraping BS for {total} tickers (years={args.years})")
-
-        for count, ticker in enumerate(tickers, 1):
-            if not args.force:
-                existing = conn.execute(
-                    "SELECT 1 FROM financial_items WHERE ticker = ? AND source = 'irbank_bs' LIMIT 1",
-                    (ticker,),
-                ).fetchone()
-                if existing:
-                    skip += 1
-                    continue
-
-            print(f"[{count}/{total}] {ticker}", end=" ", flush=True)
-
-            html = fetch_bs_html(ticker, pool)
-            if html is None:
-                print("FAILED")
-                fail += 1
-                continue
-
-            rows = build_bs_rows(ticker, html, years=args.years)
-            if rows:
-                upsert_financial_items_bulk(conn, rows)
-                conn.commit()
-                print(f"OK ({len(rows)} items)")
-                ok += 1
-            else:
-                print("NO DATA")
-                fail += 1
-
-            random_delay(3.0, 6.0)
-
-        print(f"\nDone: {ok} scraped, {skip} skipped, {fail} failed.")
     finally:
         conn.close()
+
+    tickers = list(tickers)
+    random.shuffle(tickers)
+    total = len(tickers)
+    workers = min(args.workers, total) or 1
+
+    print(f"Scraping BS for {total} tickers (years={args.years}, workers={workers})")
+
+    sub_pools = pool.split(workers)
+    chunks: list[list[str]] = [[] for _ in range(workers)]
+    for i, ticker in enumerate(tickers):
+        chunks[i % workers].append(ticker)
+
+    stats: dict[str, int] = {"ok": 0, "skip": 0, "fail": 0}
+    stats_lock = threading.Lock()
+    counter = [0]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(
+                scrape_bs_worker,
+                chunk,
+                sub_pool,
+                years=args.years,
+                interval=3.0,
+                force=args.force,
+                stats=stats,
+                stats_lock=stats_lock,
+                total=total,
+                counter=counter,
+            )
+            for chunk, sub_pool in zip(chunks, sub_pools)
+        ]
+        concurrent.futures.wait(futures)
+        for f in futures:
+            f.result()
+
+    print(f"\nDone: {stats['ok']} scraped, {stats['skip']} skipped, {stats['fail']} failed.")
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
@@ -214,6 +214,7 @@ def main() -> None:
     p_bs.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
     p_bs.add_argument("--years", type=int, default=1, help="Store most recent N years (default: 1)")
     p_bs.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
+    p_bs.add_argument("--workers", type=int, default=100, help="Number of parallel workers (default: 100)")
     p_bs.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_bs.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 

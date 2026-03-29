@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 
 logger = logging.getLogger("formula_screening.irbank_bs")
 
@@ -271,3 +272,69 @@ def build_bs_rows(
         rows = [r for r in rows if r["period"] in keep]
 
     return rows
+
+
+# --- Parallel worker (shared between script and CLI) -------------------------
+
+
+def scrape_bs_worker(
+    tickers: list[str],
+    pool: object,
+    *,
+    years: int = 1,
+    interval: float = 3.0,
+    force: bool = False,
+    stats: dict[str, int],
+    stats_lock: threading.Lock,
+    total: int,
+    counter: list[int],
+) -> None:
+    """Process a chunk of tickers, storing results in the DB.
+
+    Designed to run inside a ``ThreadPoolExecutor``.  Each worker opens
+    its own DB connection and uses its own proxy sub-pool.
+    """
+    from formula_screening.db.repository import upsert_financial_items_bulk
+    from formula_screening.db.schema import get_connection
+    from formula_screening.stealth import random_delay
+
+    conn = get_connection()
+    try:
+        for ticker in tickers:
+            with stats_lock:
+                counter[0] += 1
+                seq = counter[0]
+
+            if not force:
+                existing = conn.execute(
+                    "SELECT 1 FROM financial_items WHERE ticker = ? AND source = 'irbank_bs' LIMIT 1",
+                    (ticker,),
+                ).fetchone()
+                if existing:
+                    with stats_lock:
+                        stats["skip"] += 1
+                    continue
+
+            html = fetch_bs_html(ticker, pool)
+            if html is None:
+                with stats_lock:
+                    print(f"[{seq}/{total}] {ticker} FAILED", flush=True)
+                    stats["fail"] += 1
+                continue
+
+            rows = build_bs_rows(ticker, html, years=years)
+
+            if rows:
+                upsert_financial_items_bulk(conn, rows)
+                conn.commit()
+                with stats_lock:
+                    stats["ok"] += 1
+                    print(f"[{seq}/{total}] {ticker} OK ({len(rows)} items)", flush=True)
+            else:
+                with stats_lock:
+                    stats["fail"] += 1
+                    print(f"[{seq}/{total}] {ticker} NO DATA", flush=True)
+
+            random_delay(interval, interval + 3.0)
+    finally:
+        conn.close()
