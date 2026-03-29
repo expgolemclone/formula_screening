@@ -20,54 +20,81 @@ _PROXY_SOURCES = [
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
 ]
 
-# --- User-Agent rotation pool ---------------------------------------------------
+# --- Browser profiles (TLS fingerprint + UA + headers, always consistent) ------
+#
+# Each entry is a (impersonate, user_agent, extra_headers) tuple.
+# impersonate controls the TLS handshake (JA3/JA4); the UA and headers
+# MUST match the same browser to avoid trivial detection.
 
-_USER_AGENTS = [
-    # Chrome 134 — Windows / macOS / Linux
+_CHROME_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,ja;q=0.8",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
+_SAFARI_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,ja-JP;q=0.8,ja;q=0.7",
+    "Upgrade-Insecure-Requests": "1",
+}
+_EDGE_HEADERS = _CHROME_HEADERS  # Edge shares Chromium headers
+
+_BROWSER_PROFILES: list[tuple[str, str, dict[str, str]]] = [
+    # Chrome 124 — Windows / macOS / Linux
     (
+        "chrome124",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        _CHROME_HEADERS,
     ),
     (
+        "chrome124",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        _CHROME_HEADERS,
     ),
     (
+        "chrome124",
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        _CHROME_HEADERS,
     ),
-    # Chrome 133 — Windows / macOS
+    # Chrome 120 — Windows / macOS
     (
+        "chrome120",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        _CHROME_HEADERS,
     ),
     (
+        "chrome120",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        _CHROME_HEADERS,
     ),
-    # Firefox 135 — Windows / macOS / Linux
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0",
-    "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
-    # Safari 18.3
+    # Edge 101 — Windows
     (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
-        "(KHTML, like Gecko) Version/18.3 Safari/605.1.15"
-    ),
-    # Edge 134
-    (
+        "edge101",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
+        "(KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36 Edg/101.0.1210.47",
+        _EDGE_HEADERS,
     ),
-    # Chrome 134 — Android
+    # Safari 17.0 — macOS
     (
-        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36"
+        "safari17_0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        _SAFARI_HEADERS,
     ),
-    # Safari — iPhone
+    # Safari 15.5 — macOS
     (
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X) AppleWebKit/605.1.15 "
-        "(KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/604.1"
+        "safari15_5",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/15.5 Safari/605.1.15",
+        _SAFARI_HEADERS,
     ),
 ]
 
@@ -121,39 +148,25 @@ _CHECK_URLS = [
 
 def random_ua() -> str:
     """Return a randomly chosen browser User-Agent string."""
-    return random.choice(_USER_AGENTS)
-
-
-# --- TLS fingerprint (curl_cffi impersonate values) ---------------------------
-
-_BROWSER_FINGERPRINTS = [
-    "chrome",
-    "chrome110",
-    "chrome116",
-    "chrome120",
-    "chrome124",
-    "edge99",
-    "edge101",
-    "safari15_5",
-    "safari17_0",
-]
+    return random.choice(_BROWSER_PROFILES)[1]
 
 
 def create_session(
     pool: ProxyPool | None = None,
 ) -> cffi_requests.Session:
-    """Create a ``curl_cffi`` session with randomised TLS fingerprint and UA.
+    """Create a ``curl_cffi`` session with consistent browser identity.
 
-    The session mimics a real browser at the TLS layer (JA3/JA4) and
-    sets a random User-Agent header.  If *pool* is provided the current
-    proxy is attached to the session.
+    Selects a random browser profile and applies the matching TLS
+    fingerprint, User-Agent, and standard HTTP headers as a coherent
+    set.  If *pool* is provided the current proxy is attached.
 
     Works with any HTTP target — yfinance, IR BANK, etc.
     """
-    session = cffi_requests.Session(
-        impersonate=random.choice(_BROWSER_FINGERPRINTS),
-    )
-    session.headers["User-Agent"] = random_ua()
+    impersonate, ua, extra_headers = random.choice(_BROWSER_PROFILES)
+
+    session = cffi_requests.Session(impersonate=impersonate)
+    session.headers["User-Agent"] = ua
+    session.headers.update(extra_headers)
 
     if pool is not None:
         proxy_url = pool.get()
