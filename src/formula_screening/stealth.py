@@ -9,8 +9,8 @@ import random
 import re
 import threading
 import time
+from typing import Any
 
-from curl_cffi import requests as cffi_requests
 import requests
 
 _HOST_PORT_RE = re.compile(
@@ -179,7 +179,7 @@ def random_ua() -> str:
 
 def create_session(
     pool: ProxyPool | None = None,
-) -> cffi_requests.Session:
+) -> Any:
     """Create a ``curl_cffi`` session with consistent browser identity.
 
     When *pool* is provided the browser profile is pinned to the
@@ -189,6 +189,8 @@ def create_session(
 
     Works with any HTTP target — yfinance, IR BANK, etc.
     """
+    from curl_cffi import requests as cffi_requests
+
     if pool is not None:
         impersonate, ua, extra_headers = pool.profile
     else:
