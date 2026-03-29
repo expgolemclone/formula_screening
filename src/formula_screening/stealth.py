@@ -26,8 +26,9 @@ _PROXY_SOURCES = [
 # impersonate controls the TLS handshake (JA3/JA4); the UA and headers
 # MUST match the same browser to avoid trivial detection.
 
-_CHROME_HEADERS = {
+_CHROMIUM_BASE_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
     "Accept-Language": "en-US,en;q=0.9,ja;q=0.8",
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
@@ -37,10 +38,21 @@ _CHROME_HEADERS = {
 }
 _SAFARI_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
     "Accept-Language": "en-US,en;q=0.9,ja-JP;q=0.8,ja;q=0.7",
     "Upgrade-Insecure-Requests": "1",
 }
-_EDGE_HEADERS = _CHROME_HEADERS  # Edge shares Chromium headers
+
+
+def _chromium_headers(brand: str, version: str, platform: str) -> dict[str, str]:
+    """Build Chromium headers with Client Hints matching the given identity."""
+    return {
+        **_CHROMIUM_BASE_HEADERS,
+        "Sec-CH-UA": f'"{brand}";v="{version}", "Chromium";v="{version}", "Not-A.Brand";v="99"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": f'"{platform}"',
+    }
+
 
 _BROWSER_PROFILES: list[tuple[str, str, dict[str, str]]] = [
     # Chrome 124 — Windows / macOS / Linux
@@ -48,41 +60,41 @@ _BROWSER_PROFILES: list[tuple[str, str, dict[str, str]]] = [
         "chrome124",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        _CHROME_HEADERS,
+        _chromium_headers("Google Chrome", "124", "Windows"),
     ),
     (
         "chrome124",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        _CHROME_HEADERS,
+        _chromium_headers("Google Chrome", "124", "macOS"),
     ),
     (
         "chrome124",
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        _CHROME_HEADERS,
+        _chromium_headers("Google Chrome", "124", "Linux"),
     ),
     # Chrome 120 — Windows / macOS
     (
         "chrome120",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        _CHROME_HEADERS,
+        _chromium_headers("Google Chrome", "120", "Windows"),
     ),
     (
         "chrome120",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        _CHROME_HEADERS,
+        _chromium_headers("Google Chrome", "120", "macOS"),
     ),
     # Edge 101 — Windows
     (
         "edge101",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/101.0.4951.64 Safari/537.36 Edg/101.0.1210.47",
-        _EDGE_HEADERS,
+        _chromium_headers("Microsoft Edge", "101", "Windows"),
     ),
-    # Safari 17.0 — macOS
+    # Safari 17.0 — macOS (no Client Hints — Safari does not send them)
     (
         "safari17_0",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
@@ -156,13 +168,17 @@ def create_session(
 ) -> cffi_requests.Session:
     """Create a ``curl_cffi`` session with consistent browser identity.
 
-    Selects a random browser profile and applies the matching TLS
-    fingerprint, User-Agent, and standard HTTP headers as a coherent
-    set.  If *pool* is provided the current proxy is attached.
+    When *pool* is provided the browser profile is pinned to the
+    current proxy so that the same IP always presents the same
+    TLS fingerprint / UA / headers.  Without a pool a random
+    profile is selected.
 
     Works with any HTTP target — yfinance, IR BANK, etc.
     """
-    impersonate, ua, extra_headers = random.choice(_BROWSER_PROFILES)
+    if pool is not None:
+        impersonate, ua, extra_headers = pool.profile
+    else:
+        impersonate, ua, extra_headers = random.choice(_BROWSER_PROFILES)
 
     session = cffi_requests.Session(impersonate=impersonate)
     session.headers["User-Agent"] = ua
@@ -306,6 +322,7 @@ class ProxyPool:
         self._index = 0
         self._failures: dict[str, int] = {}
         self._max_failures = 2
+        self._profile_idx = random.randrange(len(_BROWSER_PROFILES))
 
     @classmethod
     def from_auto(cls) -> ProxyPool:
@@ -333,10 +350,16 @@ class ProxyPool:
             return None
         return f"http://{self._proxies[self._index % len(self._proxies)]}"
 
+    @property
+    def profile(self) -> tuple[str, str, dict[str, str]]:
+        """Return the browser profile pinned to the current proxy."""
+        return _BROWSER_PROFILES[self._profile_idx % len(_BROWSER_PROFILES)]
+
     def rotate(self) -> None:
-        """Move to the next proxy in the pool."""
+        """Move to the next proxy and browser profile in the pool."""
         if self._proxies:
             self._index += 1
+            self._profile_idx = random.randrange(len(_BROWSER_PROFILES))
             proxy = self.get()
             print(f"  Rotated to proxy: {proxy}")
 
