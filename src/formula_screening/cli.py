@@ -57,34 +57,28 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
         conn.close()
 
 
-def _run_scrape_workers(
-    args: argparse.Namespace,
+def dispatch_scrape_workers(
+    tickers: list[str],
+    pool: object,
     *,
     worker_fn: object,
     label: str,
+    workers: int = 100,
+    force: bool = False,
     extra_kwargs: dict | None = None,
-) -> None:
-    """Common dispatcher for parallel scrape commands."""
+) -> dict[str, int]:
+    """Dispatch parallel scrape workers and return stats.
+
+    Shared by CLI subcommands and cache_invalidation.refresh_stale_sources.
+    """
     import concurrent.futures
     import random
     import threading
 
-    from formula_screening.db.repository import get_all_tickers
-
-    pool = _resolve_proxy_pool(args)
-    conn = get_connection()
-    try:
-        tickers = args.ticker if args.ticker else get_all_tickers(conn)
-        if not tickers:
-            print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
-            sys.exit(1)
-    finally:
-        conn.close()
-
     tickers = list(tickers)
     random.shuffle(tickers)
     total = len(tickers)
-    workers = min(args.workers, total) or 1
+    workers = min(workers, total) or 1
 
     print(f"Scraping {label} for {total} tickers (workers={workers})")
 
@@ -99,7 +93,7 @@ def _run_scrape_workers(
 
     kwargs = {
         "interval": 3.0,
-        "force": args.force,
+        "force": force,
         "stats": stats,
         "stats_lock": stats_lock,
         "total": total,
@@ -117,6 +111,37 @@ def _run_scrape_workers(
             f.result()
 
     print(f"\nDone: {stats['ok']} scraped, {stats['skip']} skipped, {stats['fail']} failed.")
+    return stats
+
+
+def _run_scrape_workers(
+    args: argparse.Namespace,
+    *,
+    worker_fn: object,
+    label: str,
+    extra_kwargs: dict | None = None,
+) -> None:
+    """CLI wrapper: resolve args then delegate to dispatch_scrape_workers."""
+    from formula_screening.db.repository import get_all_tickers
+
+    pool = _resolve_proxy_pool(args)
+    conn = get_connection()
+    try:
+        tickers = args.ticker if args.ticker else get_all_tickers(conn)
+        if not tickers:
+            print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
+            sys.exit(1)
+    finally:
+        conn.close()
+
+    dispatch_scrape_workers(
+        tickers, pool,
+        worker_fn=worker_fn,
+        label=label,
+        workers=args.workers,
+        force=args.force,
+        extra_kwargs=extra_kwargs,
+    )
 
 
 def _cmd_scrape_bs(args: argparse.Namespace) -> None:
@@ -138,6 +163,41 @@ def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
         worker_fn=scrape_forecast_worker,
         label="forecast",
     )
+
+
+def _cmd_refresh(args: argparse.Namespace) -> None:
+    from formula_screening.cache_invalidation import (
+        check_and_invalidate,
+        compute_hashes,
+        refresh_stale_sources,
+        save_hashes,
+    )
+
+    pool = _resolve_proxy_pool(args)
+
+    if args.force:
+        current = compute_hashes()
+        from formula_screening.cache_invalidation import (
+            _TRACKED_FILES,
+            invalidate_cache,
+        )
+
+        all_files = sorted(_TRACKED_FILES & set(current))
+        print("Force refresh — invalidating all caches...")
+        deleted = invalidate_cache(all_files)
+        for desc, count in deleted.items():
+            print(f"  {desc}: {count} rows")
+        changed = all_files
+    else:
+        changed = check_and_invalidate(verbose=args.verbose)
+
+    if not changed:
+        print("Cache is up to date. Nothing to refresh.")
+        return
+
+    refresh_stale_sources(changed, proxy_pool=pool)
+    save_hashes(compute_hashes())
+    print("\nRefresh complete.")
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
@@ -287,6 +347,12 @@ def main() -> None:
     p_fc.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_fc.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 
+    # refresh
+    p_refresh = sub.add_parser("refresh", help="Check scraper hash changes, invalidate stale cache, and re-fetch")
+    p_refresh.add_argument("--force", action="store_true", help="Force re-fetch all sources regardless of hash")
+    p_refresh.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
+    p_refresh.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
+
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
     p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
@@ -298,11 +364,18 @@ def main() -> None:
     setup_logging(verbose=args.verbose, quiet=args.quiet)
     init_db()
 
+    # Auto-check scraper hashes before any command (refresh handles its own)
+    if args.command != "refresh":
+        from formula_screening.cache_invalidation import check_and_invalidate
+
+        check_and_invalidate(verbose=args.verbose)
+
     cmds = {
         "import-irbank": _cmd_import_irbank,
         "fetch-prices": _cmd_fetch_prices,
         "scrape-bs": _cmd_scrape_bs,
         "scrape-forecast": _cmd_scrape_forecast,
+        "refresh": _cmd_refresh,
         "screen": _cmd_screen,
     }
     cmds[args.command](args)
