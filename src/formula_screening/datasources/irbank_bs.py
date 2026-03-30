@@ -103,30 +103,23 @@ def _parse_data_rows(array_str: str) -> list[tuple[str, list[float | None]]]:
         month = year_match.group(2).zfill(2)
         period = f"{year}-{month}"
 
-        values: list[float | None] = []
-        for vf_match in _VF_PATTERN.finditer(row_str):
-            values.append(float(vf_match.group(1)))
+        # Strip the year label so bare numbers in it (e.g. "2024", "12") are
+        # not confused with data cells.  Then replace {v:…} with a placeholder
+        # and match all cell types: placeholder, null, or bare number (e.g. 0).
+        after_label = row_str[year_match.end():]
+        cleaned = _VF_PATTERN.sub("__VF__", after_label)
+        cells = re.findall(r'(?:__VF__|null|-?\d+(?:\.\d+)?)', cleaned)
 
-        # Also handle null values in the row
-        # Replace {v:..., f:...} with placeholder, then check remaining cells
-        cleaned = _VF_PATTERN.sub("__VF__", row_str)
-        # Count all cells after the year label
-        cells = re.findall(r'(?:__VF__|null)', cleaned)
-        if len(cells) > len(values):
-            # Re-parse preserving order of values and nulls
-            values = []
-            for cell in cells:
-                if cell == "null":
-                    values.append(None)
-                else:
-                    values.append(None)  # placeholder
-            # Fill in actual values
-            vf_iter = _VF_PATTERN.finditer(row_str)
-            for i, cell in enumerate(cells):
-                if cell == "__VF__":
-                    m = next(vf_iter, None)
-                    if m:
-                        values[i] = float(m.group(1))
+        values: list[float | None] = []
+        vf_iter = _VF_PATTERN.finditer(after_label)
+        for cell in cells:
+            if cell == "__VF__":
+                m = next(vf_iter, None)
+                values.append(float(m.group(1)) if m else None)
+            elif cell == "null":
+                values.append(None)
+            else:
+                values.append(float(cell))
 
         if values:
             rows.append((period, values))

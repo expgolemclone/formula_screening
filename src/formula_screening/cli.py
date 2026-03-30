@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from formula_screening.db.schema import get_connection, init_db
+from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
 
 
@@ -195,7 +196,7 @@ def _print_table(hits: list[dict]) -> None:
         m = s.get("metrics", {})
         rows.append([
             s["ticker"],
-            (s["name"] or "")[:20],
+            truncate(s["name"] or "", 20),
             f'{s["price"]:.0f}' if s["price"] else "-",
             f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
             f'{m["per"]:.1f}' if m.get("per") else "-",
@@ -204,13 +205,16 @@ def _print_table(hits: list[dict]) -> None:
             f'{m["dividend_yield"]:.2f}' if m.get("dividend_yield") else "-",
         ])
 
-    widths = [max(len(h), max((len(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)]
-    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    widths = [
+        max(display_width(h), max((display_width(r[i]) for r in rows), default=0))
+        for i, h in enumerate(headers)
+    ]
 
-    print(fmt.format(*headers))
-    print("  ".join("-" * w for w in widths))
+    sep = "  "
+    print(sep.join(ljust(h, w) for h, w in zip(headers, widths)))
+    print(sep.join("-" * w for w in widths))
     for row in rows:
-        print(fmt.format(*row))
+        print(sep.join(ljust(cell, w) for cell, w in zip(row, widths)))
 
 
 def _write_csv(hits: list[dict], path: Path) -> None:

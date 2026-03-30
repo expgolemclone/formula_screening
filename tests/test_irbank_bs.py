@@ -6,7 +6,11 @@ import sqlite3
 
 import pytest
 
-from formula_screening.datasources.irbank_bs import build_bs_rows, parse_bs_charts
+from formula_screening.datasources.irbank_bs import (
+    _parse_data_rows,
+    build_bs_rows,
+    parse_bs_charts,
+)
 from formula_screening.db.schema import _SCHEMA_SQL
 
 
@@ -141,6 +145,77 @@ def test_build_bs_rows_metadata():
     assert all(r["ticker"] == "7203" for r in rows)
     assert all(r["statement"] == "bs" for r in rows)
     assert all(r["source"] == "irbank_bs" for r in rows)
+
+
+def test_parse_bare_zero_value():
+    """Bare 0 (not {v:0, f:"..."}) in chart data should be parsed as 0.0."""
+    html = """
+<html><head><script>
+google.charts.setOnLoadCallback(function(){
+gGm([["year","たな卸資産","現金等"],["2025年3月",0,{v:500000,f:"50万"}]],"debit",32,1,[]);
+});
+</script></head><body></body></html>
+"""
+    charts = parse_bs_charts(html)
+    debit = charts["debit"]
+    inv = [it for it in debit if it["item_name"] == "inventories"]
+    assert len(inv) == 1
+    assert inv[0]["value"] == 0.0
+    cash = [it for it in debit if it["item_name"] == "cash_and_deposits"]
+    assert cash[0]["value"] == 500000.0
+
+
+# --- _parse_data_rows cell-format variation tests -----------------------------
+
+
+@pytest.mark.parametrize(
+    "row_str, expected",
+    [
+        pytest.param(
+            '["2025年3月",{v:100,f:"100"}]',
+            [("2025-03", [100.0])],
+            id="vf_only",
+        ),
+        pytest.param(
+            '["2025年3月",0]',
+            [("2025-03", [0.0])],
+            id="bare_zero",
+        ),
+        pytest.param(
+            '["2025年3月",42]',
+            [("2025-03", [42.0])],
+            id="bare_positive_int",
+        ),
+        pytest.param(
+            '["2025年3月",-5]',
+            [("2025-03", [-5.0])],
+            id="bare_negative_int",
+        ),
+        pytest.param(
+            '["2025年3月",3.14]',
+            [("2025-03", [3.14])],
+            id="bare_decimal",
+        ),
+        pytest.param(
+            '["2025年3月",null]',
+            [("2025-03", [None])],
+            id="null",
+        ),
+        pytest.param(
+            '["2024年12月",{v:500,f:"500"},0,null,{v:200,f:"200"}]',
+            [("2024-12", [500.0, 0.0, None, 200.0])],
+            id="mixed_vf_bare_null",
+        ),
+        pytest.param(
+            '["2024年12月",{v:100,f:"100"}]',
+            [("2024-12", [100.0])],
+            id="year_digits_not_leaked",
+        ),
+    ],
+)
+def test_parse_data_rows_cell_formats(row_str, expected):
+    """_parse_data_rows must handle {v:…}, null, and bare numeric cells."""
+    assert _parse_data_rows(row_str) == expected
 
 
 # --- net_cash metrics tests ---------------------------------------------------
