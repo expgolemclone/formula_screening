@@ -74,6 +74,7 @@ def build_stock_dict(
         "cf": financials.get("cf", {}),
         "dividend": financials.get("dividend", {}),
         "ss": financials.get("ss", {}),
+        "forecast": financials.get("forecast", {}),
         "metrics": metrics,
     }
 

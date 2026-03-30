@@ -15,8 +15,6 @@ import threading
 
 logger = logging.getLogger("formula_screening.irbank_bs")
 
-_BS_URL_TEMPLATE = "https://irbank.net/{ticker}/bs"
-
 _TITLE_RE = re.compile(r"^(.+?)（\d+[A-Z]?）")
 
 
@@ -191,7 +189,10 @@ def parse_bs_charts(html: str) -> dict[str, list[dict]]:
 
 # --- HTTP fetch ---------------------------------------------------------------
 
-_MAX_RETRIES = 3
+
+def _validate_bs_html(html: str) -> bool:
+    """Return True if the HTML contains gGm chart data."""
+    return "gGm(" in html
 
 
 def fetch_bs_html(
@@ -210,32 +211,11 @@ def fetch_bs_html(
     Returns:
         HTML string if successful, None on failure.
     """
-    import requests
+    from formula_screening.datasources.irbank_common import fetch_irbank_html
 
-    from formula_screening.stealth import random_delay, random_ua
-
-    for attempt in range(_MAX_RETRIES):
-        proxy_url = pool.get()
-        proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
-        try:
-            resp = requests.get(
-                _BS_URL_TEMPLATE.format(ticker=ticker),
-                headers={"User-Agent": random_ua()},
-                proxies=proxies,
-                timeout=timeout,
-            )
-            if resp.status_code == 200 and "gGm(" in resp.text:
-                return resp.text
-            if resp.status_code == 429 or "html" in resp.headers.get("Content-Type", ""):
-                logger.info("Rate-limited for %s (attempt %d), rotating...", ticker, attempt + 1)
-                pool.report_failure()
-                random_delay(5.0, 15.0)
-                continue
-            return None
-        except requests.RequestException:
-            pool.report_failure()
-            continue
-    return None
+    return fetch_irbank_html(
+        ticker, "bs", pool, validate_fn=_validate_bs_html, timeout=timeout,
+    )
 
 
 # --- Row building (shared between script and CLI) ----------------------------
@@ -288,6 +268,15 @@ def build_bs_rows(
 # --- Parallel worker (shared between script and CLI) -------------------------
 
 
+def _on_bs_html(ticker: str, html: str, conn: object) -> None:
+    """Extract company name from BS page and upsert into stocks table."""
+    from formula_screening.db.repository import upsert_stock
+
+    name = parse_company_name(html)
+    if name:
+        upsert_stock(conn, ticker, name=name, sector="", market="")
+
+
 def scrape_bs_worker(
     tickers: list[str],
     pool: object,
@@ -305,51 +294,23 @@ def scrape_bs_worker(
     Designed to run inside a ``ThreadPoolExecutor``.  Each worker opens
     its own DB connection and uses its own proxy sub-pool.
     """
-    from formula_screening.db.repository import upsert_financial_items_bulk, upsert_stock
-    from formula_screening.db.schema import get_connection
-    from formula_screening.stealth import random_delay
+    from formula_screening.datasources.irbank_common import scrape_worker
 
-    conn = get_connection()
-    try:
-        for ticker in tickers:
-            with stats_lock:
-                counter[0] += 1
-                seq = counter[0]
+    def _process(ticker: str, html: str) -> list[dict]:
+        return build_bs_rows(ticker, html, years=years)
 
-            if not force:
-                existing = conn.execute(
-                    "SELECT 1 FROM financial_items WHERE ticker = ? AND source = 'irbank_bs' LIMIT 1",
-                    (ticker,),
-                ).fetchone()
-                if existing:
-                    with stats_lock:
-                        stats["skip"] += 1
-                    continue
-
-            html = fetch_bs_html(ticker, pool)
-            if html is None:
-                with stats_lock:
-                    print(f"[{seq}/{total}] {ticker} FAILED", flush=True)
-                    stats["fail"] += 1
-                continue
-
-            name = parse_company_name(html)
-            if name:
-                upsert_stock(conn, ticker, name=name, sector="", market="")
-
-            rows = build_bs_rows(ticker, html, years=years)
-
-            if rows:
-                upsert_financial_items_bulk(conn, rows)
-                conn.commit()
-                with stats_lock:
-                    stats["ok"] += 1
-                    print(f"[{seq}/{total}] {ticker} OK ({len(rows)} items)", flush=True)
-            else:
-                with stats_lock:
-                    stats["fail"] += 1
-                    print(f"[{seq}/{total}] {ticker} NO DATA", flush=True)
-
-            random_delay(interval, interval + 3.0)
-    finally:
-        conn.close()
+    scrape_worker(
+        tickers,
+        pool,
+        source="irbank_bs",
+        process_fn=_process,
+        on_html_fn=_on_bs_html,
+        fetch_path="bs",
+        validate_fn=_validate_bs_html,
+        interval=interval,
+        force=force,
+        stats=stats,
+        stats_lock=stats_lock,
+        total=total,
+        counter=counter,
+    )

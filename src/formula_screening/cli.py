@@ -57,12 +57,18 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
         conn.close()
 
 
-def _cmd_scrape_bs(args: argparse.Namespace) -> None:
+def _run_scrape_workers(
+    args: argparse.Namespace,
+    *,
+    worker_fn: object,
+    label: str,
+    extra_kwargs: dict | None = None,
+) -> None:
+    """Common dispatcher for parallel scrape commands."""
     import concurrent.futures
     import random
     import threading
 
-    from formula_screening.datasources.irbank_bs import scrape_bs_worker
     from formula_screening.db.repository import get_all_tickers
 
     pool = _resolve_proxy_pool(args)
@@ -80,7 +86,7 @@ def _cmd_scrape_bs(args: argparse.Namespace) -> None:
     total = len(tickers)
     workers = min(args.workers, total) or 1
 
-    print(f"Scraping BS for {total} tickers (years={args.years}, workers={workers})")
+    print(f"Scraping {label} for {total} tickers (workers={workers})")
 
     sub_pools = pool.split(workers)
     chunks: list[list[str]] = [[] for _ in range(workers)]
@@ -91,20 +97,19 @@ def _cmd_scrape_bs(args: argparse.Namespace) -> None:
     stats_lock = threading.Lock()
     counter = [0]
 
+    kwargs = {
+        "interval": 3.0,
+        "force": args.force,
+        "stats": stats,
+        "stats_lock": stats_lock,
+        "total": total,
+        "counter": counter,
+        **(extra_kwargs or {}),
+    }
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [
-            executor.submit(
-                scrape_bs_worker,
-                chunk,
-                sub_pool,
-                years=args.years,
-                interval=3.0,
-                force=args.force,
-                stats=stats,
-                stats_lock=stats_lock,
-                total=total,
-                counter=counter,
-            )
+            executor.submit(worker_fn, chunk, sub_pool, **kwargs)
             for chunk, sub_pool in zip(chunks, sub_pools)
         ]
         concurrent.futures.wait(futures)
@@ -112,6 +117,27 @@ def _cmd_scrape_bs(args: argparse.Namespace) -> None:
             f.result()
 
     print(f"\nDone: {stats['ok']} scraped, {stats['skip']} skipped, {stats['fail']} failed.")
+
+
+def _cmd_scrape_bs(args: argparse.Namespace) -> None:
+    from formula_screening.datasources.irbank_bs import scrape_bs_worker
+
+    _run_scrape_workers(
+        args,
+        worker_fn=scrape_bs_worker,
+        label="BS",
+        extra_kwargs={"years": args.years},
+    )
+
+
+def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
+    from formula_screening.datasources.irbank_forecast import scrape_forecast_worker
+
+    _run_scrape_workers(
+        args,
+        worker_fn=scrape_forecast_worker,
+        label="forecast",
+    )
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
@@ -218,6 +244,14 @@ def main() -> None:
     p_bs.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_bs.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 
+    # scrape-forecast
+    p_fc = sub.add_parser("scrape-forecast", help="Scrape forecast data from IRBank /results pages")
+    p_fc.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
+    p_fc.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
+    p_fc.add_argument("--workers", type=int, default=100, help="Number of parallel workers (default: 100)")
+    p_fc.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
+    p_fc.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
+
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
     p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
@@ -232,6 +266,7 @@ def main() -> None:
         "import-irbank": _cmd_import_irbank,
         "fetch-prices": _cmd_fetch_prices,
         "scrape-bs": _cmd_scrape_bs,
+        "scrape-forecast": _cmd_scrape_forecast,
         "screen": _cmd_screen,
     }
     cmds[args.command](args)

@@ -143,6 +143,19 @@ def get_financial_dict(
     for r in rows:
         stmt = r["statement"]
         result.setdefault(stmt, {})[r["item_name"]] = r["value"]
+
+    # Fetch the latest forecast data (separate period from actuals)
+    forecast_rows = conn.execute(
+        """
+        SELECT item_name, value FROM financial_items
+        WHERE ticker = ? AND statement = 'forecast'
+        ORDER BY period DESC
+        """,
+        (ticker,),
+    ).fetchall()
+    if forecast_rows:
+        result["forecast"] = {r["item_name"]: r["value"] for r in forecast_rows}
+
     return result
 
 

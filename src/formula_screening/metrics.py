@@ -43,7 +43,9 @@ def compute_metrics(
     operating_income = pl.get("operating_income")
     ordinary_income = pl.get("ordinary_income")
     net_income = pl.get("net_income")
-    basic_eps = pl.get("basic_eps")
+    actual_eps = pl.get("basic_eps")
+    forecast_eps = financials.get("forecast", {}).get("basic_eps")
+    basic_eps = forecast_eps if forecast_eps is not None else actual_eps
 
     total_assets = bs.get("total_assets")
     stockholders_equity = bs.get("stockholders_equity")
