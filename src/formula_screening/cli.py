@@ -158,6 +158,9 @@ def _cmd_screen(args: argparse.Namespace) -> None:
             print("No stocks matched the screening criteria.")
             return
 
+        # Sort by net_cash_ratio descending (most undervalued first)
+        hits.sort(key=lambda s: s.get("metrics", {}).get("net_cash_ratio") or 0, reverse=True)
+
         # Display results as a table
         _print_table(hits)
         print(f"\n{len(hits)} stocks matched ({elapsed:.1f}s)")
@@ -171,7 +174,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
 
 def _print_table(hits: list[dict]) -> None:
     """Print screening results as a formatted table to stdout."""
-    headers = ["Ticker", "Name", "Price", "PER", "PBR", "ROE", "Div%"]
+    headers = ["Ticker", "Name", "Price", "NC_Ratio", "PER", "PBR", "ROE", "Div%"]
     rows = []
     for s in hits:
         m = s.get("metrics", {})
@@ -179,6 +182,7 @@ def _print_table(hits: list[dict]) -> None:
             s["ticker"],
             (s["name"] or "")[:20],
             f'{s["price"]:.0f}' if s["price"] else "-",
+            f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
             f'{m["per"]:.1f}' if m.get("per") else "-",
             f'{m["pbr"]:.2f}' if m.get("pbr") else "-",
             f'{m["roe"]:.1f}' if m.get("roe") else "-",
@@ -196,7 +200,7 @@ def _print_table(hits: list[dict]) -> None:
 
 def _write_csv(hits: list[dict], path: Path) -> None:
     """Write screening results to a CSV file."""
-    fieldnames = ["ticker", "name", "price", "per", "pbr", "roe", "dividend_yield"]
+    fieldnames = ["ticker", "name", "price", "net_cash_ratio", "per", "pbr", "roe", "dividend_yield"]
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -206,6 +210,7 @@ def _write_csv(hits: list[dict], path: Path) -> None:
                 "ticker": s["ticker"],
                 "name": s["name"],
                 "price": s["price"],
+                "net_cash_ratio": m.get("net_cash_ratio"),
                 "per": m.get("per"),
                 "pbr": m.get("pbr"),
                 "roe": m.get("roe"),
