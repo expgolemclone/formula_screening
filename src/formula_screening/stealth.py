@@ -13,6 +13,8 @@ from typing import Any
 
 import requests
 
+from formula_screening.config import MAGIC
+
 _HOST_PORT_RE = re.compile(
     r"^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$",
 )
@@ -223,7 +225,7 @@ def _fetch_proxy_candidates() -> list[str]:
 
     for url in _PROXY_SOURCES:
         try:
-            resp = session.get(url, timeout=10)
+            resp = session.get(url, timeout=MAGIC["proxy"]["check_timeout"])
             for line in resp.text.strip().splitlines():
                 addr = line.strip()
                 if not addr or addr.startswith("<"):
@@ -288,9 +290,9 @@ def _check_proxy(addr: str, *, timeout: int = 5) -> str | None:
 
 def fetch_live_proxies(
     *,
-    target_count: int = 100,
-    check_workers: int = 200,
-    check_timeout: int = 5,
+    target_count: int = MAGIC["proxy"]["target_count"],
+    check_workers: int = MAGIC["proxy"]["check_workers"],
+    check_timeout: int = MAGIC["proxy"]["check_timeout"],
 ) -> list[str]:
     """Fetch proxy lists, validate anonymity + quality, return working proxies.
 

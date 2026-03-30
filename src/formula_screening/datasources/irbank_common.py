@@ -11,10 +11,12 @@ import logging
 import threading
 from collections.abc import Callable
 
+from formula_screening.config import MAGIC
+
 logger = logging.getLogger("formula_screening.irbank_common")
 
 _IRBANK_URL_TEMPLATE = "https://irbank.net/{ticker}/{path}"
-_MAX_RETRIES = 3
+_MAX_RETRIES = MAGIC["scrape"]["max_retries"]
 
 
 def fetch_irbank_html(
@@ -23,7 +25,7 @@ def fetch_irbank_html(
     pool: object,
     *,
     validate_fn: Callable[[str], bool],
-    timeout: int = 15,
+    timeout: int = MAGIC["scrape"]["timeout"],
 ) -> str | None:
     """Fetch an IR BANK page and return HTML if *validate_fn* passes.
 
@@ -58,7 +60,10 @@ def fetch_irbank_html(
             if resp.status_code == 429 or "html" in resp.headers.get("Content-Type", ""):
                 logger.info("Rate-limited for %s (attempt %d), rotating...", ticker, attempt + 1)
                 pool.report_failure()
-                random_delay(5.0, 15.0)
+                random_delay(
+                    MAGIC["scrape"]["rate_limit_delay_min"],
+                    MAGIC["scrape"]["rate_limit_delay_max"],
+                )
                 continue
             return None
         except requests.RequestException:
@@ -77,7 +82,7 @@ def scrape_worker(
     fetch_path: str,
     validate_fn: Callable[[str], bool],
     years: int = 1,
-    interval: float = 3.0,
+    interval: float = MAGIC["scrape"]["interval"],
     force: bool = False,
     stats: dict[str, int],
     stats_lock: threading.Lock,
@@ -140,6 +145,6 @@ def scrape_worker(
                     stats["fail"] += 1
                     print(f"[{seq}/{total}] {ticker} NO DATA", flush=True)
 
-            random_delay(interval, interval + 3.0)
+            random_delay(interval, interval + MAGIC["scrape"]["interval_jitter"])
     finally:
         conn.close()

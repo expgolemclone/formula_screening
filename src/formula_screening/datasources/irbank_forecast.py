@@ -16,6 +16,8 @@ import logging
 import re
 import threading
 
+from formula_screening.config import MAGIC
+
 logger = logging.getLogger("formula_screening.irbank_forecast")
 
 # --- Column mapping (header text → DB item_name) ----------------------------
@@ -219,7 +221,7 @@ def scrape_forecast_worker(
     tickers: list[str],
     pool: object,
     *,
-    interval: float = 3.0,
+    interval: float = MAGIC["scrape"]["interval"],
     force: bool = False,
     stats: dict[str, int],
     stats_lock: threading.Lock,

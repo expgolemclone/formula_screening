@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 import yfinance as yf
 
+from formula_screening.config import MAGIC
 from formula_screening.db.repository import (
     get_latest_price_with_shares,
     upsert_price,
@@ -22,8 +23,8 @@ from formula_screening.stealth import ProxyPool, create_session, random_delay
 logger = logging.getLogger("formula_screening.yfinance_price")
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
 
-_BATCH_SIZE = 100
-_SHARES_WORKERS = 10
+_BATCH_SIZE = MAGIC["price"]["batch_size"]
+_SHARES_WORKERS = MAGIC["price"]["shares_workers"]
 
 
 def fetch_current(
@@ -68,7 +69,7 @@ def is_price_stale(updated_at: str | None) -> bool:
         return True
     try:
         ts = datetime.fromisoformat(updated_at)
-        return datetime.now(timezone.utc) - ts > timedelta(days=1)
+        return datetime.now(timezone.utc) - ts > timedelta(days=MAGIC["price"]["stale_days"])
     except ValueError:
         return True
 
@@ -132,7 +133,7 @@ def _fetch_shares_batch(
     return result
 
 
-_MAX_BATCH_RETRIES = 3
+_MAX_BATCH_RETRIES = MAGIC["price"]["max_retries"]
 
 
 def _process_batch(

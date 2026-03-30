@@ -13,6 +13,8 @@ import logging
 import re
 import threading
 
+from formula_screening.config import MAGIC
+
 logger = logging.getLogger("formula_screening.irbank_bs")
 
 _TITLE_RE = re.compile(r"^(.+?)（\d+[A-Z]?）")
@@ -191,15 +193,12 @@ def _validate_bs_html(html: str) -> bool:
 def fetch_bs_html(
     ticker: str,
     pool: object,
-    *,
-    timeout: int = 15,
 ) -> str | None:
     """Fetch /bs page HTML using requests + ProxyPool.
 
     Args:
         ticker: Stock ticker code.
         pool: A ``ProxyPool`` instance (uses ``.get()`` and ``.report_failure()``).
-        timeout: HTTP request timeout in seconds.
 
     Returns:
         HTML string if successful, None on failure.
@@ -207,7 +206,7 @@ def fetch_bs_html(
     from formula_screening.datasources.irbank_common import fetch_irbank_html
 
     return fetch_irbank_html(
-        ticker, "bs", pool, validate_fn=_validate_bs_html, timeout=timeout,
+        ticker, "bs", pool, validate_fn=_validate_bs_html,
     )
 
 
@@ -275,7 +274,7 @@ def scrape_bs_worker(
     pool: object,
     *,
     years: int = 1,
-    interval: float = 3.0,
+    interval: float = MAGIC["scrape"]["interval"],
     force: bool = False,
     stats: dict[str, int],
     stats_lock: threading.Lock,

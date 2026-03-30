@@ -7,6 +7,7 @@ import sys
 import time
 from pathlib import Path
 
+from formula_screening.config import MAGIC
 from formula_screening.db.schema import get_connection, init_db
 from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
@@ -63,7 +64,7 @@ def dispatch_scrape_workers(
     *,
     worker_fn: object,
     label: str,
-    workers: int = 100,
+    workers: int = MAGIC["scrape"]["workers"],
     force: bool = False,
     extra_kwargs: dict | None = None,
 ) -> dict[str, int]:
@@ -92,7 +93,7 @@ def dispatch_scrape_workers(
     counter = [0]
 
     kwargs = {
-        "interval": 3.0,
+        "interval": MAGIC["scrape"]["interval"],
         "force": force,
         "stats": stats,
         "stats_lock": stats_lock,
@@ -337,9 +338,9 @@ def main() -> None:
     # scrape-bs
     p_bs = sub.add_parser("scrape-bs", help="Scrape detailed BS from IRBank individual pages")
     p_bs.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
-    p_bs.add_argument("--years", type=int, default=1, help="Store most recent N years (default: 1)")
+    p_bs.add_argument("--years", type=int, default=MAGIC["scrape"]["bs_years"], help="Store most recent N years")
     p_bs.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
-    p_bs.add_argument("--workers", type=int, default=100, help="Number of parallel workers (default: 100)")
+    p_bs.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel workers")
     p_bs.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_bs.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 
@@ -347,7 +348,7 @@ def main() -> None:
     p_fc = sub.add_parser("scrape-forecast", help="Scrape forecast data from IRBank /results pages")
     p_fc.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
     p_fc.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
-    p_fc.add_argument("--workers", type=int, default=100, help="Number of parallel workers (default: 100)")
+    p_fc.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel workers")
     p_fc.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_fc.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 

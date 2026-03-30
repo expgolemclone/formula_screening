@@ -1,0 +1,20 @@
+[scrape]
+workers = 100
+interval = 3.0
+interval_jitter = 3.0
+timeout = 15
+max_retries = 3
+rate_limit_delay_min = 5.0
+rate_limit_delay_max = 15.0
+bs_years = 1
+
+[price]
+batch_size = 100
+shares_workers = 10
+max_retries = 3
+stale_days = 1
+
+[proxy]
+target_count = 100
+check_workers = 200
+check_timeout = 10
