@@ -7,14 +7,22 @@ max_retries = 3
 rate_limit_delay_min = 5.0
 rate_limit_delay_max = 15.0
 bs_years = 1
+max_proxy_tries = 10
+rate_limit_wait = 30.0
 
 [price]
 batch_size = 100
 shares_workers = 10
 max_retries = 3
 stale_days = 1
+rate_limit_threshold = 0.3
 
 [proxy]
 target_count = 100
 check_workers = 200
 check_timeout = 10
+max_failures = 2
+
+[log]
+max_bytes = 5242880
+backup_count = 3

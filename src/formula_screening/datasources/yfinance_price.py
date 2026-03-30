@@ -101,7 +101,7 @@ def _download_prices_batch(
         return {symbols[0]: float(val) if pd.notna(val) else None}
     row = close.iloc[-1]
     valid = row.dropna()
-    if len(valid) < len(symbols) * 0.3:
+    if len(valid) < len(symbols) * MAGIC["price"]["rate_limit_threshold"]:
         raise _RateLimited(f"Only {len(valid)}/{len(symbols)} prices returned")
     return {
         sym: float(row[sym]) if pd.notna(row[sym]) else None

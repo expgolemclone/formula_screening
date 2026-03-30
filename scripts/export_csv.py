@@ -15,6 +15,7 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
+from formula_screening.config import CLI_DEFAULTS, PATHS
 from formula_screening.db.schema import get_connection, init_db
 from formula_screening.screener import build_stock_dict
 
@@ -60,7 +61,7 @@ def _flatten(stock: dict, period: str) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export all data to CSV")
-    parser.add_argument("-o", "--output", default="data/all_stocks.csv")
+    parser.add_argument("-o", "--output", default=CLI_DEFAULTS["export_csv"]["output"])
     args = parser.parse_args()
 
     init_db()

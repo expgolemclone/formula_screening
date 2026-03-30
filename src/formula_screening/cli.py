@@ -14,10 +14,10 @@ from formula_screening.log import setup_logging
 
 
 def _cmd_import_irbank(args: argparse.Namespace) -> None:
-    from formula_screening.config import DATA_DIR
+    from formula_screening.config import IRBANK_DIR
     from formula_screening.datasources.irbank import import_irbank_json
 
-    data_dir = Path(args.dir) if args.dir else DATA_DIR / "irbank"
+    data_dir = Path(args.dir) if args.dir else IRBANK_DIR
     if not data_dir.is_dir():
         print(f"IR BANK data directory not found: {data_dir}", file=sys.stderr)
         sys.exit(1)

@@ -6,23 +6,26 @@ from pathlib import Path
 
 # Project root: two levels up from this file (src/formula_screening/config.py -> project root)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-
-DATA_DIR = _PROJECT_ROOT / "data"
-LOG_DIR = DATA_DIR / "logs"
-DB_PATH = DATA_DIR / "screening.db"
-
-EDINETDB_API_KEY = os.environ.get("EDINETDB_API_KEY", "")
-EDINETDB_BASE_URL = "https://edinetdb.jp/v1"
-
-_MAGIC_NUMBERS_PATH = Path(__file__).resolve().parent / "magic_numbers.toml"
+_CONFIG_DIR = _PROJECT_ROOT / "config"
 
 
-def _load_magic_numbers() -> dict:
-    with _MAGIC_NUMBERS_PATH.open("rb") as f:
+def _load_toml(name: str) -> dict:
+    with (_CONFIG_DIR / name).open("rb") as f:
         return tomllib.load(f)
 
 
-MAGIC: dict = _load_magic_numbers()
+MAGIC: dict = _load_toml("magic_numbers.toml")
+PATHS: dict = _load_toml("path.toml")
+CLI_DEFAULTS: dict = _load_toml("cli_defaults.toml")
+
+DATA_DIR = _PROJECT_ROOT / PATHS["data"]["root"]
+LOG_DIR = _PROJECT_ROOT / PATHS["data"]["log"]
+DB_PATH = _PROJECT_ROOT / PATHS["data"]["db"]
+IRBANK_DIR = _PROJECT_ROOT / PATHS["data"]["irbank"]
+HASH_FILE = _PROJECT_ROOT / PATHS["data"]["hash_file"]
+
+EDINETDB_API_KEY = os.environ.get("EDINETDB_API_KEY", "")
+EDINETDB_BASE_URL = "https://edinetdb.jp/v1"
 
 
 def ensure_dirs() -> None:

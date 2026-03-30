@@ -346,7 +346,7 @@ class ProxyPool:
         self._proxies = list(proxies)
         self._index = 0
         self._failures: dict[str, int] = {}
-        self._max_failures = 2
+        self._max_failures = MAGIC["proxy"]["max_failures"]
         self._profile_idx = random.randrange(len(_BROWSER_PROFILES))
 
     @classmethod

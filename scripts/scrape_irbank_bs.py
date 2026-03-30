@@ -14,40 +14,35 @@ Supports parallel scraping with multiple proxy sub-pools (--workers).
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
-import functools
-import random
 import sys
-import threading
 from pathlib import Path
 
 # Ensure the project package is importable when run as a script.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
+from formula_screening.cli import dispatch_scrape_workers
+from formula_screening.config import MAGIC
 from formula_screening.datasources.irbank_bs import scrape_bs_worker
 from formula_screening.db.repository import get_all_tickers
 from formula_screening.db.schema import get_connection, init_db
 from formula_screening.stealth import ProxyPool
 
-print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Scrape IRBank BS pages")
     parser.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
-    parser.add_argument("--years", type=int, default=1, help="Store most recent N years (default: 1)")
+    _scrape = MAGIC["scrape"]
+    parser.add_argument("--years", type=int, default=_scrape["bs_years"], help=f"Store most recent N years (default: {_scrape['bs_years']})")
     parser.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     parser.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy")
     parser.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
-    parser.add_argument("--interval", type=float, default=3.0, help="Min seconds between requests (default: 3.0)")
-    parser.add_argument("--workers", type=int, default=100, help="Number of parallel workers (default: 100)")
+    parser.add_argument("--workers", type=int, default=_scrape["workers"], help=f"Number of parallel workers (default: {_scrape['workers']})")
     args = parser.parse_args()
 
     init_db()
     conn = get_connection()
 
-    # Resolve tickers
     if args.ticker:
         tickers = args.ticker
     else:
@@ -58,7 +53,6 @@ def main() -> None:
 
     conn.close()
 
-    # Resolve proxy
     if args.proxy:
         pool = ProxyPool.from_url(args.proxy)
     elif args.no_proxy:
@@ -66,46 +60,14 @@ def main() -> None:
     else:
         pool = ProxyPool.from_auto()
 
-    # Shuffle to distribute requests
-    tickers = list(tickers)
-    random.shuffle(tickers)
-
-    total = len(tickers)
-    workers = min(args.workers, total) or 1
-
-    print(f"Scraping BS for {total} tickers (years={args.years}, workers={workers})")
-
-    # Split proxies and tickers among workers
-    sub_pools = pool.split(workers)
-    chunks: list[list[str]] = [[] for _ in range(workers)]
-    for i, ticker in enumerate(tickers):
-        chunks[i % workers].append(ticker)
-
-    stats: dict[str, int] = {"ok": 0, "skip": 0, "fail": 0}
-    stats_lock = threading.Lock()
-    counter = [0]
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [
-            executor.submit(
-                scrape_bs_worker,
-                chunk,
-                sub_pool,
-                years=args.years,
-                interval=args.interval,
-                force=args.force,
-                stats=stats,
-                stats_lock=stats_lock,
-                total=total,
-                counter=counter,
-            )
-            for chunk, sub_pool in zip(chunks, sub_pools)
-        ]
-        concurrent.futures.wait(futures)
-        for f in futures:
-            f.result()
-
-    print(f"\nDone: {stats['ok']} scraped, {stats['skip']} skipped, {stats['fail']} failed.")
+    dispatch_scrape_workers(
+        tickers, pool,
+        worker_fn=scrape_bs_worker,
+        label="BS",
+        workers=args.workers,
+        force=args.force,
+        extra_kwargs={"years": args.years},
+    )
 
 
 if __name__ == "__main__":

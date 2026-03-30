@@ -13,12 +13,11 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from formula_screening.config import DATA_DIR, DB_PATH
+from formula_screening.config import DB_PATH, HASH_FILE
 
 logger = logging.getLogger("formula_screening.cache_invalidation")
 
 _DATASOURCES_DIR = Path(__file__).resolve().parent / "datasources"
-_HASH_FILE = DATA_DIR / ".scraper_hashes.json"
 
 # ---------------------------------------------------------------------------
 # File → DB source mapping
@@ -53,7 +52,7 @@ def compute_hashes(datasources_dir: Path | None = None) -> dict[str, str]:
 
 def load_saved_hashes(path: Path | None = None) -> dict[str, str]:
     """Load previously saved hashes, or empty dict if the file is missing."""
-    p = path or _HASH_FILE
+    p = path or HASH_FILE
     if not p.is_file():
         return {}
     return json.loads(p.read_text(encoding="utf-8"))
@@ -61,7 +60,7 @@ def load_saved_hashes(path: Path | None = None) -> dict[str, str]:
 
 def save_hashes(hashes: dict[str, str], path: Path | None = None) -> None:
     """Persist current hashes."""
-    p = path or _HASH_FILE
+    p = path or HASH_FILE
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(hashes, indent=2) + "\n", encoding="utf-8")
 
@@ -194,10 +193,10 @@ def refresh_stale_sources(
 
 
 def _import_irbank(conn: object) -> None:
-    from formula_screening.config import DATA_DIR as data_dir
+    from formula_screening.config import IRBANK_DIR
     from formula_screening.datasources.irbank import import_irbank_json
 
-    irbank_dir = data_dir / "irbank"
+    irbank_dir = IRBANK_DIR
     if irbank_dir.is_dir():
         print("\n[auto] import-irbank ...")
         total = import_irbank_json(conn, irbank_dir)

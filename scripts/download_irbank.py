@@ -29,6 +29,7 @@ import truststore
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
+from formula_screening.config import CLI_DEFAULTS, IRBANK_DIR, MAGIC
 from formula_screening.proxy import fetch_live_proxies
 
 truststore.inject_into_ssl()
@@ -54,8 +55,8 @@ _HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://irbank.net/download",
 }
-_MAX_PROXY_TRIES = 10
-_RATE_LIMIT_WAIT = 30.0
+_MAX_PROXY_TRIES = MAGIC["scrape"]["max_proxy_tries"]
+_RATE_LIMIT_WAIT = MAGIC["scrape"]["rate_limit_wait"]
 
 
 def _year_codes(years: int) -> list[str]:
@@ -123,14 +124,14 @@ def _is_valid_json_file(path: Path) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download IR BANK JSON files")
-    parser.add_argument("--years", type=int, default=10, help="Number of fiscal years (default: 10)")
-    parser.add_argument("--dest", type=str, default=None, help="Destination directory (default: data/irbank)")
-    parser.add_argument("--interval", type=float, default=3.0, help="Seconds between downloads (default: 3.0)")
+    _dl = CLI_DEFAULTS["download_irbank"]
+    parser.add_argument("--years", type=int, default=_dl["years"], help=f"Number of fiscal years (default: {_dl['years']})")
+    parser.add_argument("--dest", type=str, default=None, help=f"Destination directory (default: {IRBANK_DIR})")
+    parser.add_argument("--interval", type=float, default=_dl["interval"], help=f"Seconds between downloads (default: {_dl['interval']})")
     parser.add_argument("--force", action="store_true", help="Re-download existing files")
     args = parser.parse_args()
 
-    project_root = Path(__file__).resolve().parent.parent
-    dest = Path(args.dest) if args.dest else project_root / "data" / "irbank"
+    dest = Path(args.dest) if args.dest else IRBANK_DIR
 
     print("Fetching and validating proxies...")
     proxies = fetch_live_proxies()
