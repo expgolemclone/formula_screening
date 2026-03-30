@@ -179,56 +179,124 @@ def refresh_stale_sources(
         tickers = get_all_tickers(conn)
 
         if "irbank" in sources:
-            from formula_screening.config import DATA_DIR as data_dir
-            from formula_screening.datasources.irbank import import_irbank_json
-
-            irbank_dir = data_dir / "irbank"
-            if irbank_dir.is_dir():
-                print("\n[refresh] import-irbank ...")
-                total = import_irbank_json(conn, irbank_dir)
-                print(f"  {total} items imported.")
-            else:
-                print(f"\n[refresh] irbank data dir not found: {irbank_dir}")
+            _import_irbank(conn)
 
         if "irbank_bs" in sources:
-            from formula_screening.cli import dispatch_scrape_workers
-            from formula_screening.datasources.irbank_bs import scrape_bs_worker
-
-            print("\n[refresh] scrape-bs ...")
-            dispatch_scrape_workers(
-                tickers, proxy_pool,
-                worker_fn=scrape_bs_worker,
-                label="BS",
-                force=True,
-                extra_kwargs={"years": 1},
-            )
+            _scrape_bs(tickers, proxy_pool)
 
         if "irbank_forecast" in sources:
-            from formula_screening.cli import dispatch_scrape_workers
-            from formula_screening.datasources.irbank_forecast import (
-                scrape_forecast_worker,
-            )
-
-            print("\n[refresh] scrape-forecast ...")
-            dispatch_scrape_workers(
-                tickers, proxy_pool,
-                worker_fn=scrape_forecast_worker,
-                label="forecast",
-                force=True,
-            )
+            _scrape_forecast(tickers, proxy_pool)
 
         if refetch_prices and tickers:
-            from formula_screening.datasources.yfinance_price import (
-                fetch_and_cache_prices,
-            )
+            _fetch_prices(conn, tickers, proxy_pool)
+    finally:
+        conn.close()
 
-            print(f"\n[refresh] fetch-prices ({len(tickers)} tickers) ...")
-            result = fetch_and_cache_prices(conn, tickers, force=True, pool=proxy_pool)
-            print(
-                f"  fetched={result['fetched']}, "
-                f"skipped={result['skipped']}, "
-                f"failed={result['failed']}"
-            )
+
+def _import_irbank(conn: object) -> None:
+    from formula_screening.config import DATA_DIR as data_dir
+    from formula_screening.datasources.irbank import import_irbank_json
+
+    irbank_dir = data_dir / "irbank"
+    if irbank_dir.is_dir():
+        print("\n[auto] import-irbank ...")
+        total = import_irbank_json(conn, irbank_dir)
+        print(f"  {total} items imported.")
+    else:
+        print(f"\n[auto] irbank data dir not found: {irbank_dir}")
+
+
+def _scrape_bs(tickers: list[str], proxy_pool: object) -> None:
+    from formula_screening.cli import dispatch_scrape_workers
+    from formula_screening.datasources.irbank_bs import scrape_bs_worker
+
+    print("\n[auto] scrape-bs ...")
+    dispatch_scrape_workers(
+        tickers, proxy_pool,
+        worker_fn=scrape_bs_worker,
+        label="BS",
+        force=True,
+        extra_kwargs={"years": 1},
+    )
+
+
+def _scrape_forecast(tickers: list[str], proxy_pool: object) -> None:
+    from formula_screening.cli import dispatch_scrape_workers
+    from formula_screening.datasources.irbank_forecast import (
+        scrape_forecast_worker,
+    )
+
+    print("\n[auto] scrape-forecast ...")
+    dispatch_scrape_workers(
+        tickers, proxy_pool,
+        worker_fn=scrape_forecast_worker,
+        label="forecast",
+        force=True,
+    )
+
+
+def _fetch_prices(conn: object, tickers: list[str], proxy_pool: object) -> None:
+    from formula_screening.datasources.yfinance_price import (
+        fetch_and_cache_prices,
+    )
+
+    print(f"\n[auto] fetch-prices ({len(tickers)} tickers) ...")
+    result = fetch_and_cache_prices(conn, tickers, force=True, pool=proxy_pool)
+    print(
+        f"  fetched={result['fetched']}, "
+        f"skipped={result['skipped']}, "
+        f"failed={result['failed']}"
+    )
+
+
+def ensure_data_available(*, proxy_pool: object) -> None:
+    """Check DB for missing data sources and auto-fetch if empty."""
+    from formula_screening.db.repository import get_all_tickers
+    from formula_screening.db.schema import get_connection
+
+    conn = get_connection()
+    try:
+        # Check which sources have data
+        missing_sources: list[str] = []
+        for source in ("irbank", "irbank_bs", "irbank_forecast"):
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM financial_items WHERE source = ?",
+                (source,),
+            ).fetchone()
+            if row["cnt"] == 0:
+                missing_sources.append(source)
+
+        price_row = conn.execute("SELECT COUNT(*) AS cnt FROM prices").fetchone()
+        missing_prices = price_row["cnt"] == 0
+
+        if not missing_sources and not missing_prices:
+            return
+
+        print("Missing data detected, auto-fetching:")
+        for s in missing_sources:
+            print(f"  - {s}")
+        if missing_prices:
+            print("  - prices")
+
+        if "irbank" in missing_sources:
+            _import_irbank(conn)
+
+        tickers = get_all_tickers(conn)
+        if not tickers:
+            print("No tickers in DB after import. Cannot scrape.")
+            return
+
+        if "irbank_bs" in missing_sources:
+            _scrape_bs(tickers, proxy_pool)
+
+        if "irbank_forecast" in missing_sources:
+            _scrape_forecast(tickers, proxy_pool)
+
+        if missing_prices:
+            _fetch_prices(conn, tickers, proxy_pool)
+
+        save_hashes(compute_hashes())
+        print("\nAuto-fetch complete.")
     finally:
         conn.close()
 
