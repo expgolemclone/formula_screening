@@ -175,15 +175,27 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         conn.close()
 
 
-_SHIKIHO_URL_TEMPLATE = "https://shikiho.toyokeizai.net/stocks/{ticker}"
+_SHIKIHO_URL_TEMPLATE = "https://shikiho.toyokeizai.net/stocks/{ticker}/shikiho"
 
 
 def _open_shikiho(hits: list[dict]) -> None:
-    """Open all hit tickers on Shikiho Online in the default browser."""
-    import webbrowser
+    """Open all hit tickers on Shikiho Online via qutebrowser (fallback: default browser)."""
+    import shutil
+    import subprocess
 
-    for s in hits:
-        webbrowser.open(_SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"]))
+    qb = shutil.which("qutebrowser")
+    if qb:
+        subprocess.Popen([qb])
+        print("Waiting 10s for qutebrowser to start...")
+        time.sleep(10)
+        for s in hits:
+            url = _SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"])
+            subprocess.Popen([qb, url])
+    else:
+        import webbrowser
+
+        for s in hits:
+            webbrowser.open(_SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"]))
     print(f"Opened {len(hits)} tickers in browser.")
 
 
