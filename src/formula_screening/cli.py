@@ -1,5 +1,4 @@
 """CLI entry point for the screening tool."""
-
 from __future__ import annotations
 
 import argparse
