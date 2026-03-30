@@ -147,13 +147,14 @@ def test_build_bs_rows_metadata():
 
 
 def test_net_cash_full_formula():
-    """When detailed BS is available, use 清原式: current_assets + investment_securities*0.7 - liabilities."""
+    """When detailed BS is available, use 清原式: current_assets - inventories + investment_securities*0.7 - liabilities."""
     from formula_screening.metrics import compute_metrics
 
     financials = {
         "pl": {"net_income": 100},
         "bs": {
             "current_assets": 500,
+            "inventories": 80,
             "investment_securities": 200,
             "current_liabilities": 300,
             "non_current_liabilities": 100,
@@ -163,8 +164,8 @@ def test_net_cash_full_formula():
         "cf": {"cash_equivalents": 50},
     }
     m = compute_metrics(financials, price=None, shares_outstanding=None)
-    # 500 + 200*0.7 - (300+100) = 500 + 140 - 400 = 240
-    assert m["net_cash"] == 240.0
+    # 500 - 80 + 200*0.7 - (300+100) = 420 + 140 - 400 = 160
+    assert m["net_cash"] == 160.0
 
 
 def test_net_cash_fallback():

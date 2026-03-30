@@ -101,9 +101,10 @@ def compute_metrics(
     metrics["interest_bearing_debt"] = interest_bearing_debt
 
     # Net cash (清原達郎)
-    # Full formula: 流動資産 + 投資有価証券×70% − 負債
+    # Full formula: 流動資産 − 棚卸資産 + 投資有価証券×70% − 負債
     # Fallback:     現金同等物 − 負債 (when detailed BS unavailable)
     current_assets = bs.get("current_assets")
+    inventories = bs.get("inventories")
     investment_securities = bs.get("investment_securities")
     current_liabilities = bs.get("current_liabilities")
     non_current_liabilities = bs.get("non_current_liabilities") or bs.get("non_current_liabilities_total")
@@ -111,7 +112,7 @@ def compute_metrics(
     net_cash = None
     if current_assets is not None and (current_liabilities is not None or non_current_liabilities is not None):
         liabilities = (current_liabilities or 0) + (non_current_liabilities or 0)
-        net_cash = current_assets + (investment_securities or 0) * 0.7 - liabilities
+        net_cash = current_assets - (inventories or 0) + (investment_securities or 0) * 0.7 - liabilities
     elif cf.get("cash_equivalents") is not None and total_liabilities is not None:
         net_cash = cf["cash_equivalents"] - total_liabilities
     metrics["net_cash"] = net_cash
