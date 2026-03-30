@@ -168,8 +168,23 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         if args.output:
             _write_csv(hits, Path(args.output))
             print(f"Results written to {args.output}")
+
+        if args.open:
+            _open_shikiho(hits)
     finally:
         conn.close()
+
+
+_SHIKIHO_URL_TEMPLATE = "https://shikiho.toyokeizai.net/stocks/{ticker}"
+
+
+def _open_shikiho(hits: list[dict]) -> None:
+    """Open all hit tickers on Shikiho Online in the default browser."""
+    import webbrowser
+
+    for s in hits:
+        webbrowser.open(_SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"]))
+    print(f"Opened {len(hits)} tickers in browser.")
 
 
 def _print_table(hits: list[dict]) -> None:
@@ -261,6 +276,7 @@ def main() -> None:
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
     p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
     p_screen.add_argument("--output", "-o", help="Write results to CSV file")
+    p_screen.add_argument("--open", action="store_true", help="Open all hits on Shikiho Online in browser")
 
     args = parser.parse_args()
 
