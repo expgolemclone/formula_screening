@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
 import sys
 import time
 from pathlib import Path
@@ -113,7 +114,12 @@ def dispatch_scrape_workers(
         ]
         concurrent.futures.wait(futures)
         for f in futures:
-            f.result()
+            try:
+                f.result()
+            except Exception:
+                logging.getLogger("formula_screening.cli").warning(
+                    "Worker raised an exception", exc_info=True,
+                )
 
     print(f"\nDone: {stats['ok']} scraped, {stats['skip']} skipped, {stats['fail']} failed.")
     return stats
