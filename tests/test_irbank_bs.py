@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 
 from formula_screening.datasources.irbank_bs import (
@@ -11,7 +9,6 @@ from formula_screening.datasources.irbank_bs import (
     build_bs_rows,
     parse_bs_charts,
 )
-from formula_screening.db.schema import _SCHEMA_SQL
 
 
 # --- Mock HTML with embedded gGm chart data -----------------------------------
@@ -255,15 +252,3 @@ def test_net_cash_fallback():
     m = compute_metrics(financials, price=None, shares_outstanding=None)
     # 50 - (1000 - 600) = 50 - 400 = -350
     assert m["net_cash"] == -350.0
-
-
-# --- DB integration tests ----------------------------------------------------
-
-
-@pytest.fixture()
-def conn():
-    c = sqlite3.connect(":memory:")
-    c.row_factory = sqlite3.Row
-    c.executescript(_SCHEMA_SQL)
-    yield c
-    c.close()

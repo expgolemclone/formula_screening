@@ -1,22 +1,11 @@
 """Tests for the IR BANK JSON importer."""
 
 import json
-import sqlite3
 
 import pytest
 
 from formula_screening.datasources.irbank import import_irbank_json
 from formula_screening.db.repository import get_all_tickers, get_financial_dict
-from formula_screening.db.schema import _SCHEMA_SQL
-
-
-@pytest.fixture()
-def conn():
-    c = sqlite3.connect(":memory:")
-    c.row_factory = sqlite3.Row
-    c.executescript(_SCHEMA_SQL)
-    yield c
-    c.close()
 
 
 def _write_json(path, meta_type, meta_codes, items):

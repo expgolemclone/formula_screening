@@ -1,6 +1,5 @@
 """Tests for the screening engine."""
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -10,17 +9,7 @@ from formula_screening.db.repository import (
     upsert_price,
     upsert_stock,
 )
-from formula_screening.db.schema import _SCHEMA_SQL
 from formula_screening.screener import load_strategy
-
-
-@pytest.fixture()
-def conn():
-    c = sqlite3.connect(":memory:")
-    c.row_factory = sqlite3.Row
-    c.executescript(_SCHEMA_SQL)
-    yield c
-    c.close()
 
 
 def test_load_strategy_value(tmp_path):
