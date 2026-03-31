@@ -12,8 +12,12 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from formula_screening.config import DB_PATH, HASH_FILE
+
+if TYPE_CHECKING:
+    from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.cache_invalidation")
 
@@ -156,7 +160,7 @@ def check_and_invalidate(*, verbose: bool = False) -> list[str]:
 def refresh_stale_sources(
     changed_files: list[str],
     *,
-    proxy_pool: object,
+    proxy_pool: ProxyPool,
 ) -> None:
     """Re-fetch data sources corresponding to *changed_files*.
 

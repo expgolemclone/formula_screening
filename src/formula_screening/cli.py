@@ -6,11 +6,15 @@ import csv
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from formula_screening.config import MAGIC
 from formula_screening.db.schema import get_connection, init_db
 from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
+
+if TYPE_CHECKING:
+    from formula_screening.stealth import ProxyPool
 
 
 def _cmd_import_irbank(args: argparse.Namespace) -> None:
@@ -60,7 +64,7 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
 
 def dispatch_scrape_workers(
     tickers: list[str],
-    pool: object,
+    pool: ProxyPool,
     *,
     worker_fn: object,
     label: str,

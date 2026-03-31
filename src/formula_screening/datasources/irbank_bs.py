@@ -12,8 +12,12 @@ from __future__ import annotations
 import logging
 import re
 import threading
+from typing import TYPE_CHECKING
 
 from formula_screening.config import MAGIC
+
+if TYPE_CHECKING:
+    from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.irbank_bs")
 
@@ -192,7 +196,7 @@ def _validate_bs_html(html: str) -> bool:
 
 def fetch_bs_html(
     ticker: str,
-    pool: object,
+    pool: ProxyPool,
 ) -> str | None:
     """Fetch /bs page HTML using requests + ProxyPool.
 

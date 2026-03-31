@@ -10,8 +10,12 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from formula_screening.config import MAGIC
+
+if TYPE_CHECKING:
+    from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.irbank_common")
 
@@ -22,7 +26,7 @@ _MAX_RETRIES = MAGIC["scrape"]["max_retries"]
 def fetch_irbank_html(
     ticker: str,
     path: str,
-    pool: object,
+    pool: ProxyPool,
     *,
     validate_fn: Callable[[str], bool],
     timeout: int = MAGIC["scrape"]["timeout"],
@@ -74,7 +78,7 @@ def fetch_irbank_html(
 
 def scrape_worker(
     tickers: list[str],
-    pool: object,
+    pool: ProxyPool,
     *,
     source: str,
     process_fn: Callable[[str, str], list[dict]],
