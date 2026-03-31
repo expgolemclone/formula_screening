@@ -87,7 +87,6 @@ def scrape_worker(
     on_html_fn: Callable[[str, str, object], None] | None = None,
     fetch_path: str,
     validate_fn: Callable[[str], bool],
-    years: int = 1,
     interval: float = MAGIC["scrape"]["interval"],
     force: bool = False,
     stats: dict[str, int],
