@@ -28,6 +28,18 @@ def test_upsert_stock_updates_on_conflict(conn):
     assert row["name"] == "New"
 
 
+def test_upsert_stock_empty_name_preserves_existing(conn):
+    """Upserting with empty name/sector/market should not overwrite existing values."""
+    upsert_stock(conn, "7203", "トヨタ", "輸送用機器", "プライム")
+    upsert_stock(conn, "7203", "", "", "")
+    conn.commit()
+
+    row = conn.execute("SELECT name, sector, market FROM stocks WHERE ticker='7203'").fetchone()
+    assert row["name"] == "トヨタ"
+    assert row["sector"] == "輸送用機器"
+    assert row["market"] == "プライム"
+
+
 def test_upsert_financial_item_and_get_dict(conn):
     upsert_financial_item(conn, "7203", "2024-03", "pl", "revenue", 48036704, "edinetdb")
     upsert_financial_item(conn, "7203", "2024-03", "bs", "total_assets", 93601350, "edinetdb")

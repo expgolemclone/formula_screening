@@ -28,11 +28,11 @@ def upsert_stock(
         INSERT INTO stocks (ticker, edinet_code, name, sector, market, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(ticker) DO UPDATE SET
-            edinet_code=excluded.edinet_code,
-            name=excluded.name,
-            sector=excluded.sector,
-            market=excluded.market,
-            updated_at=excluded.updated_at
+            edinet_code = COALESCE(excluded.edinet_code, stocks.edinet_code),
+            name        = CASE WHEN excluded.name   = '' THEN stocks.name   ELSE excluded.name   END,
+            sector      = CASE WHEN excluded.sector = '' THEN stocks.sector ELSE excluded.sector END,
+            market      = CASE WHEN excluded.market = '' THEN stocks.market ELSE excluded.market END,
+            updated_at  = excluded.updated_at
         """,
         (ticker, edinet_code, name, sector, market, _now()),
     )
