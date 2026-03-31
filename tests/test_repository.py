@@ -81,3 +81,16 @@ def test_get_cached_periods(conn):
 def test_get_financial_dict_empty(conn):
     result = get_financial_dict(conn, "9999")
     assert result == {}
+
+
+def test_get_financial_dict_forecast_uses_latest_period(conn):
+    """When multiple forecast periods exist, only the latest should be returned."""
+    upsert_financial_item(conn, "7203", "2024-03", "pl", "revenue", 100, "irbank")
+    # Older forecast
+    upsert_financial_item(conn, "7203", "2025-03", "forecast", "basic_eps", 55.0, "irbank_forecast")
+    # Newer forecast
+    upsert_financial_item(conn, "7203", "2026-03", "forecast", "basic_eps", 60.0, "irbank_forecast")
+    conn.commit()
+
+    result = get_financial_dict(conn, "7203")
+    assert result["forecast"]["basic_eps"] == 60.0

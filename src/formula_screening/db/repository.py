@@ -149,9 +149,12 @@ def get_financial_dict(
         """
         SELECT item_name, value FROM financial_items
         WHERE ticker = ? AND statement = 'forecast'
-        ORDER BY period DESC
+          AND period = (
+              SELECT MAX(period) FROM financial_items
+              WHERE ticker = ? AND statement = 'forecast'
+          )
         """,
-        (ticker,),
+        (ticker, ticker),
     ).fetchall()
     if forecast_rows:
         result["forecast"] = {r["item_name"]: r["value"] for r in forecast_rows}
