@@ -18,9 +18,11 @@ stale_days = 1
 rate_limit_threshold = 0.3
 
 [proxy]
-target_count = 100
+target_count = 30
 check_workers = 200
-check_timeout = 10
+check_timeout = 5
+anon_timeout = 3
+batch_size = 200
 max_failures = 2
 
 [screening]

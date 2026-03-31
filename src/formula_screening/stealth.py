@@ -136,41 +136,27 @@ _PROXY_LEAK_HEADERS = (
 # --- Quality check URLs (moderately strict sites) --------------------------------
 
 _CHECK_URLS = [
-    # Financial
+    # Financial (low block-rate)
     "https://finance.yahoo.com/quote/AAPL/",
-    "https://www.bloomberg.com/",
-    "https://www.reuters.com/",
-    "https://www.marketwatch.com/",
     "https://www.investing.com/",
     "https://finance.yahoo.co.jp/",
-    "https://www.nikkei.com/",
-    "https://www.wsj.com/",
     # Tech
     "https://www.google.com/",
     "https://www.amazon.com/",
     "https://www.microsoft.com/",
     "https://www.apple.com/",
     "https://github.com/",
-    "https://www.cloudflare.com/",
-    # Media
+    # Media (low block-rate)
     "https://www.bbc.com/",
-    "https://edition.cnn.com/",
-    "https://www.nytimes.com/",
     "https://www.theguardian.com/",
-    "https://www.forbes.com/",
     # Japanese
     "https://www.yahoo.co.jp/",
     "https://www.rakuten.co.jp/",
     "https://www.amazon.co.jp/",
-    "https://zozo.jp/",
-    "https://www.dmm.com/",
     # E-commerce / other
     "https://www.ebay.com/",
     "https://www.walmart.com/",
-    "https://www.target.com/",
-    "https://www.netflix.com/",
     "https://www.spotify.com/",
-    "https://www.twitch.tv/",
 ]
 
 
@@ -225,7 +211,7 @@ def _fetch_proxy_candidates() -> list[str]:
 
     for url in _PROXY_SOURCES:
         try:
-            resp = session.get(url, timeout=MAGIC["proxy"]["check_timeout"])
+            resp = session.get(url, timeout=MAGIC["proxy"]["anon_timeout"])
             for line in resp.text.strip().splitlines():
                 addr = line.strip()
                 if not addr or addr.startswith("<"):
@@ -244,7 +230,12 @@ def _fetch_proxy_candidates() -> list[str]:
     return proxies
 
 
-def _check_proxy(addr: str, *, timeout: int = 5) -> str | None:
+def _check_proxy(
+    addr: str,
+    *,
+    timeout: int = MAGIC["proxy"]["check_timeout"],
+    anon_timeout: int = MAGIC["proxy"]["anon_timeout"],
+) -> str | None:
     """Return *addr* if the proxy is elite-anonymous and can reach a tough site.
 
     Two-phase validation:
@@ -261,7 +252,7 @@ def _check_proxy(addr: str, *, timeout: int = 5) -> str | None:
     for anon_url in random.sample(_ANON_CHECK_URLS, len(_ANON_CHECK_URLS)):
         try:
             resp = requests.get(
-                anon_url, proxies=proxies, headers=headers, timeout=timeout,
+                anon_url, proxies=proxies, headers=headers, timeout=anon_timeout,
             )
             if resp.status_code != 200:
                 continue
@@ -292,14 +283,13 @@ def fetch_live_proxies(
     *,
     target_count: int = MAGIC["proxy"]["target_count"],
     check_workers: int = MAGIC["proxy"]["check_workers"],
-    check_timeout: int = MAGIC["proxy"]["check_timeout"],
+    batch_size: int = MAGIC["proxy"]["batch_size"],
 ) -> list[str]:
     """Fetch proxy lists, validate anonymity + quality, return working proxies.
 
-    Args:
-        target_count: Stop checking once this many live proxies are found.
-        check_workers: Number of parallel validation threads.
-        check_timeout: Per-proxy HTTP timeout in seconds.
+    Candidates are processed in batches so that once *target_count* elite
+    proxies are found the remaining batches are skipped entirely — avoiding
+    thousands of wasted timeout waits.
 
     Returns:
         List of ``host:port`` strings for elite-anonymous live proxies (shuffled).
@@ -308,22 +298,27 @@ def fetch_live_proxies(
     print(f"  {len(candidates)} proxy candidates, validating (anonymity + quality)...")
 
     alive: list[str] = []
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
-    futures = {
-        executor.submit(_check_proxy, addr, timeout=check_timeout): addr
-        for addr in candidates
-    }
-    try:
-        for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            if result is not None:
-                alive.append(result)
-                if len(alive) % 10 == 0:
-                    print(f"  ... {len(alive)} elite proxies so far")
-                if len(alive) >= target_count:
-                    break
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+    for batch_start in range(0, len(candidates), batch_size):
+        batch = candidates[batch_start : batch_start + batch_size]
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
+        futures = {
+            executor.submit(_check_proxy, addr): addr
+            for addr in batch
+        }
+        try:
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if result is not None:
+                    alive.append(result)
+                    if len(alive) % 10 == 0:
+                        print(f"  ... {len(alive)} elite proxies so far")
+                    if len(alive) >= target_count:
+                        break
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        if len(alive) >= target_count:
+            break
 
     random.shuffle(alive)
     print(f"  {len(alive)} elite-anonymous proxies ready")
