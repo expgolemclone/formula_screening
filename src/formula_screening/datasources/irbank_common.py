@@ -61,7 +61,9 @@ def fetch_irbank_html(
             )
             if resp.status_code == 200 and validate_fn(resp.text):
                 return resp.text
-            if resp.status_code == 429 or "html" in resp.headers.get("Content-Type", ""):
+            if resp.status_code == 429 or (
+                resp.status_code == 200 and not validate_fn(resp.text)
+            ):
                 logger.info("Rate-limited for %s (attempt %d), rotating...", ticker, attempt + 1)
                 pool.report_failure()
                 random_delay(
