@@ -214,9 +214,8 @@ def _cmd_refresh(args: argparse.Namespace) -> None:
 def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening.cache_invalidation import ensure_data_available
     from formula_screening.screener import run_screening
-    from formula_screening.stealth import ProxyPool
 
-    ensure_data_available(proxy_pool=ProxyPool.from_auto())
+    ensure_data_available(proxy_pool=_resolve_proxy_pool(args))
 
     strategy_path = Path(args.strategy)
     if not strategy_path.exists():
@@ -374,6 +373,8 @@ def main() -> None:
     p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
     p_screen.add_argument("--output", "-o", help="Write results to CSV file")
     p_screen.add_argument("--open", action="store_true", help="Open all hits on Shikiho Online in browser")
+    p_screen.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
+    p_screen.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 
     args = parser.parse_args()
 
