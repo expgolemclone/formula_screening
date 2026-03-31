@@ -1,6 +1,5 @@
 """Application configuration and directory management."""
 
-import os
 import tomllib
 from pathlib import Path
 
@@ -23,10 +22,6 @@ LOG_DIR = _PROJECT_ROOT / PATHS["data"]["log"]
 DB_PATH = _PROJECT_ROOT / PATHS["data"]["db"]
 IRBANK_DIR = _PROJECT_ROOT / PATHS["data"]["irbank"]
 HASH_FILE = _PROJECT_ROOT / PATHS["data"]["hash_file"]
-
-EDINETDB_API_KEY = os.environ.get("EDINETDB_API_KEY", "")
-EDINETDB_BASE_URL = "https://edinetdb.jp/v1"
-
 
 def ensure_dirs() -> None:
     """Create data directories if they don't exist."""
