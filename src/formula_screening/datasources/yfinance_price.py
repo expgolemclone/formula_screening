@@ -74,8 +74,8 @@ def is_price_stale(updated_at: str | None) -> bool:
         return True
 
 
-class _RateLimited(Exception):
-    """Raised internally when a batch gets rate-limited."""
+class RateLimitError(Exception):
+    """Raised when price fetching is rate-limited beyond retry capacity."""
 
 
 def _download_prices_batch(
@@ -85,7 +85,7 @@ def _download_prices_batch(
     """Batch-download close prices via yf.download.
 
     Raises:
-        _RateLimited: If < 30% of symbols returned data.
+        RateLimitError: If < 30% of symbols returned data.
     """
     if not symbols:
         return {}
@@ -94,7 +94,7 @@ def _download_prices_batch(
         kwargs["session"] = session
     data = yf.download(symbols, **kwargs)
     if data.empty:
-        raise _RateLimited("Empty response")
+        raise RateLimitError("Empty response")
     close = data["Close"]
     if isinstance(close, pd.Series):
         val = close.iloc[-1]
@@ -102,7 +102,7 @@ def _download_prices_batch(
     row = close.iloc[-1]
     valid = row.dropna()
     if len(valid) < len(symbols) * MAGIC["price"]["rate_limit_threshold"]:
-        raise _RateLimited(f"Only {len(valid)}/{len(symbols)} prices returned")
+        raise RateLimitError(f"Only {len(valid)}/{len(symbols)} prices returned")
     return {
         sym: float(row[sym]) if pd.notna(row[sym]) else None
         for sym in row.index
@@ -157,16 +157,14 @@ def _process_batch(
         try:
             prices = _download_prices_batch(symbols, session=session)
             break
-        except _RateLimited as e:
+        except RateLimitError as e:
             print(f"  Rate-limited ({e}), rotating proxy... (attempt {attempt + 1}/{_MAX_BATCH_RETRIES})")
             pool.report_failure()
             session = create_session(pool)
             if pool.exhausted:
                 print("  All proxies exhausted, falling back to direct", file=sys.stderr)
     else:
-        # All retries failed
-        print("  ABORT: rate-limited after all retries", file=sys.stderr)
-        sys.exit(1)
+        raise RateLimitError("Rate-limited after all retries")
 
     shares = _fetch_shares_batch(symbols, session=session, workers=workers)
 

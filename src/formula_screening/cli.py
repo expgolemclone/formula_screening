@@ -49,7 +49,10 @@ def _resolve_proxy_pool(args: argparse.Namespace):  # noqa: ANN205
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
-    from formula_screening.datasources.yfinance_price import fetch_and_cache_prices
+    from formula_screening.datasources.yfinance_price import (
+        RateLimitError,
+        fetch_and_cache_prices,
+    )
     from formula_screening.db.repository import get_all_tickers
 
     pool = _resolve_proxy_pool(args)
@@ -59,6 +62,9 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
         print(f"Fetching prices for {len(tickers)} tickers...")
         result = fetch_and_cache_prices(conn, tickers, force=args.force, pool=pool, workers=args.workers)
         print(f"\nDone: {result['fetched']} fetched, {result['skipped']} skipped, {result['failed']} failed.")
+    except RateLimitError as e:
+        print(f"ABORT: {e}", file=sys.stderr)
+        sys.exit(1)
     finally:
         conn.close()
 
