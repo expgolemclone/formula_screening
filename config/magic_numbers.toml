@@ -23,6 +23,9 @@ check_workers = 200
 check_timeout = 10
 max_failures = 2
 
+[screening]
+fcf_years = 5
+
 [log]
 max_bytes = 5242880
 backup_count = 3

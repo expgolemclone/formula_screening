@@ -55,6 +55,33 @@ def test_build_stock_dict(conn):
     assert stock["metrics"]["per"] == pytest.approx(2500.0 / 359.56, rel=0.01)
 
 
+def test_build_stock_dict_cf_history(conn):
+    """cf_history contains historical CF data newest-first."""
+    from formula_screening.screener import build_stock_dict
+
+    upsert_stock(conn, "9999", "テスト", "情報通信", "プライム")
+    for period, op_cf, inv_cf in [
+        ("2020-03", 100, -30),
+        ("2021-03", 120, -40),
+        ("2022-03", 150, -50),
+    ]:
+        upsert_financial_item(conn, "9999", period, "cf", "operating_cf", op_cf, "irbank")
+        upsert_financial_item(conn, "9999", period, "cf", "investing_cf", inv_cf, "irbank")
+    # Need at least one PL item so get_financial_dict finds a period
+    upsert_financial_item(conn, "9999", "2022-03", "pl", "revenue", 1000, "irbank")
+    conn.commit()
+
+    stock = build_stock_dict(conn, "9999", "テスト")
+
+    assert "cf_history" in stock
+    history = stock["cf_history"]
+    assert len(history) == 3
+    # Newest first
+    assert history[0][0] == "2022-03"
+    assert history[0][1]["operating_cf"] == 150
+    assert history[2][0] == "2020-03"
+
+
 def test_build_stock_dict_no_price(conn):
     """Screening works even without cached price data."""
     from formula_screening.screener import build_stock_dict

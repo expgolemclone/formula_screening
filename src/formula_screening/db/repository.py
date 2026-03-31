@@ -162,6 +162,38 @@ def get_financial_dict(
     return result
 
 
+def get_historical_items(
+    conn: sqlite3.Connection,
+    ticker: str,
+    statement: str,
+    n_periods: int = 5,
+) -> list[tuple[str, dict[str, float | None]]]:
+    """Return items for the last *n_periods* of a given statement.
+
+    Returns:
+        List of ``(period, {item_name: value})`` tuples, newest first.
+    """
+    rows = conn.execute(
+        """
+        SELECT period, item_name, value FROM financial_items
+        WHERE ticker = ? AND statement = ?
+          AND period IN (
+              SELECT DISTINCT period FROM financial_items
+              WHERE ticker = ? AND statement = ?
+              ORDER BY period DESC LIMIT ?
+          )
+        ORDER BY period DESC
+        """,
+        (ticker, statement, ticker, statement, n_periods),
+    ).fetchall()
+
+    grouped: dict[str, dict[str, float | None]] = {}
+    for r in rows:
+        grouped.setdefault(r["period"], {})[r["item_name"]] = r["value"]
+
+    return [(period, items) for period, items in sorted(grouped.items(), reverse=True)]
+
+
 def get_cached_periods(
     conn: sqlite3.Connection,
     ticker: str,

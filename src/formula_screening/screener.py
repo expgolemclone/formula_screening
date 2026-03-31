@@ -12,6 +12,7 @@ from types import ModuleType
 from formula_screening.db.repository import (
     get_all_tickers,
     get_financial_dict,
+    get_historical_items,
     get_latest_price_with_shares,
 )
 from formula_screening.metrics import compute_metrics
@@ -64,6 +65,8 @@ def build_stock_dict(
 
     metrics = compute_metrics(financials, price, shares)
 
+    cf_history = get_historical_items(conn, ticker, "cf")
+
     return {
         "ticker": ticker,
         "name": name,
@@ -76,6 +79,7 @@ def build_stock_dict(
         "ss": financials.get("ss", {}),
         "forecast": financials.get("forecast", {}),
         "metrics": metrics,
+        "cf_history": cf_history,
     }
 
 
