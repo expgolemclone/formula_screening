@@ -212,12 +212,13 @@ def fetch_and_cache_prices(
         tickers: List of bare ticker codes.
         force: If True, re-fetch even if cached < 1 day.
         pool: ProxyPool instance. If None, uses direct connection.
+        workers: Number of parallel threads for shares fetch.
 
     Returns:
         {"fetched": N, "skipped": N, "failed": N}
     """
     if pool is None:
-        pool = ProxyPool.from_auto()
+        pool = ProxyPool.direct()
 
     if force:
         targets = list(tickers)
