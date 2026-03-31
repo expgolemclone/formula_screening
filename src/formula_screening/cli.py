@@ -52,7 +52,7 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
     try:
         tickers = args.ticker if args.ticker else get_all_tickers(conn)
         print(f"Fetching prices for {len(tickers)} tickers...")
-        result = fetch_and_cache_prices(conn, tickers, force=args.force, pool=pool)
+        result = fetch_and_cache_prices(conn, tickers, force=args.force, pool=pool, workers=args.workers)
         print(f"\nDone: {result['fetched']} fetched, {result['skipped']} skipped, {result['failed']} failed.")
     finally:
         conn.close()
@@ -332,6 +332,7 @@ def main() -> None:
     p_prices = sub.add_parser("fetch-prices", help="Fetch and cache stock prices from yfinance")
     p_prices.add_argument("--ticker", nargs="+", help="Specific ticker(s) to fetch")
     p_prices.add_argument("--force", action="store_true", help="Re-fetch even if cached <1 day")
+    p_prices.add_argument("--workers", type=int, default=MAGIC["price"]["shares_workers"], help="Number of parallel workers for shares fetch")
     p_prices.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_prices.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 

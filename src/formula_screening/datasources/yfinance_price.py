@@ -123,11 +123,13 @@ def _fetch_shares_one(args: tuple[str, object | None]) -> tuple[str, int | None]
 def _fetch_shares_batch(
     symbols: list[str],
     session: object | None = None,
+    *,
+    workers: int = _SHARES_WORKERS,
 ) -> dict[str, int | None]:
     """Fetch shares_outstanding in parallel via ThreadPoolExecutor."""
     result: dict[str, int | None] = {}
     work = [(sym, session) for sym in symbols]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_SHARES_WORKERS) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         for sym, shares in executor.map(_fetch_shares_one, work):
             result[sym] = shares
     return result
@@ -142,6 +144,8 @@ def _process_batch(
     symbols: list[str],
     pool: ProxyPool,
     today: str,
+    *,
+    workers: int = _SHARES_WORKERS,
 ) -> tuple[int, int]:
     """Download prices + shares for one batch, with proxy retry.
 
@@ -164,7 +168,7 @@ def _process_batch(
         print("  ABORT: rate-limited after all retries", file=sys.stderr)
         sys.exit(1)
 
-    shares = _fetch_shares_batch(symbols, session=session)
+    shares = _fetch_shares_batch(symbols, session=session, workers=workers)
 
     fetched = 0
     failed = 0
@@ -195,6 +199,7 @@ def fetch_and_cache_prices(
     *,
     force: bool = False,
     pool: ProxyPool | None = None,
+    workers: int = _SHARES_WORKERS,
 ) -> dict[str, int]:
     """Fetch prices from yfinance and cache in DB.
 
@@ -212,7 +217,7 @@ def fetch_and_cache_prices(
         {"fetched": N, "skipped": N, "failed": N}
     """
     if pool is None:
-        pool = ProxyPool.direct()
+        pool = ProxyPool.from_auto()
 
     if force:
         targets = list(tickers)
@@ -242,7 +247,7 @@ def fetch_and_cache_prices(
         label = f"[{batch_start + 1}-{batch_start + len(batch)}/{len(targets)}]"
         print(f"{label} prices + shares...")
 
-        fetched, failed = _process_batch(conn, batch, symbols, pool, today)
+        fetched, failed = _process_batch(conn, batch, symbols, pool, today, workers=workers)
         total_fetched += fetched
         total_failed += failed
 
