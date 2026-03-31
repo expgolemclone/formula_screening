@@ -26,10 +26,12 @@ def test_load_strategy_missing_screen(tmp_path):
         load_strategy(strategy)
 
 
-def test_load_example_strategies():
-    """Verify bundled example strategies load without error."""
-    examples_dir = Path(__file__).resolve().parent.parent / "strategies" / "examples"
-    for f in examples_dir.glob("*.py"):
+def test_load_bundled_strategies():
+    """Verify bundled strategies load without error."""
+    strategies_dir = Path(__file__).resolve().parent.parent / "strategies"
+    files = list(strategies_dir.glob("*.py"))
+    assert files, "No strategy files found in strategies/"
+    for f in files:
         mod = load_strategy(f)
         assert callable(mod.screen)
 
