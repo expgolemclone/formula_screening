@@ -30,7 +30,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
 from formula_screening.config import CLI_DEFAULTS, IRBANK_DIR, MAGIC
-from formula_screening.proxy import fetch_live_proxies
+from formula_screening.stealth import fetch_live_proxies
 
 truststore.inject_into_ssl()
 print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
