@@ -296,7 +296,7 @@ def _print_table(
     extra_cols_fn: _ExtraColsFn | None = None,
 ) -> None:
     """Print screening results as a formatted table to stdout."""
-    headers = ["Ticker", "Name", "Price", "NC_Ratio", "PER", "PBR", "ROE", "Div%"]
+    headers = ["Ticker", "Name", "Price", "NC_Ratio", "PER", "PBR", "Div%"]
     rows: list[list[str]] = []
 
     for s in hits:
@@ -308,7 +308,6 @@ def _print_table(
             f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
             f'{m["per"]:.1f}' if m.get("per") else "-",
             f'{m["pbr"]:.2f}' if m.get("pbr") else "-",
-            f'{m["roe"]:.1f}' if m.get("roe") else "-",
             f'{m["dividend_yield"]:.2f}' if m.get("dividend_yield") else "-",
         ]
         if extra_cols_fn is not None:
@@ -337,7 +336,7 @@ def _write_csv(
     extra_cols_fn: _ExtraColsFn | None = None,
 ) -> None:
     """Write screening results to a CSV file."""
-    fieldnames = ["ticker", "name", "price", "net_cash_ratio", "per", "pbr", "roe", "dividend_yield"]
+    fieldnames = ["ticker", "name", "price", "net_cash_ratio", "per", "pbr", "dividend_yield"]
 
     extra_headers: list[str] = []
     if extra_cols_fn is not None and hits:
@@ -356,7 +355,6 @@ def _write_csv(
                 "net_cash_ratio": m.get("net_cash_ratio"),
                 "per": m.get("per"),
                 "pbr": m.get("pbr"),
-                "roe": m.get("roe"),
                 "dividend_yield": m.get("dividend_yield"),
             }
             if extra_cols_fn is not None:

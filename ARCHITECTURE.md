@@ -32,7 +32,7 @@ formula_screening/
 │   └── export_csv.py           # 全銘柄の財務データ + 指標を CSV エクスポート
 ├── strategies/                 # スクリーニング戦略ファイル (screen(stock) -> bool)
 │   ├── net_cash.py             # ネットキャッシュ比率戦略
-│   └── net_cash_fcf.py         # ネットキャッシュ + FCFイールド戦略
+│   └── net_cash_fcf.py         # ネットキャッシュ + FCFイールド + CROIC戦略
 ├── config/
 │   ├── path.toml               # データディレクトリ・DB パス等
 │   ├── magic_numbers.toml      # スクレイピング間隔、バッチサイズ等の定数
