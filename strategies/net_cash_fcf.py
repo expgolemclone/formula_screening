@@ -1,7 +1,7 @@
 """清原達郎式 ネットキャッシュ比率 + FCFイールド スクリーニング.
 
 net_cash_ratio > 1.0
-0 < per < 30
+0 < per < 10
 自己資本比率 > 50%
 過去5年間の平均FCFイールド (FCF / 時価総額) > 0
 
@@ -54,7 +54,7 @@ def screen(stock: dict) -> bool:
     equity_ratio = m.get("equity_ratio")
     if ratio is None or per is None or equity_ratio is None:
         return False
-    if not (ratio > 1.0 and 0 < per < 30 and equity_ratio > 50):
+    if not (ratio > 1.0 and 0 < per < 10 and equity_ratio > 50):
         return False
 
     avg = _fcf_yield_avg(stock)
