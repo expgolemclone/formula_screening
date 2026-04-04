@@ -43,22 +43,14 @@ def fetch_irbank_html(
     Returns:
         HTML string if successful, None on failure.
     """
-    import requests
-
-    from formula_screening.stealth import random_delay, random_ua
+    from formula_screening.stealth import create_session, random_delay
 
     url = _IRBANK_URL_TEMPLATE.format(ticker=ticker, path=path)
 
     for attempt in range(_MAX_RETRIES):
-        proxy_url = pool.get()
-        proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
         try:
-            resp = requests.get(
-                url,
-                headers={"User-Agent": random_ua()},
-                proxies=proxies,
-                timeout=timeout,
-            )
+            session = create_session(pool)
+            resp = session.get(url, timeout=timeout)
             if resp.status_code == 200 and validate_fn(resp.text):
                 return resp.text
             if resp.status_code == 429 or (
@@ -72,7 +64,7 @@ def fetch_irbank_html(
                 )
                 continue
             return None
-        except requests.RequestException:
+        except Exception:
             pool.report_failure()
             continue
     return None
