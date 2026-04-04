@@ -219,6 +219,8 @@ PK: `(ticker, date)`
 
 全コマンド実行前に `cache_invalidation.check_and_invalidate()` が自動実行され、datasource ファイルの変更があれば対応キャッシュが破棄される (`refresh` コマンド自身は除く)。
 
+スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`) および `screen` の自動データ取得では、`dispatch_scrape_workers` がワーカー数をプロキシプールのサイズ以下に制限する。これにより空プールへの分割（直接接続フォールバック）を防ぎ、全ワーカーがプロキシ経由で通信する。
+
 ## 戦略ファイルの仕組み
 
 `strategies/` に配置した `.py` ファイルが戦略となる。`screener.py` が `importlib` で動的にロードし、全銘柄に対して `screen(stock: dict) -> bool` を呼び出す。
