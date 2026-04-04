@@ -44,6 +44,8 @@ formula_screening/
 │   └── .scraper_hashes.json    # datasource ファイルのハッシュ (キャッシュ無効化用)
 └── tests/
     ├── conftest.py
+    ├── test_cache_invalidation.py
+    ├── test_fmt.py
     ├── test_metrics.py
     ├── test_screener.py
     ├── test_irbank.py
@@ -113,7 +115,7 @@ formula_screening/
 | `irbank.py`            | `repository`                           | JSON -> DB インポート             |
 | `irbank_bs.py`         | `irbank_common`, `config`, `repository`| /bs ページのパース・行生成        |
 | `irbank_forecast.py`   | `irbank_common`, `config`              | /results ページのパース・行生成   |
-| `irbank_common.py`     | `config`, `stealth`, `repository`, `db.schema` | 共通 HTTP 取得・並列ワーカー |
+| `irbank_common.py`     | `config`, `stealth` (`create_session`), `repository`, `db.schema` | 共通 HTTP 取得 (TLS 偽装)・並列ワーカー |
 | `yfinance_price.py`    | `config`, `repository`, `stealth`      | yfinance 経由の株価バッチ取得     |
 
 ### コア層
