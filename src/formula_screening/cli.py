@@ -77,7 +77,7 @@ def dispatch_scrape_workers(
     tickers: list[str],
     pool: ProxyPool,
     *,
-    worker_fn: object,
+    worker_fn: Callable[..., None],
     label: str,
     workers: int = MAGIC["scrape"]["workers"],
     force: bool = False,
@@ -138,7 +138,7 @@ def dispatch_scrape_workers(
 def _run_scrape_workers(
     args: argparse.Namespace,
     *,
-    worker_fn: object,
+    worker_fn: Callable[..., None],
     label: str,
     extra_kwargs: dict | None = None,
 ) -> None:
@@ -274,19 +274,15 @@ def _open_shikiho(hits: list[dict]) -> None:
     import shutil
     import subprocess
 
-    qb = shutil.which("qutebrowser")
+    urls: list[str] = [_SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"]) for s in hits]
+    qb: str | None = shutil.which("qutebrowser")
     if qb:
-        subprocess.Popen([qb])
-        print("Waiting 10s for qutebrowser to start...")
-        time.sleep(10)
-        for s in hits:
-            url = _SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"])
-            subprocess.Popen([qb, url])
+        subprocess.Popen([qb, *urls])
     else:
         import webbrowser
 
-        for s in hits:
-            webbrowser.open(_SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"]))
+        for url in urls:
+            webbrowser.open(url)
     print(f"Opened {len(hits)} tickers in browser.")
 
 
