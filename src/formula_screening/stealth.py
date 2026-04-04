@@ -4,7 +4,6 @@ mimicry, User-Agent rotation, and request throttling."""
 from __future__ import annotations
 
 import concurrent.futures
-import functools
 import random
 import re
 import threading
@@ -19,7 +18,6 @@ _HOST_PORT_RE = re.compile(
     r"^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$",
 )
 
-print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
 
 _PROXY_SOURCES = [
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
@@ -295,7 +293,7 @@ def fetch_live_proxies(
         List of ``host:port`` strings for elite-anonymous live proxies (shuffled).
     """
     candidates = _fetch_proxy_candidates()
-    print(f"  {len(candidates)} proxy candidates, validating (anonymity + quality)...")
+    print(f"  {len(candidates)} proxy candidates, validating (anonymity + quality)...", flush=True)
 
     alive: list[str] = []
     for batch_start in range(0, len(candidates), batch_size):
@@ -311,7 +309,7 @@ def fetch_live_proxies(
                 if result is not None:
                     alive.append(result)
                     if len(alive) % 10 == 0:
-                        print(f"  ... {len(alive)} elite proxies so far")
+                        print(f"  ... {len(alive)} elite proxies so far", flush=True)
                     if len(alive) >= target_count:
                         break
         finally:
@@ -321,7 +319,7 @@ def fetch_live_proxies(
             break
 
     random.shuffle(alive)
-    print(f"  {len(alive)} elite-anonymous proxies ready")
+    print(f"  {len(alive)} elite-anonymous proxies ready", flush=True)
     return alive
 
 
@@ -347,10 +345,10 @@ class ProxyPool:
     @classmethod
     def from_auto(cls) -> ProxyPool:
         """Create a pool by auto-fetching public proxies."""
-        print("Fetching and validating proxies...")
+        print("Fetching and validating proxies...", flush=True)
         proxies = fetch_live_proxies()
         if not proxies:
-            print("WARNING: No live proxies found. Using direct connection.")
+            print("WARNING: No live proxies found. Using direct connection.", flush=True)
         return cls(proxies)
 
     @classmethod
@@ -383,7 +381,7 @@ class ProxyPool:
             self._index += 1
             self._profile_idx = random.randrange(len(_BROWSER_PROFILES))
             proxy_url = f"http://{self._proxies[self._index % len(self._proxies)]}"
-            print(f"  Rotated to proxy: {proxy_url}")
+            print(f"  Rotated to proxy: {proxy_url}", flush=True)
 
     def rotate(self) -> None:
         """Move to the next proxy and browser profile in the pool."""
@@ -398,7 +396,7 @@ class ProxyPool:
             addr = self._proxies[self._index % len(self._proxies)]
             self._failures[addr] = self._failures.get(addr, 0) + 1
             if self._failures[addr] >= self._max_failures:
-                print(f"  Proxy {addr} failed {self._max_failures} times, removing")
+                print(f"  Proxy {addr} failed {self._max_failures} times, removing", flush=True)
                 self._proxies = [p for p in self._proxies if p != addr]
                 if self._proxies:
                     self._index = self._index % len(self._proxies)

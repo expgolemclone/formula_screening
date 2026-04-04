@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import concurrent.futures
-import functools
 import logging
 import random
 import sqlite3
@@ -21,7 +20,6 @@ from formula_screening.db.repository import (
 from formula_screening.stealth import ProxyPool, create_session, random_delay
 
 logger = logging.getLogger("formula_screening.yfinance_price")
-print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
 
 _BATCH_SIZE = MAGIC["price"]["batch_size"]
 _SHARES_WORKERS = MAGIC["price"]["shares_workers"]
@@ -158,11 +156,11 @@ def _process_batch(
             prices = _download_prices_batch(symbols, session=session)
             break
         except RateLimitError as e:
-            print(f"  Rate-limited ({e}), rotating proxy... (attempt {attempt + 1}/{_MAX_BATCH_RETRIES})")
+            print(f"  Rate-limited ({e}), rotating proxy... (attempt {attempt + 1}/{_MAX_BATCH_RETRIES})", flush=True)
             pool.report_failure()
             session = create_session(pool)
             if pool.exhausted:
-                print("  All proxies exhausted, falling back to direct", file=sys.stderr)
+                print("  All proxies exhausted, falling back to direct", file=sys.stderr, flush=True)
     else:
         raise RateLimitError("Rate-limited after all retries")
 
@@ -233,8 +231,8 @@ def fetch_and_cache_prices(
     total_failed = 0
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    print(f"Targets: {len(targets)} tickers ({skipped} skipped)")
-    print(f"Proxy: {pool.get() or 'direct'}")
+    print(f"Targets: {len(targets)} tickers ({skipped} skipped)", flush=True)
+    print(f"Proxy: {pool.get() or 'direct'}", flush=True)
 
     for batch_start in range(0, len(targets), _BATCH_SIZE):
         if batch_start > 0:
@@ -244,12 +242,12 @@ def fetch_and_cache_prices(
         symbols = [f"{t}.T" for t in batch]
 
         label = f"[{batch_start + 1}-{batch_start + len(batch)}/{len(targets)}]"
-        print(f"{label} prices + shares...")
+        print(f"{label} prices + shares...", flush=True)
 
         fetched, failed = _process_batch(conn, batch, symbols, pool, today, workers=workers)
         total_fetched += fetched
         total_failed += failed
 
-        print(f"  => fetched={total_fetched}, failed={total_failed}")
+        print(f"  => fetched={total_fetched}, failed={total_failed}", flush=True)
 
     return {"fetched": total_fetched, "skipped": skipped, "failed": total_failed}
