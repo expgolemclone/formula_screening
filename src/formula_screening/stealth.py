@@ -370,6 +370,12 @@ class ProxyPool:
             return f"http://{self._proxies[self._index % len(self._proxies)]}"
 
     @property
+    def size(self) -> int:
+        """Return the number of proxies currently in the pool."""
+        with self._lock:
+            return len(self._proxies)
+
+    @property
     def profile(self) -> tuple[str, str, dict[str, str]]:
         """Return the browser profile pinned to the current proxy."""
         with self._lock:

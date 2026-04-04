@@ -94,6 +94,9 @@ def dispatch_scrape_workers(
     tickers = list(tickers)
     random.shuffle(tickers)
     total = len(tickers)
+    proxy_count: int = pool.size
+    if proxy_count > 0:
+        workers = min(workers, proxy_count)
     workers = min(workers, total) or 1
 
     print(f"Scraping {label} for {total} tickers (workers={workers})")
