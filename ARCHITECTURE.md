@@ -122,7 +122,7 @@ formula_screening/
 
 | モジュール               | 依存先                           | 役割                                |
 | :----------------------- | :------------------------------- | :---------------------------------- |
-| `screener.py`            | `config`, `repository`, `metrics` | 戦略ファイルの動的ロード・全銘柄適用 |
+| `screener.py`            | `config`, `repository`, `metrics`, `db.schema` | 戦略ファイルの動的ロード・全銘柄並列適用 |
 | `metrics.py`             | (なし)                           | 財務データ + 株価 -> 派生指標の計算  |
 | `cache_invalidation.py`  | `config`, `repository`, `db.schema`, `cli` | ハッシュ比較によるキャッシュ管理 |
 
@@ -215,7 +215,7 @@ PK: `(ticker, date)`
 | `scrape-bs`         | IR BANK /bs ページから詳細 BS データをスクレイピング |
 | `scrape-forecast`   | IR BANK /results ページから会社予想をスクレイピング  |
 | `refresh`           | datasource ハッシュ変更を検知し、キャッシュを再構築  |
-| `screen`            | 戦略ファイルを適用してスクリーニング実行 (`--open [N]` で上位N件を四季報オンラインで開く) |
+| `screen`            | 戦略ファイルを適用してスクリーニング実行 (`--workers` で並列化、`--open [N]` で上位N件を四季報オンラインで開く) |
 
 全コマンド実行前に `cache_invalidation.check_and_invalidate()` が自動実行され、datasource ファイルの変更があれば対応キャッシュが破棄される (`refresh` コマンド自身は除く)。
 

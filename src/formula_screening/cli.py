@@ -238,7 +238,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     conn = get_connection()
     try:
         start = time.monotonic()
-        hits = run_screening(conn, strategy_path)
+        hits = run_screening(conn, strategy_path, workers=args.workers)
         elapsed = time.monotonic() - start
 
         if not hits:
@@ -411,6 +411,7 @@ def main() -> None:
     p_screen.add_argument("--output", "-o", help="Write results to CSV file")
     p_screen.add_argument("--open", nargs="?", type=int, const=0, default=None,
                            help="Open top N hits on Shikiho Online (omit N for all)")
+    p_screen.add_argument("--workers", type=int, default=MAGIC["screening"]["workers"], help="Number of parallel screening workers")
     p_screen.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_screen.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 

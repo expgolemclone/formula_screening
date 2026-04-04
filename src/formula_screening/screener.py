@@ -6,6 +6,7 @@ import importlib.util
 import logging
 import sqlite3
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 
@@ -85,40 +86,76 @@ def build_stock_dict(
     }
 
 
+def _screen_chunk(
+    tickers: list[str],
+    names: dict[str, str],
+    screen_fn: Callable[[dict], bool],
+    strategy_path: Path,
+) -> tuple[list[dict], int]:
+    """Screen a chunk of tickers using a thread-local DB connection."""
+    from formula_screening.db.schema import get_connection
+
+    conn: sqlite3.Connection = get_connection()
+    hits: list[dict] = []
+    errors: int = 0
+    try:
+        for ticker in tickers:
+            try:
+                stock: dict = build_stock_dict(conn, ticker, names.get(ticker, ""))
+                if screen_fn(stock):
+                    hits.append(stock)
+            except Exception:
+                errors += 1
+                logger.debug("Error screening %s", ticker, exc_info=True)
+    finally:
+        conn.close()
+    return hits, errors
+
+
 def run_screening(
     conn: sqlite3.Connection,
     strategy_path: Path,
+    *,
+    workers: int = 1,
 ) -> list[dict]:
     """Run a screening strategy against all stocks in the DB.
 
     Returns:
         List of stock dicts that passed the screen() filter.
     """
-    mod = load_strategy(strategy_path)
-    screen_fn = mod.screen
+    import concurrent.futures
 
-    tickers = get_all_tickers(conn)
-    logger.info("Screening %d stocks with %s", len(tickers), strategy_path.name)
+    mod: ModuleType = load_strategy(strategy_path)
+    screen_fn: Callable[[dict], bool] = mod.screen
+
+    tickers: list[str] = get_all_tickers(conn)
+    logger.info("Screening %d stocks with %s (workers=%d)", len(tickers), strategy_path.name, workers)
 
     names: dict[str, str] = get_stock_names(conn)
 
-    hits: list[dict] = []
-    errors = 0
+    effective_workers: int = min(workers, len(tickers)) or 1
 
-    for i, ticker in enumerate(tickers, 1):
-        if i % 100 == 0:
-            logger.info("Progress: %d/%d", i, len(tickers))
+    if effective_workers == 1:
+        all_hits, total_errors = _screen_chunk(tickers, names, screen_fn, strategy_path)
+    else:
+        chunks: list[list[str]] = [[] for _ in range(effective_workers)]
+        for i, ticker in enumerate(tickers):
+            chunks[i % effective_workers].append(ticker)
 
-        try:
-            stock = build_stock_dict(conn, ticker, names.get(ticker, ""))
-            if screen_fn(stock):
-                hits.append(stock)
-        except Exception:
-            errors += 1
-            logger.debug("Error screening %s", ticker, exc_info=True)
+        all_hits = []
+        total_errors: int = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=effective_workers) as executor:
+            futures: list[concurrent.futures.Future[tuple[list[dict], int]]] = [
+                executor.submit(_screen_chunk, chunk, names, screen_fn, strategy_path)
+                for chunk in chunks
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                hits, errors = future.result()
+                all_hits.extend(hits)
+                total_errors += errors
 
     logger.info(
         "Screening complete: %d hits / %d total (%d errors)",
-        len(hits), len(tickers), errors,
+        len(all_hits), len(tickers), total_errors,
     )
-    return hits
+    return all_hits
