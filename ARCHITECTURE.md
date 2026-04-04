@@ -213,7 +213,7 @@ PK: `(ticker, date)`
 | `scrape-bs`         | IR BANK /bs ページから詳細 BS データをスクレイピング |
 | `scrape-forecast`   | IR BANK /results ページから会社予想をスクレイピング  |
 | `refresh`           | datasource ハッシュ変更を検知し、キャッシュを再構築  |
-| `screen`            | 戦略ファイルを適用してスクリーニング実行             |
+| `screen`            | 戦略ファイルを適用してスクリーニング実行 (`--open [N]` で上位N件を四季報オンラインで開く) |
 
 全コマンド実行前に `cache_invalidation.check_and_invalidate()` が自動実行され、datasource ファイルの変更があれば対応キャッシュが破棄される (`refresh` コマンド自身は除く)。
 

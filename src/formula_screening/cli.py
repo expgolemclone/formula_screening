@@ -259,8 +259,9 @@ def _cmd_screen(args: argparse.Namespace) -> None:
             _write_csv(hits, Path(args.output), extra_cols_fn=extra_cols_fn)
             print(f"Results written to {args.output}")
 
-        if args.open:
-            _open_shikiho(hits)
+        if args.open is not None:
+            to_open = hits[:args.open] if args.open > 0 else hits
+            _open_shikiho(to_open)
     finally:
         conn.close()
 
@@ -414,7 +415,8 @@ def main() -> None:
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
     p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
     p_screen.add_argument("--output", "-o", help="Write results to CSV file")
-    p_screen.add_argument("--open", action="store_true", help="Open all hits on Shikiho Online in browser")
+    p_screen.add_argument("--open", nargs="?", type=int, const=0, default=None,
+                           help="Open top N hits on Shikiho Online (omit N for all)")
     p_screen.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_screen.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
 
