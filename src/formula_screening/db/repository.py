@@ -58,6 +58,14 @@ def get_ticker_edinet_map(conn: sqlite3.Connection) -> dict[str, str]:
     return {r["ticker"]: r["edinet_code"] for r in rows}
 
 
+def get_stock_names(conn: sqlite3.Connection) -> dict[str, str]:
+    """Return {ticker: name} for all stocks."""
+    rows = conn.execute(
+        "SELECT ticker, name FROM stocks ORDER BY ticker"
+    ).fetchall()
+    return {r["ticker"]: r["name"] for r in rows}
+
+
 # ---------------------------------------------------------------------------
 # financial_items (EAV)
 # ---------------------------------------------------------------------------

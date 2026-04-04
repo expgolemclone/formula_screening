@@ -14,6 +14,7 @@ from formula_screening.db.repository import (
     get_financial_dict,
     get_historical_items,
     get_latest_price_with_shares,
+    get_stock_names,
 )
 from formula_screening.config import MAGIC
 from formula_screening.metrics import compute_metrics
@@ -31,7 +32,7 @@ def load_strategy(path: Path) -> ModuleType:
         msg = f"Cannot load strategy from {path}"
         raise ImportError(msg)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["strategy"] = mod
+    sys.modules[f"strategy_{path.stem}"] = mod
     spec.loader.exec_module(mod)
 
     if not hasattr(mod, "screen") or not callable(mod.screen):
@@ -99,10 +100,7 @@ def run_screening(
     tickers = get_all_tickers(conn)
     logger.info("Screening %d stocks with %s", len(tickers), strategy_path.name)
 
-    # Pre-fetch stock names
-    names: dict[str, str] = {}
-    for row in conn.execute("SELECT ticker, name FROM stocks").fetchall():
-        names[row["ticker"]] = row["name"]
+    names: dict[str, str] = get_stock_names(conn)
 
     hits: list[dict] = []
     errors = 0
