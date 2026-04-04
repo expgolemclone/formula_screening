@@ -16,7 +16,11 @@ _FCF_YEARS: int = MAGIC["screening"]["fcf_years"]
 
 
 def _fcf_yield_avg(stock: dict) -> float | None:
-    """過去*_FCF_YEARS*年分の平均FCFイールドを返す."""
+    """過去*_FCF_YEARS*年分の平均FCFイールドを返す.
+
+    NOTE: 過去のFCFを現在の時価総額で割るため、ルックアヘッドバイアスが含まれる。
+    バックテストには不適だが、直近のスクリーニング用途では実用的な近似値となる。
+    """
     market_cap = stock.get("metrics", {}).get("market_cap")
     if not market_cap or market_cap <= 0:
         return None
