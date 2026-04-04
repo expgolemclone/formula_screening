@@ -15,8 +15,8 @@ After download completes, import into DB with:
 from __future__ import annotations
 
 import argparse
-import functools
 import json
+import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -33,7 +33,6 @@ from formula_screening.config import CLI_DEFAULTS, IRBANK_DIR, MAGIC
 from formula_screening.stealth import fetch_live_proxies
 
 truststore.inject_into_ssl()
-print = functools.partial(print, flush=True)  # noqa: A001 — unbuffered output
 
 _BASE_URL = "https://f.irbank.net/files"
 _FY_FILES = [
@@ -91,24 +90,21 @@ def _download_file(
     timeout: float = 15,
 ) -> bool:
     """Download with proxy rotation. On rate-limit, switch IP and wait 30s."""
-    tried = 0
-    while tried < _MAX_PROXY_TRIES:
-        addr = proxies.pop() if proxies else None
-        label = addr or "direct"
-        tried += 1
+    for _tried in range(_MAX_PROXY_TRIES):
+        addr: str | None = random.choice(proxies) if proxies else None
+        label: str = addr or "direct"
         try:
-            content = _try_download(url, addr, timeout=timeout)
+            content: bytes | None = _try_download(url, addr, timeout=timeout)
             if content is not None:
                 dest.write_bytes(content)
-                print(f"  OK via {label}")
+                print(f"  OK via {label}", flush=True)
                 return True
-            # Rate-limited: switch proxy and wait
-            print(f"  Rate-limited ({label}), switching IP + waiting {_RATE_LIMIT_WAIT:.0f}s...")
+            print(f"  Rate-limited ({label}), switching IP + waiting {_RATE_LIMIT_WAIT:.0f}s...", flush=True)
             time.sleep(_RATE_LIMIT_WAIT)
         except (requests.RequestException, json.JSONDecodeError, UnicodeDecodeError):
             continue
 
-    print("  FAILED", file=sys.stderr)
+    print("  FAILED", file=sys.stderr, flush=True)
     return False
 
 
@@ -133,10 +129,10 @@ def main() -> None:
 
     dest = Path(args.dest) if args.dest else IRBANK_DIR
 
-    print("Fetching and validating proxies...")
-    proxies = fetch_live_proxies()
+    print("Fetching and validating proxies...", flush=True)
+    proxies: list[str] = fetch_live_proxies()
     if not proxies:
-        print("WARNING: No live proxies found. Using direct connection.", file=sys.stderr)
+        print("WARNING: No live proxies found. Using direct connection.", file=sys.stderr, flush=True)
 
     codes = _year_codes(args.years)
 
@@ -159,21 +155,20 @@ def main() -> None:
     skip = 0
     fail = 0
 
-    print(f"Downloading {total} files for years: {', '.join(codes)} + quarterly")
-    print(f"Destination: {dest}")
+    print(f"Downloading {total} files for years: {', '.join(codes)} + quarterly", flush=True)
+    print(f"Destination: {dest}", flush=True)
 
     for count, (url, target) in enumerate(jobs, 1):
         if not args.force and _is_valid_json_file(target):
-            print(f"[{count}/{total}] SKIP {target.name}")
+            print(f"[{count}/{total}] SKIP {target.name}", flush=True)
             skip += 1
             continue
 
-        # Refresh proxy list if running low
         if len(proxies) < _MAX_PROXY_TRIES:
-            print("  Refreshing proxies...")
+            print("  Refreshing proxies...", flush=True)
             proxies = fetch_live_proxies()
 
-        print(f"[{count}/{total}] {url}")
+        print(f"[{count}/{total}] {url}", flush=True)
         if _download_file(url, target, proxies):
             ok += 1
         else:
@@ -182,11 +177,11 @@ def main() -> None:
         if count < total:
             time.sleep(args.interval)
 
-    print(f"\nDone: {ok} downloaded, {skip} skipped, {fail} failed.")
+    print(f"\nDone: {ok} downloaded, {skip} skipped, {fail} failed.", flush=True)
     if fail > 0:
-        print("Re-run to retry failed files (already downloaded files are skipped).", file=sys.stderr)
+        print("Re-run to retry failed files (already downloaded files are skipped).", file=sys.stderr, flush=True)
     if ok + skip > 0:
-        print(f"Import with:\n  uv run python -m formula_screening import-irbank --dir {dest}")
+        print(f"Import with:\n  uv run python -m formula_screening import-irbank --dir {dest}", flush=True)
     sys.exit(1 if fail > 0 else 0)
 
 
