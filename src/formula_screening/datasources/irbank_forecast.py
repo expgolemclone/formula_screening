@@ -15,8 +15,12 @@ from __future__ import annotations
 import logging
 import re
 import threading
+from typing import TYPE_CHECKING
 
 from formula_screening.config import MAGIC
+
+if TYPE_CHECKING:
+    from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.irbank_forecast")
 
@@ -219,7 +223,7 @@ def validate_results_html(html: str) -> bool:
 
 def scrape_forecast_worker(
     tickers: list[str],
-    pool: object,
+    pool: ProxyPool,
     *,
     interval: float = MAGIC["scrape"]["interval"],
     force: bool = False,

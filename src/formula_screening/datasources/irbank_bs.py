@@ -275,7 +275,7 @@ def _on_bs_html(ticker: str, html: str, conn: object) -> None:
 
 def scrape_bs_worker(
     tickers: list[str],
-    pool: object,
+    pool: ProxyPool,
     *,
     years: int = 1,
     interval: float = MAGIC["scrape"]["interval"],
