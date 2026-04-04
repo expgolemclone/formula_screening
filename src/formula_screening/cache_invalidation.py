@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 from formula_screening.config import DB_PATH, HASH_FILE
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.cache_invalidation")
@@ -252,8 +254,12 @@ def _fetch_prices(conn: object, tickers: list[str], proxy_pool: object) -> None:
     )
 
 
-def ensure_data_available(*, proxy_pool: object) -> None:
-    """Check DB for missing data sources and auto-fetch if empty."""
+def ensure_data_available(*, get_proxy_pool: Callable[[], ProxyPool]) -> None:
+    """Check DB for missing data sources and auto-fetch if empty.
+
+    The proxy pool is created lazily via *get_proxy_pool* so that the
+    expensive proxy discovery is skipped when all data is already present.
+    """
     from formula_screening.db.repository import get_all_tickers
     from formula_screening.db.schema import get_connection
 
@@ -280,6 +286,8 @@ def ensure_data_available(*, proxy_pool: object) -> None:
             print(f"  - {s}")
         if missing_prices:
             print("  - prices")
+
+        proxy_pool = get_proxy_pool()
 
         if "irbank" in missing_sources:
             _import_irbank(conn)

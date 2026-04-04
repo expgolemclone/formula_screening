@@ -221,7 +221,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening.cache_invalidation import ensure_data_available
     from formula_screening.screener import run_screening
 
-    ensure_data_available(proxy_pool=_resolve_proxy_pool(args))
+    ensure_data_available(get_proxy_pool=lambda: _resolve_proxy_pool(args))
 
     strategy_path = Path(args.strategy)
     if not strategy_path.exists():
