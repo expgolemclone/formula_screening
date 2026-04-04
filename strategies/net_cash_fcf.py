@@ -57,3 +57,9 @@ def screen(stock: dict) -> bool:
     if avg is None:
         return False
     return avg > 0
+
+
+def columns(stock: dict) -> list[tuple[str, str]]:
+    """戦略固有の表示カラムを返す."""
+    avg = _fcf_yield_avg(stock)
+    return [("FCF_Y%", f"{avg * 100:.2f}" if avg is not None else "-")]

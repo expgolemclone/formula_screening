@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from collections.abc import Callable
+
 from formula_screening.config import MAGIC
 from formula_screening.db.schema import get_connection, init_db
 from formula_screening.fmt import display_width, ljust, truncate
@@ -16,6 +18,8 @@ from formula_screening.log import setup_logging
 
 if TYPE_CHECKING:
     from formula_screening.stealth import ProxyPool
+
+_ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 
 
 def _cmd_import_irbank(args: argparse.Namespace) -> None:
@@ -219,7 +223,7 @@ def _cmd_refresh(args: argparse.Namespace) -> None:
 
 def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening.cache_invalidation import ensure_data_available
-    from formula_screening.screener import run_screening
+    from formula_screening.screener import load_strategy, run_screening
 
     ensure_data_available(get_proxy_pool=lambda: _resolve_proxy_pool(args))
 
@@ -227,6 +231,9 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     if not strategy_path.exists():
         print(f"Strategy file not found: {strategy_path}", file=sys.stderr)
         sys.exit(1)
+
+    strategy_mod = load_strategy(strategy_path)
+    extra_cols_fn: _ExtraColsFn | None = getattr(strategy_mod, "columns", None)
 
     conn = get_connection()
     try:
@@ -242,11 +249,11 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         hits.sort(key=lambda s: s.get("metrics", {}).get("net_cash_ratio") or 0, reverse=True)
 
         # Display results as a table
-        _print_table(hits)
+        _print_table(hits, extra_cols_fn=extra_cols_fn)
         print(f"\n{len(hits)} stocks matched ({elapsed:.1f}s)")
 
         if args.output:
-            _write_csv(hits, Path(args.output))
+            _write_csv(hits, Path(args.output), extra_cols_fn=extra_cols_fn)
             print(f"Results written to {args.output}")
 
         if args.open:
@@ -279,13 +286,18 @@ def _open_shikiho(hits: list[dict]) -> None:
     print(f"Opened {len(hits)} tickers in browser.")
 
 
-def _print_table(hits: list[dict]) -> None:
+def _print_table(
+    hits: list[dict],
+    *,
+    extra_cols_fn: _ExtraColsFn | None = None,
+) -> None:
     """Print screening results as a formatted table to stdout."""
     headers = ["Ticker", "Name", "Price", "NC_Ratio", "PER", "PBR", "ROE", "Div%"]
-    rows = []
+    rows: list[list[str]] = []
+
     for s in hits:
         m = s.get("metrics", {})
-        rows.append([
+        row = [
             s["ticker"],
             truncate(s["name"] or "", 20),
             f'{s["price"]:.0f}' if s["price"] else "-",
@@ -294,7 +306,13 @@ def _print_table(hits: list[dict]) -> None:
             f'{m["pbr"]:.2f}' if m.get("pbr") else "-",
             f'{m["roe"]:.1f}' if m.get("roe") else "-",
             f'{m["dividend_yield"]:.2f}' if m.get("dividend_yield") else "-",
-        ])
+        ]
+        if extra_cols_fn is not None:
+            extra = extra_cols_fn(s)
+            if not rows:
+                headers.extend(h for h, _ in extra)
+            row.extend(v for _, v in extra)
+        rows.append(row)
 
     widths = [
         max(display_width(h), max((display_width(r[i]) for r in rows), default=0))
@@ -308,15 +326,26 @@ def _print_table(hits: list[dict]) -> None:
         print(sep.join(ljust(cell, w) for cell, w in zip(row, widths)))
 
 
-def _write_csv(hits: list[dict], path: Path) -> None:
+def _write_csv(
+    hits: list[dict],
+    path: Path,
+    *,
+    extra_cols_fn: _ExtraColsFn | None = None,
+) -> None:
     """Write screening results to a CSV file."""
     fieldnames = ["ticker", "name", "price", "net_cash_ratio", "per", "pbr", "roe", "dividend_yield"]
+
+    extra_headers: list[str] = []
+    if extra_cols_fn is not None and hits:
+        extra_headers = [h for h, _ in extra_cols_fn(hits[0])]
+        fieldnames.extend(extra_headers)
+
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for s in hits:
             m = s.get("metrics", {})
-            writer.writerow({
+            row: dict[str, object] = {
                 "ticker": s["ticker"],
                 "name": s["name"],
                 "price": s["price"],
@@ -325,7 +354,11 @@ def _write_csv(hits: list[dict], path: Path) -> None:
                 "pbr": m.get("pbr"),
                 "roe": m.get("roe"),
                 "dividend_yield": m.get("dividend_yield"),
-            })
+            }
+            if extra_cols_fn is not None:
+                for header, value in extra_cols_fn(s):
+                    row[header] = value
+            writer.writerow(row)
 
 
 def main() -> None:
