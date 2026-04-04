@@ -120,7 +120,7 @@ formula_screening/
 
 | モジュール               | 依存先                           | 役割                                |
 | :----------------------- | :------------------------------- | :---------------------------------- |
-| `screener.py`            | `repository`, `metrics`          | 戦略ファイルの動的ロード・全銘柄適用 |
+| `screener.py`            | `config`, `repository`, `metrics` | 戦略ファイルの動的ロード・全銘柄適用 |
 | `metrics.py`             | (なし)                           | 財務データ + 株価 -> 派生指標の計算  |
 | `cache_invalidation.py`  | `config`, `repository`, `db.schema`, `cli` | ハッシュ比較によるキャッシュ管理 |
 
@@ -221,7 +221,10 @@ PK: `(ticker, date)`
 
 `strategies/` に配置した `.py` ファイルが戦略となる。`screener.py` が `importlib` で動的にロードし、全銘柄に対して `screen(stock: dict) -> bool` を呼び出す。
 
-オプションで `columns(stock: dict) -> list[tuple[str, str]]` を定義すると、CLI の出力テーブル・CSV に戦略固有のカラムが追加される。タプルは `(ヘッダー名, フォーマット済み値)` のペア。
+オプションで以下の関数を定義できる:
+
+- `columns(stock: dict) -> list[tuple[str, str]]` — CLI の出力テーブル・CSV に戦略固有のカラムを追加。タプルは `(ヘッダー名, フォーマット済み値)` のペア。
+- `sort_key(stock: dict) -> float` — 結果のソートキーを返す（降順）。未定義の場合は `net_cash_ratio` 降順。
 
 `stock` dict の構造:
 

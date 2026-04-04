@@ -245,8 +245,11 @@ def _cmd_screen(args: argparse.Namespace) -> None:
             print("No stocks matched the screening criteria.")
             return
 
-        # Sort by net_cash_ratio descending (most undervalued first)
-        hits.sort(key=lambda s: s.get("metrics", {}).get("net_cash_ratio") or 0, reverse=True)
+        sort_key_fn = getattr(strategy_mod, "sort_key", None)
+        if sort_key_fn is not None:
+            hits.sort(key=sort_key_fn, reverse=True)
+        else:
+            hits.sort(key=lambda s: s.get("metrics", {}).get("net_cash_ratio") or 0, reverse=True)
 
         # Display results as a table
         _print_table(hits, extra_cols_fn=extra_cols_fn)
