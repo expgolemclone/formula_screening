@@ -86,7 +86,8 @@ def detect_changes(old: dict[str, str], new: dict[str, str]) -> list[str]:
 
 def invalidate_cache(
     changed_files: list[str],
-    db_path: Path | None = None,
+    *,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, int]:
     """Delete cached rows corresponding to *changed_files*.
 
@@ -104,7 +105,10 @@ def invalidate_cache(
         return {}
 
     result: dict[str, int] = {}
-    conn = sqlite3.connect(str(db_path or DB_PATH))
+    own_conn = conn is None
+    if own_conn:
+        from formula_screening.db.schema import get_connection
+        conn = get_connection()
     try:
         for source in sorted(sources):
             cur = conn.execute(
@@ -118,7 +122,8 @@ def invalidate_cache(
 
         conn.commit()
     finally:
-        conn.close()
+        if own_conn:
+            conn.close()
 
     return result
 
@@ -198,20 +203,20 @@ def refresh_stale_sources(
         conn.close()
 
 
-def _import_irbank(conn: object) -> None:
+def _import_irbank(conn: sqlite3.Connection) -> None:
     from formula_screening.config import IRBANK_DIR
     from formula_screening.datasources.irbank import import_irbank_json
 
     irbank_dir = IRBANK_DIR
     if irbank_dir.is_dir():
         print("\n[auto] import-irbank ...")
-        total = import_irbank_json(conn, irbank_dir)
+        total: int = import_irbank_json(conn, irbank_dir)
         print(f"  {total} items imported.")
     else:
         print(f"\n[auto] irbank data dir not found: {irbank_dir}")
 
 
-def _scrape_bs(tickers: list[str], proxy_pool: object) -> None:
+def _scrape_bs(tickers: list[str], proxy_pool: ProxyPool) -> None:
     from formula_screening.cli import dispatch_scrape_workers
     from formula_screening.datasources.irbank_bs import scrape_bs_worker
 
@@ -225,7 +230,7 @@ def _scrape_bs(tickers: list[str], proxy_pool: object) -> None:
     )
 
 
-def _scrape_forecast(tickers: list[str], proxy_pool: object) -> None:
+def _scrape_forecast(tickers: list[str], proxy_pool: ProxyPool) -> None:
     from formula_screening.cli import dispatch_scrape_workers
     from formula_screening.datasources.irbank_forecast import (
         scrape_forecast_worker,
@@ -240,13 +245,13 @@ def _scrape_forecast(tickers: list[str], proxy_pool: object) -> None:
     )
 
 
-def _fetch_prices(conn: object, tickers: list[str], proxy_pool: object) -> None:
+def _fetch_prices(conn: sqlite3.Connection, tickers: list[str], proxy_pool: ProxyPool) -> None:
     from formula_screening.datasources.yfinance_price import (
         fetch_and_cache_prices,
     )
 
     print(f"\n[auto] fetch-prices ({len(tickers)} tickers) ...")
-    result = fetch_and_cache_prices(conn, tickers, force=True, pool=proxy_pool)
+    result: dict[str, int] = fetch_and_cache_prices(conn, tickers, force=True, pool=proxy_pool)
     print(
         f"  fetched={result['fetched']}, "
         f"skipped={result['skipped']}, "
