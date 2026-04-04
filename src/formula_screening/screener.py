@@ -15,6 +15,7 @@ from formula_screening.db.repository import (
     get_historical_items,
     get_latest_price_with_shares,
 )
+from formula_screening.config import MAGIC
 from formula_screening.metrics import compute_metrics
 
 logger = logging.getLogger("formula_screening.screener")
@@ -65,7 +66,7 @@ def build_stock_dict(
 
     metrics = compute_metrics(financials, price, shares)
 
-    cf_history = get_historical_items(conn, ticker, "cf")
+    cf_history = get_historical_items(conn, ticker, "cf", n_periods=MAGIC["screening"]["fcf_years"])
 
     return {
         "ticker": ticker,
