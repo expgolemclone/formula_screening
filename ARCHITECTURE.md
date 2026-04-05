@@ -223,7 +223,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 全コマンド実行前に `cache_invalidation.check_and_invalidate()` が自動実行され、datasource ファイルの変更があれば対応キャッシュが破棄される (`refresh` コマンド自身は除く)。
 
-プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は共通で `--proxy`, `--no-proxy`, `--target-proxies` オプションを持つ。`--target-proxies` は検証合格プロキシの目標数を指定する (デフォルト: `proxy.target_count`)。
+プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は共通で `--proxy`, `--no-proxy`, `--target-proxies`, `--check-sites` オプションを持つ。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。
 
 スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`) および `screen` の自動データ取得では、`dispatch_scrape_workers` がワーカー数をプロキシプールのサイズ以下に制限する。これにより空プールへの分割（直接接続フォールバック）を防ぎ、全ワーカーがプロキシ経由で通信する。
 

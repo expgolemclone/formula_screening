@@ -49,7 +49,8 @@ def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
     if args.no_proxy:
         return ProxyPool.direct()
     target: int = getattr(args, "target_proxies", MAGIC["proxy"]["target_count"])
-    return ProxyPool.from_auto(target_count=target)
+    check_sites: int = getattr(args, "check_sites", MAGIC["proxy"]["quality_check_count"])
+    return ProxyPool.from_auto(target_count=target, quality_check_count=check_sites)
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
@@ -385,6 +386,7 @@ def main() -> None:
     p_prices.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_prices.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
     p_prices.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
+    p_prices.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     # scrape-bs
     p_bs = sub.add_parser("scrape-bs", help="Scrape detailed BS from IRBank individual pages")
@@ -395,6 +397,7 @@ def main() -> None:
     p_bs.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_bs.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
     p_bs.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
+    p_bs.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     # scrape-forecast
     p_fc = sub.add_parser("scrape-forecast", help="Scrape forecast data from IRBank /results pages")
@@ -404,6 +407,7 @@ def main() -> None:
     p_fc.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_fc.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
     p_fc.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
+    p_fc.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     # refresh
     p_refresh = sub.add_parser("refresh", help="Check scraper hash changes, invalidate stale cache, and re-fetch")
@@ -411,6 +415,7 @@ def main() -> None:
     p_refresh.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_refresh.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
     p_refresh.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
+    p_refresh.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
@@ -422,6 +427,7 @@ def main() -> None:
     p_screen.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_screen.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy (direct connection)")
     p_screen.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
+    p_screen.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     args = parser.parse_args()
 

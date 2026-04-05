@@ -233,6 +233,7 @@ def _check_proxy(
     *,
     timeout: int = MAGIC["proxy"]["check_timeout"],
     anon_timeout: int = MAGIC["proxy"]["anon_timeout"],
+    quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
 ) -> str | None:
     """Return *addr* if the proxy is elite-anonymous and can reach a tough site.
 
@@ -265,7 +266,6 @@ def _check_proxy(
         return None
 
     # Phase 2: quality check — must pass ALL randomly selected sites in parallel
-    quality_check_count: int = MAGIC["proxy"]["quality_check_count"]
     check_domains: list[str] = random.sample(_VALIDATION_SITES, quality_check_count)
 
     def _hit(domain: str) -> bool:
@@ -295,6 +295,7 @@ def fetch_live_proxies(
     *,
     target_count: int = MAGIC["proxy"]["target_count"],
     check_workers: int = MAGIC["proxy"]["check_workers"],
+    quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
 ) -> list[str]:
     """Fetch proxy lists, validate anonymity + quality, return working proxies.
 
@@ -316,7 +317,7 @@ def fetch_live_proxies(
 
     # Seed the pipeline
     while idx < len(candidates) and len(pending) < check_workers:
-        pending.add(executor.submit(_check_proxy, candidates[idx]))
+        pending.add(executor.submit(_check_proxy, candidates[idx], quality_check_count=quality_check_count))
         idx += 1
 
     try:
@@ -332,7 +333,7 @@ def fetch_live_proxies(
                         print(f"  ... {len(alive)} elite proxies so far", flush=True)
                 # Replenish: submit next candidate for each completed future
                 if idx < len(candidates) and len(alive) < target_count:
-                    pending.add(executor.submit(_check_proxy, candidates[idx]))
+                    pending.add(executor.submit(_check_proxy, candidates[idx], quality_check_count=quality_check_count))
                     idx += 1
 
             if len(alive) >= target_count:
@@ -365,10 +366,15 @@ class ProxyPool:
         self._profile_idx = random.randrange(len(_BROWSER_PROFILES))
 
     @classmethod
-    def from_auto(cls, *, target_count: int = MAGIC["proxy"]["target_count"]) -> ProxyPool:
+    def from_auto(
+        cls,
+        *,
+        target_count: int = MAGIC["proxy"]["target_count"],
+        quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
+    ) -> ProxyPool:
         """Create a pool by auto-fetching public proxies."""
         print("Fetching and validating proxies...", flush=True)
-        proxies = fetch_live_proxies(target_count=target_count)
+        proxies = fetch_live_proxies(target_count=target_count, quality_check_count=quality_check_count)
         if not proxies:
             print("WARNING: No live proxies found. Using direct connection.", flush=True)
         return cls(proxies)
