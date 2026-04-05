@@ -44,6 +44,16 @@ class TestSourceLabel:
 
         assert _source_label(url) == "TheSpeedX"
 
+    def test_extracts_jsdelivr_github_username(self) -> None:
+        url: str = "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt"
+
+        assert _source_label(url) == "proxifly"
+
+    def test_extracts_github_pages_username(self) -> None:
+        url: str = "https://vakhov.github.io/fresh-proxy-list/http.txt"
+
+        assert _source_label(url) == "vakhov"
+
     def test_fallback_for_non_github_url(self) -> None:
         url: str = "https://example.com/proxies.txt"
 

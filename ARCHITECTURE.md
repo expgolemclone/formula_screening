@@ -273,6 +273,9 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 - `iplocate/free-proxy-list`
 - `ProxyScraper/ProxyScraper`
 - `monosans/proxy-list`
+- `proxifly/free-proxy-list`
+- `vakhov/fresh-proxy-list`
+- `clarketm/proxy-list`
 
 ### 検証パイプライン
 

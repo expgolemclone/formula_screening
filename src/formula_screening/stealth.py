@@ -34,6 +34,9 @@ _PROXY_SOURCES = [
     "https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/http.txt",
     "https://raw.githubusercontent.com/ProxyScraper/ProxyScraper/main/http.txt",
     "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+    "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt",
+    "https://vakhov.github.io/fresh-proxy-list/http.txt",
+    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
 ]
 
 # --- Browser profiles (TLS fingerprint + UA + headers, always consistent) ------
@@ -236,12 +239,25 @@ def _fetch_single_source(url: str) -> list[str]:
 
 
 def _source_label(url: str) -> str:
-    """Extract a short label from a proxy source URL (GitHub username)."""
+    """Extract a short label from a proxy source URL."""
     parts: list[str] = url.split("/")
+    # raw.githubusercontent.com/{user}/... → user
     try:
         return parts[parts.index("raw.githubusercontent.com") + 1]
     except (ValueError, IndexError):
-        return url
+        pass
+    # cdn.jsdelivr.net/gh/{user}/... → user
+    try:
+        gh_idx: int = parts.index("gh")
+        if "cdn.jsdelivr.net" in parts:
+            return parts[gh_idx + 1]
+    except (ValueError, IndexError):
+        pass
+    # {user}.github.io/... → user
+    for part in parts:
+        if part.endswith(".github.io"):
+            return part.removesuffix(".github.io")
+    return url
 
 
 def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int], dict[str, str]]:
