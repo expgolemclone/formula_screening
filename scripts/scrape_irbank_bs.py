@@ -26,7 +26,7 @@ from formula_screening.config import MAGIC
 from formula_screening.datasources.irbank_bs import scrape_bs_worker
 from formula_screening.db.repository import get_all_tickers
 from formula_screening.db.schema import get_connection, init_db
-from formula_screening.stealth import ProxyPool
+from formula_screening.stealth import ProxyPool, ProxyUnavailableError
 
 
 def main() -> None:
@@ -52,19 +52,23 @@ def main() -> None:
 
     conn.close()
 
-    if args.proxy:
-        pool = ProxyPool.from_url(args.proxy)
-    else:
-        pool = ProxyPool.from_auto()
+    try:
+        if args.proxy:
+            pool = ProxyPool.from_url(args.proxy)
+        else:
+            pool = ProxyPool.from_auto()
 
-    dispatch_scrape_workers(
-        tickers, pool,
-        worker_fn=scrape_bs_worker,
-        label="BS",
-        workers=args.workers,
-        force=args.force,
-        extra_kwargs={"years": args.years},
-    )
+        dispatch_scrape_workers(
+            tickers, pool,
+            worker_fn=scrape_bs_worker,
+            label="BS",
+            workers=args.workers,
+            force=args.force,
+            extra_kwargs={"years": args.years},
+        )
+    except ProxyUnavailableError as e:
+        print(f"ABORT: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,6 @@ import concurrent.futures
 import logging
 import random
 import sqlite3
-import sys
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -17,7 +16,12 @@ from formula_screening.db.repository import (
     get_latest_price_with_shares,
     upsert_price,
 )
-from formula_screening.stealth import ProxyPool, create_session, random_delay
+from formula_screening.stealth import (
+    ProxyPool,
+    ProxyUnavailableError,
+    create_session,
+    random_delay,
+)
 
 logger = logging.getLogger("formula_screening.yfinance_price")
 
@@ -158,9 +162,9 @@ def _process_batch(
         except RateLimitError as e:
             print(f"  Rate-limited ({e}), rotating proxy... (attempt {attempt + 1}/{_MAX_BATCH_RETRIES})", flush=True)
             pool.report_failure()
-            session = create_session(pool)
             if pool.exhausted:
-                print("  All proxies exhausted, falling back to direct", file=sys.stderr, flush=True)
+                raise ProxyUnavailableError("All proxies exhausted")
+            session = create_session(pool)
     else:
         raise RateLimitError("Rate-limited after all retries")
 

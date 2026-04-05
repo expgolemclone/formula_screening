@@ -19,9 +19,10 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
-from formula_screening.datasources.yfinance_price import fetch_and_cache_prices
+from formula_screening.datasources.yfinance_price import RateLimitError, fetch_and_cache_prices
 from formula_screening.db.repository import get_all_tickers
 from formula_screening.db.schema import get_connection, init_db
+from formula_screening.stealth import ProxyUnavailableError
 
 
 def main() -> None:
@@ -38,6 +39,9 @@ def main() -> None:
         print(f"Fetching prices for {len(tickers)} tickers...")
         result = fetch_and_cache_prices(conn, tickers, force=args.force)
         print(f"\nDone: {result['fetched']} fetched, {result['skipped']} skipped, {result['failed']} failed.")
+    except (ProxyUnavailableError, RateLimitError) as e:
+        print(f"ABORT: {e}", file=sys.stderr)
+        sys.exit(1)
     finally:
         conn.close()
 
