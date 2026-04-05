@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import operator
 import sqlite3
 import sys
 from collections.abc import Callable
@@ -22,11 +23,75 @@ from formula_screening.metrics import compute_metrics
 
 logger = logging.getLogger("formula_screening.screener")
 
+_OPS: dict[str, Callable[[float, float], bool]] = {
+    ">": operator.gt,
+    ">=": operator.ge,
+    "<": operator.lt,
+    "<=": operator.le,
+}
+
+
+def _resolve_value(
+    source: str | Callable[[dict], float | None],
+    stock: dict,
+) -> float | None:
+    if callable(source):
+        return source(stock)
+    return stock.get("metrics", {}).get(source)
+
+
+def _build_screen_fn(
+    filters: list[tuple[str | Callable[[dict], float | None], str, float | tuple[float, float]]],
+) -> Callable[[dict], bool]:
+    def screen(stock: dict) -> bool:
+        for source, op, threshold in filters:
+            value: float | None = _resolve_value(source, stock)
+            if value is None:
+                return False
+            if op == "between":
+                lo: float = threshold[0]  # type: ignore[index]
+                hi: float = threshold[1]  # type: ignore[index]
+                if not (lo < value < hi):
+                    return False
+            else:
+                cmp: Callable[[float, float], bool] = _OPS[op]
+                if not cmp(value, threshold):  # type: ignore[arg-type]
+                    return False
+        return True
+
+    return screen
+
+
+def _build_sort_key_fn(
+    sort_spec: str | Callable[[dict], float | None],
+) -> Callable[[dict], float]:
+    def sort_key(stock: dict) -> float:
+        value: float | None = _resolve_value(sort_spec, stock)
+        return value if value is not None else float("-inf")
+
+    return sort_key
+
+
+def _build_columns_fn(
+    columns_spec: list[tuple[str, str | Callable[[dict], float | None], str]],
+) -> Callable[[dict], list[tuple[str, str]]]:
+    def columns(stock: dict) -> list[tuple[str, str]]:
+        result: list[tuple[str, str]] = []
+        for header, source, fmt in columns_spec:
+            value: float | None = _resolve_value(source, stock)
+            formatted: str = fmt.format(value) if value is not None else "-"
+            result.append((header, formatted))
+        return result
+
+    return columns
+
 
 def load_strategy(path: Path) -> ModuleType:
     """Dynamically load a strategy .py file and return the module.
 
-    The module must define a ``screen(stock: dict) -> bool`` function.
+    Supports two formats:
+    - Declarative: module-level ``FILTERS`` list (and optional ``SORT``, ``COLUMNS``)
+    - Function-based: ``screen(stock: dict) -> bool`` function
     """
     spec = importlib.util.spec_from_file_location("strategy", path)
     if spec is None or spec.loader is None:
@@ -36,9 +101,20 @@ def load_strategy(path: Path) -> ModuleType:
     sys.modules[f"strategy_{path.stem}"] = mod
     spec.loader.exec_module(mod)
 
-    if not hasattr(mod, "screen") or not callable(mod.screen):
-        msg = f"Strategy {path} must define a 'screen(stock) -> bool' function"
+    filters: list | None = getattr(mod, "FILTERS", None)
+    if filters is not None:
+        mod.screen = _build_screen_fn(filters)
+    elif not (hasattr(mod, "screen") and callable(mod.screen)):
+        msg = f"Strategy {path} must define FILTERS or a 'screen(stock) -> bool' function"
         raise ImportError(msg)
+
+    sort_spec: str | Callable | None = getattr(mod, "SORT", None)
+    if sort_spec is not None and not hasattr(mod, "sort_key"):
+        mod.sort_key = _build_sort_key_fn(sort_spec)
+
+    columns_spec: list | None = getattr(mod, "COLUMNS", None)
+    if columns_spec is not None and not hasattr(mod, "columns"):
+        mod.columns = _build_columns_fn(columns_spec)
 
     return mod
 

@@ -16,6 +16,10 @@ formula_screening/
 │   ├── cache_invalidation.py   # datasource ファイルのハッシュ比較によるキャッシュ管理
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率 等)
+│   ├── indicators/
+│   │   ├── __init__.py         # 共有指標関数の re-export
+│   │   ├── fcf.py              # 平均FCFイールド (fcf_yield_avg)
+│   │   └── croic.py            # CROIC (Cash Return on Invested Capital)
 │   ├── db/
 │   │   ├── schema.py           # SQLite スキーマ定義・マイグレーション・接続管理
 │   │   └── repository.py       # データアクセス層 (stocks, financial_items, prices)
@@ -51,6 +55,7 @@ formula_screening/
     ├── test_fmt.py
     ├── test_metrics.py
     ├── test_screener.py
+    ├── test_indicators.py
     ├── test_irbank.py
     ├── test_irbank_bs.py
     ├── test_irbank_forecast.py
@@ -126,8 +131,9 @@ formula_screening/
 
 | モジュール               | 依存先                           | 役割                                |
 | :----------------------- | :------------------------------- | :---------------------------------- |
-| `screener.py`            | `config`, `repository`, `metrics`, `db.schema` | 戦略ファイルの動的ロード・全銘柄並列適用 |
-| `metrics.py`             | (なし)                           | 財務データ + 株価 -> 派生指標の計算  |
+| `screener.py`            | `config`, `repository`, `metrics`, `db.schema` | 戦略ファイルの動的ロード・宣言的フォーマット解釈・全銘柄並列適用 |
+| `metrics.py`             | (なし)                           | 財務データ + 株価 -> 派生指標の事前計算 |
+| `indicators/`            | `config`                         | 戦略から呼ぶオンデマンド指標 (FCFイールド, CROIC 等)  |
 | `cache_invalidation.py`  | `config`, `repository`, `db.schema`, `cli` | ハッシュ比較によるキャッシュ管理 |
 
 ### インフラ層
@@ -239,14 +245,57 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 ## 戦略ファイルの仕組み
 
-`strategies/` に配置した `.py` ファイルが戦略となる。`screener.py` が `importlib` で動的にロードし、全銘柄に対して `screen(stock: dict) -> bool` を呼び出す。
+`strategies/` に配置した `.py` ファイルが戦略となる。`screener.py` が `importlib` で動的にロードし、全銘柄に対してフィルタリングを実行する。
 
-オプションで以下の関数を定義できる:
+### 宣言的フォーマット (推奨)
 
-- `columns(stock: dict) -> list[tuple[str, str]]` — CLI の出力テーブル・CSV に戦略固有のカラムを追加。タプルは `(ヘッダー名, フォーマット済み値)` のペア。
-- `sort_key(stock: dict) -> float` — 結果のソートキーを返す（降順）。未定義の場合は `net_cash_ratio` 降順。
+モジュールレベル変数で条件を定義する。個別の指標計算ロジックは `indicators/` モジュールに配置し、戦略ファイルでは「どの指標をどの条件で適用するか」のみを記述する。
 
-`stock` dict の構造:
+```python
+from formula_screening.indicators import fcf_yield_avg, croic
+
+FILTERS = [
+    ("net_cash_ratio", ">", 1.0),       # stock["metrics"] のキーを参照
+    ("per", "between", (0, 10)),         # 排他的範囲: 0 < per < 10
+    ("equity_ratio", ">", 50),
+    (fcf_yield_avg, ">", 0),            # Callable は source(stock) で評価
+]
+
+SORT = fcf_yield_avg                     # ソートキー (降順)。未定義時は net_cash_ratio
+
+COLUMNS = [                              # 追加表示カラム
+    ("FCF_Y%", fcf_yield_avg, "{:.2%}"),
+    ("CROIC%", croic, "{:.2%}"),
+]
+```
+
+**FILTERS**: `(source, op, threshold)` のリスト。
+
+- `source`: `str` なら `stock["metrics"][source]`、`Callable` なら `source(stock)` で値を取得
+- `op`: `">"`, `">="`, `"<"`, `"<="`, `"between"`
+- `threshold`: 数値。`between` の場合は `(lo, hi)` タプル (排他的範囲)
+- 値が `None` ならそのフィルタは不通過
+
+**SORT**: `str` (metric名) または `Callable` (indicator関数)。降順ソート。
+
+**COLUMNS**: `(header, source, format_str)` のリスト。`None` 値は `"-"` 表示。
+
+`screener.py` の `load_strategy()` が宣言的定義から `screen()` / `sort_key()` / `columns()` 関数を自動生成するため、CLI 側の変更は不要。
+
+### 関数ベースフォーマット (後方互換)
+
+`screen(stock: dict) -> bool` 関数を直接定義する従来の形式も引き続き動作する。`FILTERS` が定義されている場合はそちらが優先される。
+
+### indicators モジュール
+
+`src/formula_screening/indicators/` に戦略から呼ぶオンデマンド指標関数を配置する。`metrics.py` が stock dict 構築時に事前計算する基本指標 (PER, PBR, net_cash_ratio 等) に対し、`indicators/` は戦略ファイルから参照される派生指標を提供する。
+
+| 関数             | モジュール          | 概要                                          |
+| :--------------- | :------------------ | :-------------------------------------------- |
+| `fcf_yield_avg`  | `indicators/fcf.py` | 過去N年間の平均FCFイールド (FCF / 時価総額)    |
+| `croic`          | `indicators/croic.py` | CROIC (FCF / 投下資本)                       |
+
+### `stock` dict の構造
 
 ```python
 {
