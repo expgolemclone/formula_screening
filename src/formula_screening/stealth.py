@@ -4,6 +4,7 @@ mimicry, User-Agent rotation, and request throttling."""
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import random
 import re
 import threading
@@ -12,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import requests
 
-from formula_screening.config import MAGIC, VALIDATION_SITES_FILE
+from formula_screening.config import MAGIC, PROXY_FAILURE_CACHE, VALIDATION_SITES_FILE
 
 if TYPE_CHECKING:
     from curl_cffi.requests import Session
@@ -228,6 +229,50 @@ def _fetch_proxy_candidates() -> list[str]:
     return proxies
 
 
+def _hit_anon(
+    url: str,
+    proxies: dict[str, str],
+    headers: dict[str, str],
+    timeout: int,
+) -> bool | None:
+    """Check a single header-echo endpoint for proxy anonymity.
+
+    Returns:
+        True  — endpoint responded and no leak headers detected (anonymous).
+        False — endpoint responded but leak headers found (not anonymous).
+        None  — endpoint unreachable or returned non-200.
+    """
+    try:
+        resp = requests.get(url, proxies=proxies, headers=headers, timeout=timeout)
+        if resp.status_code != 200:
+            return None
+        echoed: dict[str, str] = resp.json().get("headers", {})
+        if any(echoed.get(h) for h in _PROXY_LEAK_HEADERS):
+            return False
+        return True
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def _hit_quality(
+    domain: str,
+    proxies: dict[str, str],
+    headers: dict[str, str],
+    timeout: int,
+) -> bool:
+    """Return True if the proxy can reach *domain* with HTTP 200."""
+    try:
+        resp = requests.get(
+            f"https://{domain}/",
+            proxies=proxies,
+            headers=headers,
+            timeout=timeout,
+        )
+        return resp.status_code == 200
+    except requests.RequestException:
+        return False
+
+
 def _check_proxy(
     addr: str,
     *,
@@ -235,60 +280,71 @@ def _check_proxy(
     anon_timeout: int = MAGIC["proxy"]["anon_timeout"],
     quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
 ) -> str | None:
-    """Return *addr* if the proxy is elite-anonymous and can reach a tough site.
+    """Return *addr* if the proxy is elite-anonymous and can reach tough sites.
 
-    Two-phase validation:
-    1. Anonymity — header-echo service must NOT reveal X-Forwarded-For / Via.
-    2. Quality   — random tough site must return HTTP 200.
+    All checks (anonymity + quality) run concurrently in a single executor.
+    Anonymity results are evaluated first; on failure everything is cancelled
+    immediately so no time is wasted on quality checks for a leaky proxy.
     """
-    proxy_url = f"http://{addr}"
-    ua = random_ua()
-    proxies = {"http": proxy_url, "https": proxy_url}
-    headers = {"User-Agent": ua}
-
-    # Phase 1: anonymity check (try each endpoint until one succeeds)
-    anon_passed = False
-    for anon_url in random.sample(_ANON_CHECK_URLS, len(_ANON_CHECK_URLS)):
-        try:
-            resp = requests.get(
-                anon_url, proxies=proxies, headers=headers, timeout=anon_timeout,
-            )
-            if resp.status_code != 200:
-                continue
-            echoed = resp.json().get("headers", {})
-            if any(echoed.get(h) for h in _PROXY_LEAK_HEADERS):
-                return None
-            anon_passed = True
-            break
-        except (requests.RequestException, ValueError):
-            continue
-    if not anon_passed:
-        return None
-
-    # Phase 2: quality check — must pass ALL randomly selected sites in parallel
+    proxy_url: str = f"http://{addr}"
+    ua: str = random_ua()
+    proxies: dict[str, str] = {"http": proxy_url, "https": proxy_url}
+    headers: dict[str, str] = {"User-Agent": ua}
     check_domains: list[str] = random.sample(_VALIDATION_SITES, quality_check_count)
 
-    def _hit(domain: str) -> bool:
-        try:
-            resp = requests.get(
-                f"https://{domain}/",
-                proxies=proxies,
-                headers=headers,
-                timeout=timeout,
-            )
-            return resp.status_code == 200
-        except requests.RequestException:
-            return False
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=len(_ANON_CHECK_URLS) + quality_check_count,
+    ) as ex:
+        anon_futures: set[concurrent.futures.Future[bool | None]] = {
+            ex.submit(_hit_anon, url, proxies, headers, anon_timeout)
+            for url in _ANON_CHECK_URLS
+        }
+        quality_futures: set[concurrent.futures.Future[bool]] = {
+            ex.submit(_hit_quality, d, proxies, headers, timeout)
+            for d in check_domains
+        }
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=quality_check_count) as pool:
-        futures: list[concurrent.futures.Future[bool]] = [
-            pool.submit(_hit, d) for d in check_domains
-        ]
-        for future in concurrent.futures.as_completed(futures):
-            if not future.result():
-                pool.shutdown(wait=False, cancel_futures=True)
+        # Evaluate anonymity first — one pass is enough, one leak is fatal
+        anon_passed: bool = False
+        for future in concurrent.futures.as_completed(anon_futures):
+            result: bool | None = future.result()
+            if result is True:
+                anon_passed = True
+                break
+            if result is False:
+                ex.shutdown(wait=False, cancel_futures=True)
                 return None
+
+        if not anon_passed:
+            ex.shutdown(wait=False, cancel_futures=True)
+            return None
+
+        # All quality sites must return 200
+        for future in concurrent.futures.as_completed(quality_futures):
+            if not future.result():
+                ex.shutdown(wait=False, cancel_futures=True)
+                return None
+
     return addr
+
+
+def _load_failure_cache() -> dict[str, float]:
+    """Load the failure cache, discarding entries older than the configured TTL."""
+    if not PROXY_FAILURE_CACHE.exists():
+        return {}
+    try:
+        data: dict[str, float] = json.loads(PROXY_FAILURE_CACHE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    ttl_seconds: float = MAGIC["proxy"]["failure_cache_ttl_hours"] * 3600
+    now: float = time.time()
+    return {addr: ts for addr, ts in data.items() if now - ts < ttl_seconds}
+
+
+def _save_failure_cache(cache: dict[str, float]) -> None:
+    """Persist the failure cache to disk."""
+    PROXY_FAILURE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    PROXY_FAILURE_CACHE.write_text(json.dumps(cache))
 
 
 def fetch_live_proxies(
@@ -299,25 +355,42 @@ def fetch_live_proxies(
 ) -> list[str]:
     """Fetch proxy lists, validate anonymity + quality, return working proxies.
 
+    Previously-failed proxies are skipped via a TTL-based on-disk cache.
     Candidates are fed to a single executor in a producer-consumer style:
     at most *check_workers* futures are outstanding at any time, and each
-    completed future is immediately replaced with the next candidate.  This
-    avoids creating 100k+ Future objects while keeping the pipeline full.
+    completed future is immediately replaced with the next candidate.
 
     Returns:
         List of ``host:port`` strings for elite-anonymous live proxies (shuffled).
     """
-    candidates = _fetch_proxy_candidates()
-    print(f"  {len(candidates)} proxy candidates, validating (anonymity + quality)...", flush=True)
+    failure_cache: dict[str, float] = _load_failure_cache()
+
+    all_candidates: list[str] = _fetch_proxy_candidates()
+    candidates: list[str] = [c for c in all_candidates if c not in failure_cache]
+    skipped: int = len(all_candidates) - len(candidates)
+    print(
+        f"  {len(all_candidates)} proxy candidates ({skipped} skipped from failure cache), "
+        f"validating (anonymity + quality)...",
+        flush=True,
+    )
 
     alive: list[str] = []
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
-    pending: set[concurrent.futures.Future] = set()
-    idx = 0
+    now: float = time.time()
+    # Track addr per future so failures can be cached
+    future_to_addr: dict[concurrent.futures.Future[str | None], str] = {}
+    executor: concurrent.futures.ThreadPoolExecutor = (
+        concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
+    )
+    pending: set[concurrent.futures.Future[str | None]] = set()
+    idx: int = 0
 
     # Seed the pipeline
     while idx < len(candidates) and len(pending) < check_workers:
-        pending.add(executor.submit(_check_proxy, candidates[idx], quality_check_count=quality_check_count))
+        f: concurrent.futures.Future[str | None] = executor.submit(
+            _check_proxy, candidates[idx], quality_check_count=quality_check_count,
+        )
+        future_to_addr[f] = candidates[idx]
+        pending.add(f)
         idx += 1
 
     try:
@@ -326,14 +399,21 @@ def fetch_live_proxies(
                 pending, return_when=concurrent.futures.FIRST_COMPLETED,
             )
             for future in done:
-                result = future.result()
+                result: str | None = future.result()
+                addr: str = future_to_addr.pop(future)
                 if result is not None:
                     alive.append(result)
                     if len(alive) % 10 == 0:
                         print(f"  ... {len(alive)} elite proxies so far", flush=True)
-                # Replenish: submit next candidate for each completed future
+                else:
+                    failure_cache[addr] = now
+
                 if idx < len(candidates) and len(alive) < target_count:
-                    pending.add(executor.submit(_check_proxy, candidates[idx], quality_check_count=quality_check_count))
+                    f = executor.submit(
+                        _check_proxy, candidates[idx], quality_check_count=quality_check_count,
+                    )
+                    future_to_addr[f] = candidates[idx]
+                    pending.add(f)
                     idx += 1
 
             if len(alive) >= target_count:
@@ -341,6 +421,7 @@ def fetch_live_proxies(
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
 
+    _save_failure_cache(failure_cache)
     random.shuffle(alive)
     print(f"  {len(alive)} elite-anonymous proxies ready", flush=True)
     return alive
