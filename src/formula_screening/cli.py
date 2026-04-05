@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from collections.abc import Callable
 
-from formula_screening.config import MAGIC
+from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.db.schema import get_connection, init_db
 from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
@@ -465,8 +465,8 @@ def main() -> None:
     # probe-proxies
     p_probe = sub.add_parser("probe-proxies", help="Probe public proxies without touching screening data")
     p_probe.add_argument("--proxy", help="Specific HTTP proxy URL to validate (e.g. http://host:port)")
-    p_probe.add_argument("--target-proxies", type=int, default=1, help="Number of proxies to acquire")
-    p_probe.add_argument("--check-sites", type=int, default=0, help="Number of quality sites each proxy must pass")
+    p_probe.add_argument("--target-proxies", type=int, default=CLI_DEFAULTS["probe_proxies"]["target_proxies"], help="Number of proxies to acquire")
+    p_probe.add_argument("--check-sites", type=int, default=CLI_DEFAULTS["probe_proxies"]["check_sites"], help="Number of quality sites each proxy must pass")
     p_probe.add_argument("--clear-legacy-cache", action="store_true", help="Remove only legacy failure-cache entries before probing")
 
     # clear-failure-cache

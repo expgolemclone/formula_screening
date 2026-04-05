@@ -211,7 +211,7 @@ PK: `(ticker, date)`
 | :--------------------- | :------------------------------------------------------- |
 | `config/path.toml`     | データディレクトリ、DB パス、ログディレクトリ等の相対パス |
 | `config/magic_numbers.toml` | スクレイピング間隔・ワーカー数・バッチサイズ等の定数 |
-| `config/cli_defaults.toml`  | CLI オプションのデフォルト値 (ダウンロード年数等)         |
+| `config/cli_defaults.toml`  | CLI オプションのデフォルト値 (ダウンロード年数、`probe-proxies` のデフォルト等) |
 | `config/validation_sites.txt` | プロキシ品質検証用ドメインリスト (Tranco top sites 由来) |
 
 TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`, `CLI_DEFAULTS` として公開する。`validation_sites.txt` は `stealth.py` がモジュールロード時に読み込む。
@@ -235,7 +235,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は共通で `--proxy`, `--target-proxies`, `--check-sites` オプションを持つ。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。`refresh` は追加で `--workers` を持ち、auto `scrape-bs` / `scrape-forecast` の並列数を指定できる。プロキシは常に使用される (直接接続オプションはない)。  
 
-`probe-proxies` は DB やスクリーニングデータに触れず、公開プロキシ取得だけを診断するためのコマンドで、デフォルトで `--target-proxies 1 --check-sites 0` の最小チェックを行う。`--clear-legacy-cache` を付けると、short TTL に移行する前の legacy failure cache だけを一度削除してから試行できる。
+`probe-proxies` は DB やスクリーニングデータに触れず、公開プロキシ取得だけを診断するためのコマンドで、デフォルトで `--target-proxies` / `--check-sites` を `cli_defaults.toml [probe_proxies]` から取得し最小チェックを行う。`--clear-legacy-cache` を付けると、short TTL に移行する前の legacy failure cache だけを一度削除してから試行できる。
 
 `clear-failure-cache` は `--reason quality_failed --reason anon_unreachable` のように reason を repeatable に指定して、再試行したい failure cache だけを削除する。`--all` を付けると active cache 全件を削除する。引数なしで実行した場合は、削除せず現在の reason 分布だけを表示する。
 
