@@ -276,6 +276,8 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 - `proxifly/free-proxy-list`
 - `vakhov/fresh-proxy-list`
 - `clarketm/proxy-list`
+- ProxyScrape API (`api.proxyscrape.com`) — GitHub 外、plain text
+- GeoNode Free Proxy API (`proxylist.geonode.com`) — GitHub 外、JSON
 
 ### 検証パイプライン
 

@@ -37,7 +37,14 @@ _PROXY_SOURCES = [
     "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt",
     "https://vakhov.github.io/fresh-proxy-list/http.txt",
     "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+    # Non-GitHub sources for host diversity
+    "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
 ]
+
+_GEONODE_URL = (
+    "https://proxylist.geonode.com/api/proxy-list"
+    "?limit=500&page=1&sort_by=lastChecked&sort_type=desc&protocols=http"
+)
 
 # --- Browser profiles (TLS fingerprint + UA + headers, always consistent) ------
 #
@@ -238,9 +245,36 @@ def _fetch_single_source(url: str) -> list[str]:
     return proxies
 
 
+def _fetch_geonode_source() -> list[str]:
+    """Fetch proxies from GeoNode's JSON API and return host:port addresses."""
+    proxies: list[str] = []
+    try:
+        resp: requests.Response = requests.get(
+            _GEONODE_URL,
+            headers={"User-Agent": random_ua()},
+            timeout=MAGIC["proxy"]["anon_timeout"],
+        )
+        data: list[dict[str, str]] = resp.json().get("data", [])
+        for entry in data:
+            ip: str = entry.get("ip", "")
+            port: str = entry.get("port", "")
+            addr: str = f"{ip}:{port}"
+            if _HOST_PORT_RE.match(addr):
+                proxies.append(addr)
+    except (requests.RequestException, ValueError, KeyError):
+        pass
+    return proxies
+
+
 def _source_label(url: str) -> str:
     """Extract a short label from a proxy source URL."""
     parts: list[str] = url.split("/")
+    # api.proxyscrape.com → proxyscrape_api
+    if "api.proxyscrape.com" in url:
+        return "proxyscrape_api"
+    # proxylist.geonode.com → geonode
+    if "proxylist.geonode.com" in url:
+        return "geonode"
     # raw.githubusercontent.com/{user}/... → user
     try:
         return parts[parts.index("raw.githubusercontent.com") + 1]
@@ -271,14 +305,17 @@ def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int], dict[str, str]
     per_source: dict[str, int] = {}
     source_by_addr: dict[str, str] = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(_PROXY_SOURCES)) as executor:
-        future_to_url: dict[concurrent.futures.Future[list[str]], str] = {
-            executor.submit(_fetch_single_source, url): url for url in _PROXY_SOURCES
+    total_sources: int = len(_PROXY_SOURCES) + 1  # +1 for GeoNode JSON API
+    with concurrent.futures.ThreadPoolExecutor(max_workers=total_sources) as executor:
+        future_to_label: dict[concurrent.futures.Future[list[str]], str] = {
+            executor.submit(_fetch_single_source, url): _source_label(url)
+            for url in _PROXY_SOURCES
         }
-        for future in concurrent.futures.as_completed(future_to_url):
-            url: str = future_to_url[future]
+        future_to_label[executor.submit(_fetch_geonode_source)] = "geonode"
+
+        for future in concurrent.futures.as_completed(future_to_label):
+            label: str = future_to_label[future]
             result: list[str] = future.result()
-            label: str = _source_label(url)
             per_source[label] = len(result)
             before: int = len(seen)
             for addr in result:
@@ -290,7 +327,7 @@ def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int], dict[str, str]
     elapsed: float = time.monotonic() - t0
     source_summary: str = ", ".join(f"{k}: {v}" for k, v in sorted(per_source.items()))
     logger.info("Fetched %d unique candidates from %d sources in %.1fs [%s]",
-                len(seen), len(_PROXY_SOURCES), elapsed, source_summary)
+                len(seen), total_sources, elapsed, source_summary)
 
     proxies: list[str] = list(seen)
     random.shuffle(proxies)
