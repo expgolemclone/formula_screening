@@ -14,7 +14,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from formula_screening.config import DB_PATH, HASH_FILE
+from formula_screening.config import DB_PATH, HASH_FILE, MAGIC
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -168,6 +168,7 @@ def refresh_stale_sources(
     changed_files: list[str],
     *,
     proxy_pool: ProxyPool,
+    workers: int | None = None,
 ) -> None:
     """Re-fetch data sources corresponding to *changed_files*.
 
@@ -192,10 +193,10 @@ def refresh_stale_sources(
             _import_irbank(conn)
 
         if "irbank_bs" in sources:
-            _scrape_bs(tickers, proxy_pool)
+            _scrape_bs(tickers, proxy_pool, workers=workers)
 
         if "irbank_forecast" in sources:
-            _scrape_forecast(tickers, proxy_pool)
+            _scrape_forecast(tickers, proxy_pool, workers=workers)
 
         if refetch_prices and tickers:
             _fetch_prices(conn, tickers, proxy_pool)
@@ -216,7 +217,7 @@ def _import_irbank(conn: sqlite3.Connection) -> None:
         print(f"\n[auto] irbank data dir not found: {irbank_dir}")
 
 
-def _scrape_bs(tickers: list[str], proxy_pool: ProxyPool) -> None:
+def _scrape_bs(tickers: list[str], proxy_pool: ProxyPool, *, workers: int | None = None) -> None:
     from formula_screening.cli import dispatch_scrape_workers
     from formula_screening.datasources.irbank_bs import scrape_bs_worker
 
@@ -225,12 +226,18 @@ def _scrape_bs(tickers: list[str], proxy_pool: ProxyPool) -> None:
         tickers, proxy_pool,
         worker_fn=scrape_bs_worker,
         label="BS",
+        workers=workers or MAGIC["scrape"]["workers"],
         force=True,
         extra_kwargs={"years": 1},
     )
 
 
-def _scrape_forecast(tickers: list[str], proxy_pool: ProxyPool) -> None:
+def _scrape_forecast(
+    tickers: list[str],
+    proxy_pool: ProxyPool,
+    *,
+    workers: int | None = None,
+) -> None:
     from formula_screening.cli import dispatch_scrape_workers
     from formula_screening.datasources.irbank_forecast import (
         scrape_forecast_worker,
@@ -241,6 +248,7 @@ def _scrape_forecast(tickers: list[str], proxy_pool: ProxyPool) -> None:
         tickers, proxy_pool,
         worker_fn=scrape_forecast_worker,
         label="forecast",
+        workers=workers or MAGIC["scrape"]["workers"],
         force=True,
     )
 
@@ -315,5 +323,3 @@ def ensure_data_available(*, get_proxy_pool: Callable[[], ProxyPool]) -> None:
         print("\nAuto-fetch complete.")
     finally:
         conn.close()
-
-

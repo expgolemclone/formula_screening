@@ -94,11 +94,17 @@ def dispatch_scrape_workers(
     random.shuffle(tickers)
     total = len(tickers)
     proxy_count: int = pool.size
+    requested_workers = workers
     if proxy_count > 0:
         workers = min(workers, proxy_count)
     workers = min(workers, total) or 1
 
-    print(f"Scraping {label} for {total} tickers (workers={workers})")
+    worker_parts = [f"workers={workers}"]
+    if requested_workers != workers:
+        worker_parts.append(f"requested={requested_workers}")
+    if proxy_count > 0:
+        worker_parts.append(f"proxies={proxy_count}")
+    print(f"Scraping {label} for {total} tickers ({', '.join(worker_parts)})")
 
     sub_pools = pool.split(workers)
     chunks: list[list[str]] = [[] for _ in range(workers)]
@@ -218,9 +224,51 @@ def _cmd_refresh(args: argparse.Namespace) -> None:
         print("Cache is up to date. Nothing to refresh.")
         return
 
-    refresh_stale_sources(changed, proxy_pool=pool)
+    refresh_stale_sources(changed, proxy_pool=pool, workers=args.workers)
     save_hashes(compute_hashes())
     print("\nRefresh complete.")
+
+
+def _cmd_probe_proxies(args: argparse.Namespace) -> None:
+    from formula_screening.stealth import ProxyPool, clear_failure_cache
+
+    if args.clear_legacy_cache:
+        removed, remaining = clear_failure_cache(reasons={"legacy"})
+        print(f"Removed {removed} legacy failure-cache entries ({remaining} remaining).")
+
+    if args.proxy:
+        pool = ProxyPool.from_url(args.proxy)
+    else:
+        pool = ProxyPool.from_auto(
+            target_count=args.target_proxies,
+            quality_check_count=args.check_sites,
+        )
+    print(f"Live proxies ready: {pool.size}")
+    print(f"Current proxy: {pool.get() or 'none'}")
+
+
+def _cmd_clear_failure_cache(args: argparse.Namespace) -> None:
+    from formula_screening.stealth import (
+        clear_failure_cache,
+        failure_cache_reason_counts,
+    )
+
+    def render_counts(counts: dict[str, int]) -> str:
+        return ", ".join(f"{key}={value}" for key, value in sorted(counts.items())) or "empty"
+
+    before = failure_cache_reason_counts()
+    total_before = sum(before.values())
+    print(f"Failure cache before: {total_before} ({render_counts(before)})")
+
+    if not args.all and not args.reason:
+        print("Nothing cleared. Pass --reason REASON (repeatable) or --all.")
+        return
+
+    reasons = None if args.all else set(args.reason)
+    removed, remaining = clear_failure_cache(reasons=reasons)
+    after = failure_cache_reason_counts()
+    print(f"Removed {removed} entries.")
+    print(f"Failure cache after: {remaining} ({render_counts(after)})")
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
@@ -362,6 +410,8 @@ def _write_csv(
 
 
 def main() -> None:
+    from formula_screening.stealth import ProxyUnavailableError
+
     parser = argparse.ArgumentParser(
         prog="formula_screening",
         description="Screen Japanese stocks with user-defined Python formulas.",
@@ -407,9 +457,24 @@ def main() -> None:
     # refresh
     p_refresh = sub.add_parser("refresh", help="Check scraper hash changes, invalidate stale cache, and re-fetch")
     p_refresh.add_argument("--force", action="store_true", help="Force re-fetch all sources regardless of hash")
+    p_refresh.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel scrape workers for refresh")
     p_refresh.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_refresh.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
     p_refresh.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
+
+    # probe-proxies
+    p_probe = sub.add_parser("probe-proxies", help="Probe public proxies without touching screening data")
+    p_probe.add_argument("--proxy", help="Specific HTTP proxy URL to validate (e.g. http://host:port)")
+    p_probe.add_argument("--target-proxies", type=int, default=1, help="Number of proxies to acquire")
+    p_probe.add_argument("--check-sites", type=int, default=0, help="Number of quality sites each proxy must pass")
+    p_probe.add_argument("--clear-legacy-cache", action="store_true", help="Remove only legacy failure-cache entries before probing")
+
+    # clear-failure-cache
+    from formula_screening.stealth import failure_cache_reasons
+
+    p_clear = sub.add_parser("clear-failure-cache", help="Clear proxy failure-cache entries by reason")
+    p_clear.add_argument("--reason", action="append", choices=failure_cache_reasons(), help="Failure reason to remove; repeat to remove multiple reasons")
+    p_clear.add_argument("--all", action="store_true", help="Remove all active failure-cache entries")
 
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
@@ -428,7 +493,7 @@ def main() -> None:
     init_db()
 
     # Auto-check scraper hashes before any command (refresh handles its own)
-    if args.command != "refresh":
+    if args.command not in {"refresh", "probe-proxies", "clear-failure-cache"}:
         from formula_screening.cache_invalidation import check_and_invalidate
 
         check_and_invalidate(verbose=args.verbose)
@@ -439,6 +504,12 @@ def main() -> None:
         "scrape-bs": _cmd_scrape_bs,
         "scrape-forecast": _cmd_scrape_forecast,
         "refresh": _cmd_refresh,
+        "probe-proxies": _cmd_probe_proxies,
+        "clear-failure-cache": _cmd_clear_failure_cache,
         "screen": _cmd_screen,
     }
-    cmds[args.command](args)
+    try:
+        cmds[args.command](args)
+    except ProxyUnavailableError as e:
+        print(f"ABORT: {e}", file=sys.stderr)
+        sys.exit(1)
