@@ -15,9 +15,15 @@ from formula_screening.stealth import (
     _hit_anon,
     _hit_quality,
     _load_failure_cache,
+    _prefilter_proxy,
     _save_failure_cache,
     _source_label,
     _tcp_reachable,
+    ProxyPool,
+    ProxyUnavailableError,
+    clear_failure_cache,
+    failure_cache_reason_counts,
+    failure_cache_reasons,
     fetch_live_proxies,
 )
 
@@ -170,9 +176,9 @@ class TestCheckProxy:
             return resp
 
         with patch("formula_screening.stealth.requests.get", side_effect=fake_get):
-            result: str | None = _check_proxy("1.2.3.4:8080", quality_check_count=2)
+            result: str = _check_proxy("1.2.3.4:8080", quality_check_count=2)
 
-        assert result == "1.2.3.4:8080"
+        assert result == "ok"
 
     @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com", "b.com", "c.com"])
     def test_fails_when_anon_leaks(self) -> None:
@@ -184,9 +190,9 @@ class TestCheckProxy:
             return resp
 
         with patch("formula_screening.stealth.requests.get", side_effect=fake_get):
-            result: str | None = _check_proxy("1.2.3.4:8080", quality_check_count=2)
+            result: str = _check_proxy("1.2.3.4:8080", quality_check_count=2)
 
-        assert result is None
+        assert result == "anon_leak"
 
     @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com", "b.com", "c.com"])
     def test_fails_when_quality_fails(self) -> None:
@@ -200,9 +206,33 @@ class TestCheckProxy:
             return resp
 
         with patch("formula_screening.stealth.requests.get", side_effect=fake_get):
-            result: str | None = _check_proxy("1.2.3.4:8080", quality_check_count=2)
+            result: str = _check_proxy("1.2.3.4:8080", quality_check_count=2)
 
-        assert result is None
+        assert result == "quality_failed"
+
+    def test_fails_when_proxy_is_not_really_a_proxy(self) -> None:
+        import requests
+
+        with patch(
+            "formula_screening.stealth.requests.get",
+            side_effect=requests.exceptions.ProxyError("Tunnel connection failed: 400 Bad Request"),
+        ):
+            result: str = _check_proxy("1.2.3.4:8080", quality_check_count=0)
+
+        assert result == "not_a_proxy"
+
+
+# ---------------------------------------------------------------------------
+# _prefilter_proxy
+# ---------------------------------------------------------------------------
+
+
+class TestPrefilterProxy:
+    """Tests for the fast proxy pre-filter."""
+
+    def test_returns_tcp_unreachable_before_proxy_checks(self) -> None:
+        with patch("formula_screening.stealth._tcp_reachable", return_value=False):
+            assert _prefilter_proxy("1.2.3.4:8080") == "tcp_unreachable"
 
 
 # ---------------------------------------------------------------------------
@@ -216,27 +246,86 @@ class TestFailureCache:
     def test_save_and_load_roundtrip(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
         now: float = time.time()
-        cache: dict[str, float] = {"1.2.3.4:80": now, "5.6.7.8:3128": now}
+        cache: dict[str, dict[str, float | str]] = {
+            "1.2.3.4:80": {"reason": "not_a_proxy", "ts": now},
+            "5.6.7.8:3128": {"reason": "anon_unreachable", "ts": now},
+        }
 
         with patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file):
             _save_failure_cache(cache)
-            loaded: dict[str, float] = _load_failure_cache()
+            loaded = _load_failure_cache()
 
         assert loaded == cache
 
     def test_expired_entries_are_discarded(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
         now: float = time.time()
-        old_ts: float = now - 25 * 3600  # 25 hours ago (TTL=24h)
-        cache: dict[str, float] = {"old:80": old_ts, "fresh:80": now}
+        old_ts: float = now - 2 * 3600
+        cache = {
+            "old:80": {"reason": "anon_unreachable", "ts": old_ts},
+            "fresh:80": {"reason": "not_a_proxy", "ts": old_ts},
+        }
 
         cache_file.write_text(json.dumps(cache))
 
         with patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file):
-            loaded: dict[str, float] = _load_failure_cache()
+            loaded = _load_failure_cache()
 
         assert "old:80" not in loaded
-        assert "fresh:80" in loaded
+        assert loaded["fresh:80"]["reason"] == "not_a_proxy"
+
+    def test_legacy_entries_are_loaded_with_short_ttl(self, tmp_path: Path) -> None:
+        cache_file: Path = tmp_path / ".proxy_failures.json"
+        now: float = time.time()
+        cache_file.write_text(json.dumps({"legacy:80": now}))
+
+        with patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file):
+            loaded = _load_failure_cache()
+
+        assert loaded == {"legacy:80": {"reason": "legacy", "ts": now}}
+
+    def test_clear_failure_cache_removes_only_requested_reasons(self, tmp_path: Path) -> None:
+        cache_file: Path = tmp_path / ".proxy_failures.json"
+        now: float = time.time()
+        cache = {
+            "legacy:80": {"reason": "legacy", "ts": now},
+            "new:80": {"reason": "not_a_proxy", "ts": now},
+        }
+        cache_file.write_text(json.dumps(cache))
+
+        with patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file):
+            removed, remaining = clear_failure_cache(reasons={"legacy"})
+            loaded = _load_failure_cache()
+
+        assert removed == 1
+        assert remaining == 1
+        assert "legacy:80" not in loaded
+        assert loaded["new:80"]["reason"] == "not_a_proxy"
+
+    def test_failure_cache_reason_counts_reports_active_distribution(self, tmp_path: Path) -> None:
+        cache_file: Path = tmp_path / ".proxy_failures.json"
+        now: float = time.time()
+        cache = {
+            "a:80": {"reason": "not_a_proxy", "ts": now},
+            "b:80": {"reason": "quality_failed", "ts": now},
+            "c:80": {"reason": "quality_failed", "ts": now},
+        }
+        cache_file.write_text(json.dumps(cache))
+
+        with patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file):
+            counts = failure_cache_reason_counts()
+
+        assert counts == {"not_a_proxy": 1, "quality_failed": 2}
+
+    def test_failure_cache_reasons_matches_known_reason_keys(self) -> None:
+        assert failure_cache_reasons() == [
+            "anon_leak",
+            "anon_unreachable",
+            "legacy",
+            "not_a_proxy",
+            "quality_failed",
+            "tcp_unreachable",
+        ]
 
     def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / "nonexistent.json"
@@ -251,7 +340,7 @@ class TestFailureCache:
         cache_file.write_text("not valid json{{{")
 
         with patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file):
-            loaded: dict[str, float] = _load_failure_cache()
+            loaded = _load_failure_cache()
 
         assert loaded == {}
 
@@ -264,25 +353,25 @@ class TestFailureCache:
 class TestFetchLiveProxiesCache:
     """Tests that fetch_live_proxies filters and records failures."""
 
-    @patch("formula_screening.stealth._tcp_reachable", return_value=True)
-    @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com", "b.com", "c.com"])
-    def test_skips_cached_failures(self, _tcp_mock: MagicMock, tmp_path: Path) -> None:
+    def test_skips_cached_failures(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
         now: float = time.time()
-        cache_file.write_text(json.dumps({"1.1.1.1:80": now}))
-
-        def fake_get(url: str, **kwargs: object) -> MagicMock:
-            resp: MagicMock = MagicMock()
-            resp.status_code = 200
-            if "httpbin" in url:
-                resp.json.return_value = {"headers": {}}
-            elif "raw.githubusercontent" in url:
-                resp.text = "1.1.1.1:80\n2.2.2.2:80\n"
-            return resp
+        cache_file.write_text(json.dumps({
+            "1.1.1.1:80": {"reason": "not_a_proxy", "ts": now},
+        }))
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
-            patch("formula_screening.stealth.requests.get", side_effect=fake_get),
+            patch(
+                "formula_screening.stealth._fetch_proxy_candidates",
+                return_value=(
+                    ["1.1.1.1:80", "2.2.2.2:80"],
+                    {"src": 2},
+                    {"1.1.1.1:80": "src", "2.2.2.2:80": "src"},
+                ),
+            ),
+            patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
+            patch("formula_screening.stealth._check_proxy", return_value="ok"),
         ):
             result: list[str] = fetch_live_proxies(
                 target_count=1, check_workers=2, quality_check_count=1,
@@ -291,59 +380,64 @@ class TestFetchLiveProxiesCache:
         assert "2.2.2.2:80" in result
         assert "1.1.1.1:80" not in result
 
-    @patch("formula_screening.stealth._tcp_reachable", return_value=True)
-    @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com", "b.com", "c.com"])
-    def test_records_new_failures(self, _tcp_mock: MagicMock, tmp_path: Path) -> None:
+    def test_records_new_failures(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
-
-        call_count: dict[str, int] = {}
-
-        def fake_get(url: str, **kwargs: object) -> MagicMock:
-            call_count[url] = call_count.get(url, 0) + 1
-            resp: MagicMock = MagicMock()
-            if "raw.githubusercontent" in url:
-                resp.status_code = 200
-                resp.text = "9.9.9.9:80\n"
-                return resp
-            if "httpbin" in url:
-                resp.status_code = 200
-                resp.json.return_value = {"headers": {"Via": "squid"}}
-                return resp
-            resp.status_code = 403
-            return resp
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
-            patch("formula_screening.stealth.requests.get", side_effect=fake_get),
+            patch(
+                "formula_screening.stealth._fetch_proxy_candidates",
+                return_value=(
+                    ["9.9.9.9:80"],
+                    {"src": 1},
+                    {"9.9.9.9:80": "src"},
+                ),
+            ),
+            patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
+            patch("formula_screening.stealth._check_proxy", return_value="anon_leak"),
         ):
             result: list[str] = fetch_live_proxies(
                 target_count=1, check_workers=2, quality_check_count=1,
             )
 
         assert result == []
-        saved: dict[str, float] = json.loads(cache_file.read_text())
-        assert "9.9.9.9:80" in saved
+        saved = json.loads(cache_file.read_text())
+        assert saved["9.9.9.9:80"]["reason"] == "anon_leak"
 
-    @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com", "b.com", "c.com"])
-    def test_tcp_unreachable_cached_as_failure(self, tmp_path: Path) -> None:
+    def test_prefilter_failures_are_cached_with_reason(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
-
-        def fake_get(url: str, **kwargs: object) -> MagicMock:
-            resp: MagicMock = MagicMock()
-            resp.status_code = 200
-            if "raw.githubusercontent" in url:
-                resp.text = "10.0.0.1:80\n"
-            return resp
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
-            patch("formula_screening.stealth.requests.get", side_effect=fake_get),
-            patch("formula_screening.stealth._tcp_reachable", return_value=False),
+            patch(
+                "formula_screening.stealth._fetch_proxy_candidates",
+                return_value=(
+                    ["10.0.0.1:80"],
+                    {"src": 1},
+                    {"10.0.0.1:80": "src"},
+                ),
+            ),
+            patch("formula_screening.stealth._prefilter_proxy", return_value="not_a_proxy"),
         ):
             result: list[str] = fetch_live_proxies(
                 target_count=1, check_workers=2, quality_check_count=1,
             )
 
         assert result == []
-        saved: dict[str, float] = json.loads(cache_file.read_text())
-        assert "10.0.0.1:80" in saved
+        saved = json.loads(cache_file.read_text())
+        assert saved["10.0.0.1:80"]["reason"] == "not_a_proxy"
+
+
+class TestProxyPool:
+    """Tests for user-facing proxy acquisition errors."""
+
+    def test_from_auto_includes_diagnostics(self) -> None:
+        with patch(
+            "formula_screening.stealth.fetch_live_proxies",
+            side_effect=lambda **_: [],
+        ), patch(
+            "formula_screening.stealth._LAST_PROXY_FAILURE_SUMMARY",
+            "0/10 passed; validation [not_a_proxy=10]",
+        ):
+            with pytest.raises(ProxyUnavailableError, match="validation \\[not_a_proxy=10\\]"):
+                ProxyPool.from_auto(target_count=1, quality_check_count=1)

@@ -11,6 +11,7 @@ import re
 import socket
 import threading
 import time
+from collections import Counter
 from typing import TYPE_CHECKING
 
 import requests
@@ -28,13 +29,11 @@ _HOST_PORT_RE = re.compile(
 
 
 _PROXY_SOURCES = [
-    "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
-    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
-    "https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/http.txt",
-    "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
+    # Curated, actively generated lists. These are materially higher quality
+    # than generic "fresh proxy" dumps that mostly contain dead web servers.
+    "https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/http.txt",
+    "https://raw.githubusercontent.com/ProxyScraper/ProxyScraper/main/http.txt",
     "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-    "https://raw.githubusercontent.com/MuRongPIG/Proxy-Master/main/http.txt",
-    "https://raw.githubusercontent.com/zloi-user/hideip.me/main/http.txt",
 ]
 
 # --- Browser profiles (TLS fingerprint + UA + headers, always consistent) ------
@@ -142,6 +141,21 @@ _PROXY_LEAK_HEADERS = (
     "X-Proxy-ID",
 )
 
+_FAILURE_TTL_HOURS: dict[str, float] = {
+    "legacy": 1.0,
+    "tcp_unreachable": 1.0,
+    "anon_unreachable": 1.0,
+    "quality_failed": 1.0,
+    "not_a_proxy": float(MAGIC["proxy"]["failure_cache_ttl_hours"]),
+    "anon_leak": float(MAGIC["proxy"]["failure_cache_ttl_hours"]),
+}
+
+_LAST_PROXY_FAILURE_SUMMARY: str = "no diagnostics recorded"
+
+
+class ProxyUnavailableError(RuntimeError):
+    """Raised when a proxy is required but none are available."""
+
 # --- Quality check sites (loaded from config/validation_sites.txt) ---------------
 
 
@@ -230,15 +244,16 @@ def _source_label(url: str) -> str:
         return url
 
 
-def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int]]:
+def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int], dict[str, str]]:
     """Fetch raw proxy lists from all sources in parallel, deduplicated.
 
     Returns:
-        Tuple of (shuffled proxy list, per-source counts).
+        Tuple of (shuffled proxy list, per-source counts, first source by addr).
     """
     t0: float = time.monotonic()
     seen: set[str] = set()
     per_source: dict[str, int] = {}
+    source_by_addr: dict[str, str] = {}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(_PROXY_SOURCES)) as executor:
         future_to_url: dict[concurrent.futures.Future[list[str]], str] = {
@@ -250,7 +265,10 @@ def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int]]:
             label: str = _source_label(url)
             per_source[label] = len(result)
             before: int = len(seen)
-            seen.update(result)
+            for addr in result:
+                if addr not in seen:
+                    seen.add(addr)
+                    source_by_addr[addr] = label
             logger.debug("Source %s: %d proxies (%d new)", label, len(result), len(seen) - before)
 
     elapsed: float = time.monotonic() - t0
@@ -260,7 +278,55 @@ def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int]]:
 
     proxies: list[str] = list(seen)
     random.shuffle(proxies)
-    return proxies, per_source
+    return proxies, per_source, source_by_addr
+
+
+def _classify_request_exception(exc: requests.RequestException) -> str:
+    """Map request exceptions to cacheable proxy failure reasons."""
+    if isinstance(exc, requests.exceptions.ProxyError):
+        msg = str(exc).lower()
+        if (
+            "tunnel connection failed" in msg
+            or "unable to connect to proxy" in msg
+            or "wrong version number" in msg
+            or ("proxy" in msg and "bad request" in msg)
+        ):
+            return "not_a_proxy"
+    return "anon_unreachable"
+
+
+def _request_via_proxy(
+    url: str,
+    proxies: dict[str, str],
+    headers: dict[str, str],
+    timeout: int,
+) -> tuple[requests.Response | None, str | None]:
+    """Issue a single proxied GET request, returning either a response or a reason."""
+    try:
+        return requests.get(url, proxies=proxies, headers=headers, timeout=timeout), None
+    except requests.RequestException as exc:
+        return None, _classify_request_exception(exc)
+
+
+def _hit_anon_detailed(
+    url: str,
+    proxies: dict[str, str],
+    headers: dict[str, str],
+    timeout: int,
+) -> str:
+    """Return a detailed status for a single anonymity endpoint."""
+    resp, error_reason = _request_via_proxy(url, proxies, headers, timeout)
+    if error_reason is not None:
+        return error_reason
+    if resp is None or resp.status_code != 200:
+        return "anon_unreachable"
+    try:
+        echoed: dict[str, str] = resp.json().get("headers", {})
+    except ValueError:
+        return "anon_unreachable"
+    if any(echoed.get(h) for h in _PROXY_LEAK_HEADERS):
+        return "anon_leak"
+    return "ok"
 
 
 def _hit_anon(
@@ -276,16 +342,32 @@ def _hit_anon(
         False — endpoint responded but leak headers found (not anonymous).
         None  — endpoint unreachable or returned non-200.
     """
-    try:
-        resp = requests.get(url, proxies=proxies, headers=headers, timeout=timeout)
-        if resp.status_code != 200:
-            return None
-        echoed: dict[str, str] = resp.json().get("headers", {})
-        if any(echoed.get(h) for h in _PROXY_LEAK_HEADERS):
-            return False
+    result: str = _hit_anon_detailed(url, proxies, headers, timeout)
+    if result == "ok":
         return True
-    except (requests.RequestException, ValueError):
-        return None
+    if result == "anon_leak":
+        return False
+    return None
+
+
+def _hit_quality_detailed(
+    domain: str,
+    proxies: dict[str, str],
+    headers: dict[str, str],
+    timeout: int,
+) -> str:
+    """Return a detailed status for a single quality-check domain."""
+    resp, error_reason = _request_via_proxy(
+        f"https://{domain}/",
+        proxies,
+        headers,
+        timeout,
+    )
+    if error_reason is not None:
+        return error_reason
+    if resp is None or resp.status_code != 200:
+        return "quality_failed"
+    return "ok"
 
 
 def _hit_quality(
@@ -295,16 +377,19 @@ def _hit_quality(
     timeout: int,
 ) -> bool:
     """Return True if the proxy can reach *domain* with HTTP 200."""
-    try:
-        resp = requests.get(
-            f"https://{domain}/",
-            proxies=proxies,
-            headers=headers,
-            timeout=timeout,
-        )
-        return resp.status_code == 200
-    except requests.RequestException:
-        return False
+    return _hit_quality_detailed(domain, proxies, headers, timeout) == "ok"
+
+
+def _prefilter_proxy(
+    addr: str,
+    *,
+    tcp_timeout: float = MAGIC["proxy"]["tcp_timeout"],
+    anon_timeout: int = MAGIC["proxy"]["anon_timeout"],
+) -> str:
+    """Fast proxy pre-filter using TCP reachability plus anonymous proxy checks."""
+    if not _tcp_reachable(addr, timeout=tcp_timeout):
+        return "tcp_unreachable"
+    return _check_proxy(addr, anon_timeout=anon_timeout, quality_check_count=0)
 
 
 def _check_proxy(
@@ -313,8 +398,8 @@ def _check_proxy(
     timeout: int = MAGIC["proxy"]["check_timeout"],
     anon_timeout: int = MAGIC["proxy"]["anon_timeout"],
     quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
-) -> str | None:
-    """Return *addr* if the proxy is elite-anonymous and can reach tough sites.
+) -> str:
+    """Return a detailed status for a proxy candidate.
 
     All checks (anonymity + quality) run concurrently in a single executor.
     Anonymity results are evaluated first; on failure everything is cancelled
@@ -329,41 +414,45 @@ def _check_proxy(
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=len(_ANON_CHECK_URLS) + quality_check_count,
     ) as ex:
-        anon_futures: set[concurrent.futures.Future[bool | None]] = {
-            ex.submit(_hit_anon, url, proxies, headers, anon_timeout)
+        anon_futures: set[concurrent.futures.Future[str]] = {
+            ex.submit(_hit_anon_detailed, url, proxies, headers, anon_timeout)
             for url in _ANON_CHECK_URLS
         }
-        quality_futures: set[concurrent.futures.Future[bool]] = {
-            ex.submit(_hit_quality, d, proxies, headers, timeout)
+        quality_futures: set[concurrent.futures.Future[str]] = {
+            ex.submit(_hit_quality_detailed, d, proxies, headers, timeout)
             for d in check_domains
         }
 
         # Evaluate anonymity first — one pass is enough, one leak is fatal
         anon_passed: bool = False
+        anon_failure: str = "anon_unreachable"
         for future in concurrent.futures.as_completed(anon_futures):
-            result: bool | None = future.result()
-            if result is True:
+            result: str = future.result()
+            if result == "ok":
                 anon_passed = True
                 break
-            if result is False:
+            if result == "anon_leak":
                 logger.debug("FAIL %s (anon leak detected)", addr)
                 ex.shutdown(wait=False, cancel_futures=True)
-                return None
+                return "anon_leak"
+            if result == "not_a_proxy":
+                anon_failure = "not_a_proxy"
 
         if not anon_passed:
-            logger.debug("FAIL %s (anon unreachable)", addr)
+            logger.debug("FAIL %s (%s)", addr, anon_failure)
             ex.shutdown(wait=False, cancel_futures=True)
-            return None
+            return anon_failure
 
         # All quality sites must return 200
         for future in concurrent.futures.as_completed(quality_futures):
-            if not future.result():
-                logger.debug("FAIL %s (quality check failed)", addr)
+            result = future.result()
+            if result != "ok":
+                logger.debug("FAIL %s (%s)", addr, result)
                 ex.shutdown(wait=False, cancel_futures=True)
-                return None
+                return result
 
     logger.debug("PASS %s (anon ok, %d/%d quality sites)", addr, quality_check_count, quality_check_count)
-    return addr
+    return "ok"
 
 
 def _tcp_reachable(addr: str, timeout: float = MAGIC["proxy"]["tcp_timeout"]) -> bool:
@@ -378,27 +467,116 @@ def _tcp_reachable(addr: str, timeout: float = MAGIC["proxy"]["tcp_timeout"]) ->
         return False
 
 
-def _load_failure_cache() -> dict[str, float]:
-    """Load the failure cache, discarding entries older than the configured TTL."""
+def _format_reason_counts(counts: Counter[str]) -> str:
+    """Render reason counters in a stable, human-readable order."""
+    if not counts:
+        return "none"
+    items = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return ", ".join(f"{reason}={count}" for reason, count in items)
+
+
+def _failure_ttl_seconds(reason: str) -> float:
+    """Return the TTL for a cached failure reason."""
+    hours = _FAILURE_TTL_HOURS.get(reason, float(MAGIC["proxy"]["failure_cache_ttl_hours"]))
+    return hours * 3600
+
+
+def _normalize_failure_cache_entry(value: object) -> dict[str, float | str] | None:
+    """Convert legacy and current cache entries into a normalized form."""
+    if isinstance(value, (int, float)):
+        return {"reason": "legacy", "ts": float(value)}
+    if not isinstance(value, dict):
+        return None
+    ts = value.get("ts")
+    reason = value.get("reason", "legacy")
+    if not isinstance(ts, (int, float)) or not isinstance(reason, str):
+        return None
+    return {"reason": reason, "ts": float(ts)}
+
+
+def _make_failure_cache_entry(reason: str, ts: float | None = None) -> dict[str, float | str]:
+    """Build a failure-cache entry."""
+    return {"reason": reason, "ts": float(time.time() if ts is None else ts)}
+
+
+def _load_failure_cache() -> dict[str, dict[str, float | str]]:
+    """Load the failure cache, discarding entries after their reason-specific TTL."""
     if not PROXY_FAILURE_CACHE.exists():
         return {}
     try:
-        data: dict[str, float] = json.loads(PROXY_FAILURE_CACHE.read_text())
+        raw = json.loads(PROXY_FAILURE_CACHE.read_text())
     except (json.JSONDecodeError, OSError):
         return {}
-    ttl_seconds: float = MAGIC["proxy"]["failure_cache_ttl_hours"] * 3600
+    if not isinstance(raw, dict):
+        return {}
     now: float = time.time()
-    valid: dict[str, float] = {addr: ts for addr, ts in data.items() if now - ts < ttl_seconds}
-    expired: int = len(data) - len(valid)
-    logger.info("Failure cache: %d entries loaded, %d expired (TTL=%dh)",
-                len(valid), expired, MAGIC["proxy"]["failure_cache_ttl_hours"])
+    valid: dict[str, dict[str, float | str]] = {}
+    loaded_by_reason: Counter[str] = Counter()
+    expired_by_reason: Counter[str] = Counter()
+    for addr, value in raw.items():
+        if not isinstance(addr, str):
+            continue
+        entry = _normalize_failure_cache_entry(value)
+        if entry is None:
+            continue
+        reason = str(entry["reason"])
+        ts = float(entry["ts"])
+        if now - ts < _failure_ttl_seconds(reason):
+            valid[addr] = {"reason": reason, "ts": ts}
+            loaded_by_reason[reason] += 1
+        else:
+            expired_by_reason[reason] += 1
+    logger.info(
+        "Failure cache: %d entries loaded, %d expired (%s)",
+        len(valid),
+        sum(expired_by_reason.values()),
+        _format_reason_counts(loaded_by_reason),
+    )
     return valid
 
 
-def _save_failure_cache(cache: dict[str, float]) -> None:
+def _save_failure_cache(cache: dict[str, dict[str, float | str]]) -> None:
     """Persist the failure cache to disk."""
     PROXY_FAILURE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    PROXY_FAILURE_CACHE.write_text(json.dumps(cache))
+    PROXY_FAILURE_CACHE.write_text(json.dumps(cache, sort_keys=True))
+
+
+def failure_cache_reason_counts() -> Counter[str]:
+    """Return the active failure-cache distribution by reason."""
+    cache = _load_failure_cache()
+    counts: Counter[str] = Counter()
+    for entry in cache.values():
+        counts[str(entry["reason"])] += 1
+    return counts
+
+
+def failure_cache_reasons() -> list[str]:
+    """Return the known failure reasons accepted by cache-management CLI."""
+    return sorted(_FAILURE_TTL_HOURS)
+
+
+def clear_failure_cache(*, reasons: set[str] | None = None) -> tuple[int, int]:
+    """Delete cached proxy failures, optionally filtered by reason.
+
+    Returns:
+        Tuple of (removed_count, remaining_count).
+    """
+    cache = _load_failure_cache()
+    if reasons is None:
+        removed = len(cache)
+        _save_failure_cache({})
+        return removed, 0
+
+    kept: dict[str, dict[str, float | str]] = {}
+    removed = 0
+    for addr, entry in cache.items():
+        reason = str(entry["reason"])
+        if reason in reasons:
+            removed += 1
+        else:
+            kept[addr] = entry
+    _save_failure_cache(kept)
+    return removed, len(kept)
 
 
 def fetch_live_proxies(
@@ -410,55 +588,94 @@ def fetch_live_proxies(
     """Fetch proxy lists, validate anonymity + quality, return working proxies.
 
     Previously-failed proxies are skipped via a TTL-based on-disk cache.
-    A TCP connect pre-filter eliminates unreachable candidates before the
-    expensive HTTP checks.  Surviving candidates are fed to a single executor
-    in a producer-consumer style: at most *check_workers* futures are
-    outstanding at any time, and each completed future is immediately
-    replaced with the next candidate.
+    A proxy pre-filter first rejects dead ports and endpoints that cannot
+    complete anonymous proxy requests. Surviving candidates are fed to a
+    single executor in a producer-consumer style: at most *check_workers*
+    futures are outstanding at any time, and each completed future is
+    immediately replaced with the next candidate.
 
     Returns:
         List of ``host:port`` strings for elite-anonymous live proxies (shuffled).
     """
+    global _LAST_PROXY_FAILURE_SUMMARY
+
     overall_t0: float = time.monotonic()
-    failure_cache: dict[str, float] = _load_failure_cache()
+    _LAST_PROXY_FAILURE_SUMMARY = "no diagnostics recorded"
+    failure_cache: dict[str, dict[str, float | str]] = _load_failure_cache()
 
     all_candidates: list[str]
-    all_candidates, _per_source = _fetch_proxy_candidates()
-    candidates: list[str] = [c for c in all_candidates if c not in failure_cache]
-    cache_skipped: int = len(all_candidates) - len(candidates)
-    logger.info("%d candidates total, %d skipped (failure cache)", len(all_candidates), cache_skipped)
+    all_candidates, per_source, source_by_addr = _fetch_proxy_candidates()
+    source_stats: dict[str, Counter[str]] = {
+        source: Counter({"fetched": count}) for source, count in per_source.items()
+    }
 
-    # TCP pre-filter: quickly discard unreachable hosts
-    tcp_t0: float = time.monotonic()
-    tcp_workers: int = MAGIC["proxy"]["tcp_workers"]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=tcp_workers) as tcp_ex:
-        tcp_results: list[bool] = list(tcp_ex.map(_tcp_reachable, candidates))
-    tcp_passed: list[str] = [c for c, ok in zip(candidates, tcp_results) if ok]
-    tcp_failed_addrs: list[str] = [c for c, ok in zip(candidates, tcp_results) if not ok]
-    tcp_elapsed: float = time.monotonic() - tcp_t0
-    logger.info("TCP pre-filter: %d/%d reachable in %.1fs (workers=%d)",
-                len(tcp_passed), len(candidates), tcp_elapsed, tcp_workers)
+    def bump_source(addr: str, key: str) -> None:
+        source = source_by_addr.get(addr, "unknown")
+        source_stats.setdefault(source, Counter())
+        source_stats[source][key] += 1
 
+    cache_skip_reasons: Counter[str] = Counter()
+    candidates: list[str] = []
+    for addr in all_candidates:
+        entry = failure_cache.get(addr)
+        if entry is None:
+            candidates.append(addr)
+            continue
+        reason = str(entry["reason"])
+        cache_skip_reasons[reason] += 1
+        bump_source(addr, "cache_skipped")
+
+    cache_skipped: int = sum(cache_skip_reasons.values())
+    logger.info(
+        "%d candidates total, %d skipped (failure cache: %s)",
+        len(all_candidates),
+        cache_skipped,
+        _format_reason_counts(cache_skip_reasons),
+    )
+
+    # Proxy pre-filter: require both an open port and a successful anonymous proxy probe.
+    prefilter_t0: float = time.monotonic()
+    prefilter_workers: int = MAGIC["proxy"]["tcp_workers"]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=prefilter_workers) as prefilter_ex:
+        prefilter_results: list[str] = list(prefilter_ex.map(_prefilter_proxy, candidates))
+    prefilter_passed: list[str] = []
+    prefilter_failures: Counter[str] = Counter()
     now: float = time.time()
-    for addr in tcp_failed_addrs:
-        failure_cache[addr] = now
-    candidates = tcp_passed
+    for addr, result in zip(candidates, prefilter_results):
+        if result == "ok":
+            prefilter_passed.append(addr)
+            bump_source(addr, "prefilter_pass")
+            continue
+        prefilter_failures[result] += 1
+        failure_cache[addr] = _make_failure_cache_entry(result, now)
+        bump_source(addr, f"prefilter_{result}")
+    prefilter_elapsed: float = time.monotonic() - prefilter_t0
+    logger.info(
+        "Proxy pre-filter: %d/%d usable in %.1fs (workers=%d; reasons: %s)",
+        len(prefilter_passed),
+        len(candidates),
+        prefilter_elapsed,
+        prefilter_workers,
+        _format_reason_counts(prefilter_failures),
+    )
+    candidates = prefilter_passed
 
     logger.info("Validating %d candidates (anonymity + %d quality sites, workers=%d)",
                 len(candidates), quality_check_count, check_workers)
 
     alive: list[str] = []
     checked: int = 0
+    validation_failures: Counter[str] = Counter()
     validate_t0: float = time.monotonic()
-    future_to_addr: dict[concurrent.futures.Future[str | None], str] = {}
+    future_to_addr: dict[concurrent.futures.Future[str], str] = {}
     executor: concurrent.futures.ThreadPoolExecutor = (
         concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
     )
-    pending: set[concurrent.futures.Future[str | None]] = set()
+    pending: set[concurrent.futures.Future[str]] = set()
     idx: int = 0
 
     while idx < len(candidates) and len(pending) < check_workers:
-        f: concurrent.futures.Future[str | None] = executor.submit(
+        f: concurrent.futures.Future[str] = executor.submit(
             _check_proxy, candidates[idx], quality_check_count=quality_check_count,
         )
         future_to_addr[f] = candidates[idx]
@@ -471,18 +688,21 @@ def fetch_live_proxies(
                 pending, return_when=concurrent.futures.FIRST_COMPLETED,
             )
             for future in done:
-                result: str | None = future.result()
+                result: str = future.result()
                 addr: str = future_to_addr.pop(future)
                 checked += 1
-                if result is not None:
-                    alive.append(result)
+                if result == "ok":
+                    alive.append(addr)
+                    bump_source(addr, "validated_ok")
                     if len(alive) % 10 == 0:
                         elapsed: float = time.monotonic() - validate_t0
                         rate: float = checked / elapsed if elapsed > 0 else 0
                         logger.info("%d elite proxies found (%d checked, %.1f/s, %.1fs)",
                                     len(alive), checked, rate, elapsed)
                 else:
-                    failure_cache[addr] = now
+                    validation_failures[result] += 1
+                    failure_cache[addr] = _make_failure_cache_entry(result, now)
+                    bump_source(addr, f"validated_{result}")
 
                 if idx < len(candidates) and len(alive) < target_count:
                     f = executor.submit(
@@ -502,8 +722,32 @@ def fetch_live_proxies(
 
     total_elapsed: float = time.monotonic() - overall_t0
     pass_rate: float = (len(alive) / checked * 100) if checked > 0 else 0
+    logger.info("Validation failures: %s", _format_reason_counts(validation_failures))
     logger.info("%d elite-anonymous proxies ready (%d/%d passed, %.1f%%, %.1fs total)",
                 len(alive), len(alive), checked, pass_rate, total_elapsed)
+    for source, stats in sorted(source_stats.items()):
+        fetched = stats.get("fetched", 0)
+        if fetched == 0:
+            continue
+        ok = stats.get("validated_ok", 0)
+        logger.info(
+            "Source %s: fetched=%d cache_skipped=%d prefilter_pass=%d ok=%d",
+            source,
+            fetched,
+            stats.get("cache_skipped", 0),
+            stats.get("prefilter_pass", 0),
+            ok,
+        )
+        if fetched >= 100 and ok == 0:
+            logger.warning("Source %s yielded 0 live proxies out of %d fetched candidates", source, fetched)
+    summary_parts: list[str] = [f"{len(alive)}/{checked} passed"]
+    if cache_skip_reasons:
+        summary_parts.append(f"cache_skipped={cache_skipped} [{_format_reason_counts(cache_skip_reasons)}]")
+    if prefilter_failures:
+        summary_parts.append(f"prefilter [{_format_reason_counts(prefilter_failures)}]")
+    if validation_failures:
+        summary_parts.append(f"validation [{_format_reason_counts(validation_failures)}]")
+    _LAST_PROXY_FAILURE_SUMMARY = "; ".join(summary_parts)
     return alive
 
 
@@ -538,7 +782,7 @@ class ProxyPool:
                     target_count, quality_check_count)
         proxies = fetch_live_proxies(target_count=target_count, quality_check_count=quality_check_count)
         if not proxies:
-            logger.warning("No live proxies found — using direct connection")
+            raise ProxyUnavailableError(f"No live proxies found ({_LAST_PROXY_FAILURE_SUMMARY})")
         return cls(proxies)
 
     @classmethod
@@ -548,7 +792,7 @@ class ProxyPool:
         return cls([addr])
 
     def get(self) -> str | None:
-        """Return the current proxy URL, or None for direct connection."""
+        """Return the current proxy URL, or None if the pool is empty."""
         with self._lock:
             if not self._proxies:
                 return None
