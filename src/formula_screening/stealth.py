@@ -385,11 +385,6 @@ class ProxyPool:
         addr = url.removeprefix("http://").removeprefix("https://")
         return cls([addr])
 
-    @classmethod
-    def direct(cls) -> ProxyPool:
-        """Create an empty pool (direct connection)."""
-        return cls([])
-
     def get(self) -> str | None:
         """Return the current proxy URL, or None for direct connection."""
         with self._lock:

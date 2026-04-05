@@ -35,7 +35,6 @@ def main() -> None:
     _scrape = MAGIC["scrape"]
     parser.add_argument("--years", type=int, default=_scrape["bs_years"], help=f"Store most recent N years (default: {_scrape['bs_years']})")
     parser.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
-    parser.add_argument("--no-proxy", action="store_true", help="Disable auto-proxy")
     parser.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
     parser.add_argument("--workers", type=int, default=_scrape["workers"], help=f"Number of parallel workers (default: {_scrape['workers']})")
     args = parser.parse_args()
@@ -55,8 +54,6 @@ def main() -> None:
 
     if args.proxy:
         pool = ProxyPool.from_url(args.proxy)
-    elif args.no_proxy:
-        pool = ProxyPool.direct()
     else:
         pool = ProxyPool.from_auto()
 
