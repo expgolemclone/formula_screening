@@ -8,11 +8,14 @@ import random
 import re
 import threading
 import time
-from typing import Any
+from typing import TYPE_CHECKING
 
 import requests
 
-from formula_screening.config import MAGIC
+from formula_screening.config import MAGIC, VALIDATION_SITES_FILE
+
+if TYPE_CHECKING:
+    from curl_cffi.requests import Session
 
 _HOST_PORT_RE = re.compile(
     r"^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$",
@@ -24,6 +27,9 @@ _PROXY_SOURCES = [
     "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
     "https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/http.txt",
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+    "https://raw.githubusercontent.com/MuRongPIG/Proxy-Master/main/http.txt",
+    "https://raw.githubusercontent.com/zloi-user/hideip.me/main/http.txt",
 ]
 
 # --- Browser profiles (TLS fingerprint + UA + headers, always consistent) ------
@@ -131,31 +137,16 @@ _PROXY_LEAK_HEADERS = (
     "X-Proxy-ID",
 )
 
-# --- Quality check URLs (moderately strict sites) --------------------------------
+# --- Quality check sites (loaded from config/validation_sites.txt) ---------------
 
-_CHECK_URLS = [
-    # Financial (low block-rate)
-    "https://finance.yahoo.com/quote/AAPL/",
-    "https://www.investing.com/",
-    "https://finance.yahoo.co.jp/",
-    # Tech
-    "https://www.google.com/",
-    "https://www.amazon.com/",
-    "https://www.microsoft.com/",
-    "https://www.apple.com/",
-    "https://github.com/",
-    # Media (low block-rate)
-    "https://www.bbc.com/",
-    "https://www.theguardian.com/",
-    # Japanese
-    "https://www.yahoo.co.jp/",
-    "https://www.rakuten.co.jp/",
-    "https://www.amazon.co.jp/",
-    # E-commerce / other
-    "https://www.ebay.com/",
-    "https://www.walmart.com/",
-    "https://www.spotify.com/",
-]
+
+def _load_validation_sites() -> list[str]:
+    """Load proxy validation domains from the sites list file."""
+    text: str = VALIDATION_SITES_FILE.read_text()
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+_VALIDATION_SITES: list[str] = _load_validation_sites()
 
 
 def random_ua() -> str:
@@ -165,7 +156,7 @@ def random_ua() -> str:
 
 def create_session(
     pool: ProxyPool | None = None,
-) -> Any:
+) -> Session:
     """Create a ``curl_cffi`` session with consistent browser identity.
 
     When *pool* is provided the browser profile is pinned to the
@@ -201,29 +192,38 @@ def random_delay(min_s: float = 1.0, max_s: float = 5.0) -> None:
 
 # --- Proxy fetching & validation ----------------------------------------------
 
-def _fetch_proxy_candidates() -> list[str]:
-    """Fetch raw proxy lists from public sources."""
+def _fetch_single_source(url: str) -> list[str]:
+    """Fetch a single proxy source and return parsed host:port addresses."""
     proxies: list[str] = []
-    session = requests.Session()
-    session.headers.update({"User-Agent": random_ua()})
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": random_ua()},
+            timeout=MAGIC["proxy"]["anon_timeout"],
+        )
+        for line in resp.text.strip().splitlines():
+            addr = line.strip()
+            if not addr or addr.startswith("<"):
+                continue
+            for prefix in ("http://", "https://"):
+                if addr.startswith(prefix):
+                    addr = addr[len(prefix):]
+                    break
+            if _HOST_PORT_RE.match(addr):
+                proxies.append(addr)
+    except requests.RequestException:
+        pass
+    return proxies
 
-    for url in _PROXY_SOURCES:
-        try:
-            resp = session.get(url, timeout=MAGIC["proxy"]["anon_timeout"])
-            for line in resp.text.strip().splitlines():
-                addr = line.strip()
-                if not addr or addr.startswith("<"):
-                    continue
-                # Strip protocol prefix (e.g. "http://1.2.3.4:8080" → "1.2.3.4:8080")
-                for prefix in ("http://", "https://"):
-                    if addr.startswith(prefix):
-                        addr = addr[len(prefix):]
-                        break
-                if _HOST_PORT_RE.match(addr):
-                    proxies.append(addr)
-        except requests.RequestException:
-            continue
 
+def _fetch_proxy_candidates() -> list[str]:
+    """Fetch raw proxy lists from all sources in parallel, deduplicated."""
+    seen: set[str] = set()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(_PROXY_SOURCES)) as executor:
+        for result in executor.map(_fetch_single_source, _PROXY_SOURCES):
+            seen.update(result)
+
+    proxies = list(seen)
     random.shuffle(proxies)
     return proxies
 
@@ -264,30 +264,44 @@ def _check_proxy(
     if not anon_passed:
         return None
 
-    # Phase 2: quality check against a random tough site
-    check_url = random.choice(_CHECK_URLS)
-    try:
-        resp = requests.get(
-            check_url, proxies=proxies, headers=headers, timeout=timeout,
-        )
-        if resp.status_code == 200:
-            return addr
-    except requests.RequestException:
-        pass
-    return None
+    # Phase 2: quality check — must pass ALL randomly selected sites in parallel
+    quality_check_count: int = MAGIC["proxy"]["quality_check_count"]
+    check_domains: list[str] = random.sample(_VALIDATION_SITES, quality_check_count)
+
+    def _hit(domain: str) -> bool:
+        try:
+            resp = requests.get(
+                f"https://{domain}/",
+                proxies=proxies,
+                headers=headers,
+                timeout=timeout,
+            )
+            return resp.status_code == 200
+        except requests.RequestException:
+            return False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=quality_check_count) as pool:
+        futures: list[concurrent.futures.Future[bool]] = [
+            pool.submit(_hit, d) for d in check_domains
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            if not future.result():
+                pool.shutdown(wait=False, cancel_futures=True)
+                return None
+    return addr
 
 
 def fetch_live_proxies(
     *,
     target_count: int = MAGIC["proxy"]["target_count"],
     check_workers: int = MAGIC["proxy"]["check_workers"],
-    batch_size: int = MAGIC["proxy"]["batch_size"],
 ) -> list[str]:
     """Fetch proxy lists, validate anonymity + quality, return working proxies.
 
-    Candidates are processed in batches so that once *target_count* elite
-    proxies are found the remaining batches are skipped entirely — avoiding
-    thousands of wasted timeout waits.
+    Candidates are fed to a single executor in a producer-consumer style:
+    at most *check_workers* futures are outstanding at any time, and each
+    completed future is immediately replaced with the next candidate.  This
+    avoids creating 100k+ Future objects while keeping the pipeline full.
 
     Returns:
         List of ``host:port`` strings for elite-anonymous live proxies (shuffled).
@@ -296,27 +310,35 @@ def fetch_live_proxies(
     print(f"  {len(candidates)} proxy candidates, validating (anonymity + quality)...", flush=True)
 
     alive: list[str] = []
-    for batch_start in range(0, len(candidates), batch_size):
-        batch = candidates[batch_start : batch_start + batch_size]
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
-        futures = {
-            executor.submit(_check_proxy, addr): addr
-            for addr in batch
-        }
-        try:
-            for future in concurrent.futures.as_completed(futures):
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
+    pending: set[concurrent.futures.Future] = set()
+    idx = 0
+
+    # Seed the pipeline
+    while idx < len(candidates) and len(pending) < check_workers:
+        pending.add(executor.submit(_check_proxy, candidates[idx]))
+        idx += 1
+
+    try:
+        while pending:
+            done, pending = concurrent.futures.wait(
+                pending, return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            for future in done:
                 result = future.result()
                 if result is not None:
                     alive.append(result)
                     if len(alive) % 10 == 0:
                         print(f"  ... {len(alive)} elite proxies so far", flush=True)
-                    if len(alive) >= target_count:
-                        break
-        finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+                # Replenish: submit next candidate for each completed future
+                if idx < len(candidates) and len(alive) < target_count:
+                    pending.add(executor.submit(_check_proxy, candidates[idx]))
+                    idx += 1
 
-        if len(alive) >= target_count:
-            break
+            if len(alive) >= target_count:
+                break
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     random.shuffle(alive)
     print(f"  {len(alive)} elite-anonymous proxies ready", flush=True)
@@ -343,10 +365,10 @@ class ProxyPool:
         self._profile_idx = random.randrange(len(_BROWSER_PROFILES))
 
     @classmethod
-    def from_auto(cls) -> ProxyPool:
+    def from_auto(cls, *, target_count: int = MAGIC["proxy"]["target_count"]) -> ProxyPool:
         """Create a pool by auto-fetching public proxies."""
         print("Fetching and validating proxies...", flush=True)
-        proxies = fetch_live_proxies()
+        proxies = fetch_live_proxies(target_count=target_count)
         if not proxies:
             print("WARNING: No live proxies found. Using direct connection.", flush=True)
         return cls(proxies)

@@ -17,6 +17,8 @@ MAGIC: dict = _load_toml("magic_numbers.toml")
 PATHS: dict = _load_toml("path.toml")
 CLI_DEFAULTS: dict = _load_toml("cli_defaults.toml")
 
+VALIDATION_SITES_FILE = _CONFIG_DIR / "validation_sites.txt"
+
 DATA_DIR = _PROJECT_ROOT / PATHS["data"]["root"]
 LOG_DIR = _PROJECT_ROOT / PATHS["data"]["log"]
 DB_PATH = _PROJECT_ROOT / PATHS["data"]["db"]

@@ -29,14 +29,16 @@ formula_screening/
 │   ├── download_irbank.py      # IR BANK JSON ファイルのダウンロード
 │   ├── scrape_irbank_bs.py     # BS スクレイピングのスクリプト版
 │   ├── fetch_prices.py         # 株価取得のスクリプト版
-│   └── export_csv.py           # 全銘柄の財務データ + 指標を CSV エクスポート
+│   ├── export_csv.py           # 全銘柄の財務データ + 指標を CSV エクスポート
+│   └── generate_check_sites.py # Tranco リストからプロキシ検証用サイトを生成
 ├── strategies/                 # スクリーニング戦略ファイル (screen(stock) -> bool)
 │   ├── net_cash.py             # ネットキャッシュ比率戦略
 │   └── net_cash_fcf.py         # ネットキャッシュ + FCFイールド + CROIC戦略
 ├── config/
 │   ├── path.toml               # データディレクトリ・DB パス等
 │   ├── magic_numbers.toml      # スクレイピング間隔、バッチサイズ等の定数
-│   └── cli_defaults.toml       # CLIオプションのデフォルト値
+│   ├── cli_defaults.toml       # CLIオプションのデフォルト値
+│   └── validation_sites.txt    # プロキシ品質検証用ドメインリスト (Tranco由来)
 ├── data/
 │   ├── irbank/                 # IR BANK JSON ファイル (年度コード別サブディレクトリ)
 │   ├── screening.db            # SQLite データベース
@@ -133,7 +135,7 @@ formula_screening/
 | `config.py`     | (なし)     | TOML 読み込み、パス定数                       |
 | `db/schema.py`  | `config`   | DDL、マイグレーション、接続生成               |
 | `db/repository.py` | (なし)  | CRUD 操作 (stocks, financial_items, prices)   |
-| `stealth.py`    | `config`   | プロキシプール、TLS 偽装、リクエスト遅延      |
+| `stealth.py`    | `config`   | プロキシプール、TLS 偽装、分散サイト検証      |
 | `log.py`        | `config`   | ロギング設定                                  |
 | `fmt.py`        | (なし)     | 全角対応の文字列整形                          |
 
@@ -145,6 +147,7 @@ formula_screening/
 | `scrape_irbank_bs.py`   | `cli.dispatch_scrape_workers`, `irbank_bs`, `repository`, `db.schema`, `stealth` | BS スクレイピング |
 | `fetch_prices.py`       | `yfinance_price`, `repository`, `db.schema`                   | 株価取得                 |
 | `export_csv.py`         | `config`, `db.schema`, `screener.build_stock_dict`            | CSV エクスポート         |
+| `generate_check_sites.py` | (外部: Tranco リスト)                                       | プロキシ検証用サイトリスト生成 |
 
 ## データベーススキーマ
 
@@ -200,9 +203,10 @@ PK: `(ticker, date)`
 | :--------------------- | :------------------------------------------------------- |
 | `config/path.toml`     | データディレクトリ、DB パス、ログディレクトリ等の相対パス |
 | `config/magic_numbers.toml` | スクレイピング間隔・ワーカー数・バッチサイズ等の定数 |
-| `config/cli_defaults.toml`  | CLI オプションのデフォルト値 (ダウンロード年数等)   |
+| `config/cli_defaults.toml`  | CLI オプションのデフォルト値 (ダウンロード年数等)         |
+| `config/validation_sites.txt` | プロキシ品質検証用ドメインリスト (Tranco top sites 由来) |
 
-すべて `config.py` が起動時に読み込み、`MAGIC`, `PATHS`, `CLI_DEFAULTS` として公開する。
+TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`, `CLI_DEFAULTS` として公開する。`validation_sites.txt` は `stealth.py` がモジュールロード時に読み込む。
 
 ## CLI サブコマンド
 
@@ -218,6 +222,8 @@ PK: `(ticker, date)`
 | `screen`            | 戦略ファイルを適用してスクリーニング実行 (`--workers` で並列化、`--open [N]` で上位N件を四季報オンラインで開く) |
 
 全コマンド実行前に `cache_invalidation.check_and_invalidate()` が自動実行され、datasource ファイルの変更があれば対応キャッシュが破棄される (`refresh` コマンド自身は除く)。
+
+プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は共通で `--proxy`, `--no-proxy`, `--target-proxies` オプションを持つ。`--target-proxies` は検証合格プロキシの目標数を指定する (デフォルト: `proxy.target_count`)。
 
 スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`) および `screen` の自動データ取得では、`dispatch_scrape_workers` がワーカー数をプロキシプールのサイズ以下に制限する。これにより空プールへの分割（直接接続フォールバック）を防ぎ、全ワーカーがプロキシ経由で通信する。
 
@@ -247,6 +253,17 @@ PK: `(ticker, date)`
     "cf_history": [("2025-03", {"operating_cf": float, ...}), ...],
 }
 ```
+
+## プロキシ検証の仕組み
+
+`stealth.py` の `fetch_live_proxies` は公開プロキシリストから候補を収集し、2段階で検証する。
+
+1. **匿名性チェック** — header-echo サービス (httpbin) で `X-Forwarded-For` / `Via` 等の漏洩ヘッダがないことを確認
+2. **品質チェック** — `config/validation_sites.txt` の5000ドメインから `quality_check_count` 個 (デフォルト5) をランダム選択し、5サイトへ**並列リクエスト**して全サイトで HTTP 200 を返せたプロキシのみ合格 (1つでも失敗で即中断)
+
+外側の `fetch_live_proxies` が `check_workers` (デフォルト200) 個のプロキシを同時検証し、各プロキシ内で `quality_check_count` サイトを並列チェックするため、最大同時接続数は `check_workers × quality_check_count` となる。
+
+サイトリストは `scripts/generate_check_sites.py` で Tranco top sites から生成する。Google / GitHub / Yahoo / IR BANK / EDINET 系および CDN・トラッキング系ドメインは除外済み。
 
 ## キャッシュ無効化の仕組み
 
