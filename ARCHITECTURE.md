@@ -286,7 +286,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 1. **失敗キャッシュ除外** — `data/.proxy_failures.json` を読み込み、TTL 内の失敗候補を reason ごとにスキップする。
 2. **Proxy pre-filter** — 各候補に対して TCP connect テスト (`tcp_timeout`=0.5s, `tcp_workers`=500) と匿名性 endpoint への最小 proxy request を行う。ここで「ポートは開いているが、実際には proxy ではない Web サーバ」を `not_a_proxy` として落とす。
 3. **匿名性チェック** — header-echo サービス (httpbin) の全エンドポイントへ並列リクエスト。最初の成功で匿名性を満たせば通過し、リーク検出 (`anon_leak`) で即失敗する。
-4. **品質チェック** — `config/validation_sites.txt` のドメインから `quality_check_count` 個 (デフォルト5) をランダム選択し並列リクエスト。全サイト HTTP 200 必須 (`quality_failed` で失敗)。
+4. **品質チェック** — `config/validation_sites.txt` のドメインから `quality_check_count` 個 (デフォルト0) をランダム選択し並列リクエスト。全サイト HTTP 200 必須 (`quality_failed` で失敗)。
 
 匿名性チェックと品質チェックは各プロキシごとに **1つの Executor で同時発射** される。匿名性チェックの完了時には品質チェックが既に進行中のため、直列実行と比べてプロキシあたりの検証時間が大幅に短縮される。
 
