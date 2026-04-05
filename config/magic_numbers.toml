@@ -25,6 +25,8 @@ anon_timeout = 3
 quality_check_count = 5
 max_failures = 2
 failure_cache_ttl_hours = 24
+tcp_timeout = 0.5
+tcp_workers = 500
 
 [screening]
 fcf_years = 10

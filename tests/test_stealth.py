@@ -16,11 +16,58 @@ from formula_screening.stealth import (
     _hit_quality,
     _load_failure_cache,
     _save_failure_cache,
+    _source_label,
+    _tcp_reachable,
     fetch_live_proxies,
 )
 
 if TYPE_CHECKING:
     pass
+
+
+# ---------------------------------------------------------------------------
+# _source_label
+# ---------------------------------------------------------------------------
+
+
+class TestSourceLabel:
+    """Tests for proxy source URL label extraction."""
+
+    def test_extracts_github_username(self) -> None:
+        url: str = "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
+
+        assert _source_label(url) == "TheSpeedX"
+
+    def test_fallback_for_non_github_url(self) -> None:
+        url: str = "https://example.com/proxies.txt"
+
+        assert _source_label(url) == url
+
+
+# ---------------------------------------------------------------------------
+# _tcp_reachable
+# ---------------------------------------------------------------------------
+
+
+class TestTcpReachable:
+    """Tests for the TCP connect pre-filter."""
+
+    def test_returns_true_for_open_port(self) -> None:
+        with patch("formula_screening.stealth.socket.create_connection") as mock_conn:
+            mock_conn.return_value.__enter__ = MagicMock()
+            mock_conn.return_value.__exit__ = MagicMock(return_value=False)
+
+            assert _tcp_reachable("1.2.3.4:8080", timeout=0.5) is True
+
+    def test_returns_false_for_closed_port(self) -> None:
+        with patch(
+            "formula_screening.stealth.socket.create_connection",
+            side_effect=OSError("Connection refused"),
+        ):
+            assert _tcp_reachable("1.2.3.4:8080", timeout=0.5) is False
+
+    def test_returns_false_for_invalid_addr(self) -> None:
+        assert _tcp_reachable("not-a-valid-addr", timeout=0.1) is False
 
 
 # ---------------------------------------------------------------------------
@@ -217,8 +264,9 @@ class TestFailureCache:
 class TestFetchLiveProxiesCache:
     """Tests that fetch_live_proxies filters and records failures."""
 
+    @patch("formula_screening.stealth._tcp_reachable", return_value=True)
     @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com", "b.com", "c.com"])
-    def test_skips_cached_failures(self, tmp_path: Path) -> None:
+    def test_skips_cached_failures(self, _tcp_mock: MagicMock, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
         now: float = time.time()
         cache_file.write_text(json.dumps({"1.1.1.1:80": now}))
@@ -243,8 +291,9 @@ class TestFetchLiveProxiesCache:
         assert "2.2.2.2:80" in result
         assert "1.1.1.1:80" not in result
 
+    @patch("formula_screening.stealth._tcp_reachable", return_value=True)
     @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com", "b.com", "c.com"])
-    def test_records_new_failures(self, tmp_path: Path) -> None:
+    def test_records_new_failures(self, _tcp_mock: MagicMock, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
 
         call_count: dict[str, int] = {}
@@ -274,3 +323,27 @@ class TestFetchLiveProxiesCache:
         assert result == []
         saved: dict[str, float] = json.loads(cache_file.read_text())
         assert "9.9.9.9:80" in saved
+
+    @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com", "b.com", "c.com"])
+    def test_tcp_unreachable_cached_as_failure(self, tmp_path: Path) -> None:
+        cache_file: Path = tmp_path / ".proxy_failures.json"
+
+        def fake_get(url: str, **kwargs: object) -> MagicMock:
+            resp: MagicMock = MagicMock()
+            resp.status_code = 200
+            if "raw.githubusercontent" in url:
+                resp.text = "10.0.0.1:80\n"
+            return resp
+
+        with (
+            patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.requests.get", side_effect=fake_get),
+            patch("formula_screening.stealth._tcp_reachable", return_value=False),
+        ):
+            result: list[str] = fetch_live_proxies(
+                target_count=1, check_workers=2, quality_check_count=1,
+            )
+
+        assert result == []
+        saved: dict[str, float] = json.loads(cache_file.read_text())
+        assert "10.0.0.1:80" in saved

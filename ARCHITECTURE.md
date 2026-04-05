@@ -262,18 +262,19 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 ### 検証パイプライン
 
-各プロキシに対して、匿名性チェックと品質チェックを **1つの Executor で同時発射** する:
+候補プロキシは3段階のパイプラインで絞り込まれる:
 
-1. **匿名性チェック** — header-echo サービス (httpbin) の全エンドポイントへ並列リクエスト。最初の成功で即合格、リーク検出で即全キャンセル
-2. **品質チェック** — `config/validation_sites.txt` の5000ドメインから `quality_check_count` 個 (デフォルト5) をランダム選択し並列リクエスト。全サイト HTTP 200 必須 (1つでも失敗で即キャンセル)
+1. **TCP pre-filter** — 全候補に対して TCP connect テスト (`tcp_timeout`=0.5s, `tcp_workers`=500) を実行し、接続不能なデッドプロキシを早期除外する。公開リストの60〜80%はこの段階で排除され、後続の高コスト HTTP 検証の対象を大幅に削減���る。
+2. **匿名性チェック** — header-echo サービス (httpbin) の全エンドポイントへ並列リクエスト。最初の成功で即合格、リーク検出で即全キャンセル
+3. **品質チェック** — `config/validation_sites.txt` の5000ドメインから `quality_check_count` 個 (デフォルト5) をランダム選択し並列リクエスト。全サイト HTTP 200 必須 (1つでも失敗で即キャンセル)
 
-匿名性チェックの完了時には品質チェックが既に進行中のため、直列実行と比べてプロキシあたりの検証時間が大幅に短縮される。
+匿名性チェックと品質チェックは各プロキシごとに **1つの Executor で同時発射** される。匿名性チェックの完了時には品質チェックが既に進行中のため、直列実行と比べてプロキシあたりの検証時間が大幅に短縮される。
 
 外側の `fetch_live_proxies` が `check_workers` (デフォルト200) 個のプロキシを同時検証し、各プロキシ内で `len(anon_urls) + quality_check_count` スレッドを使うため、最大同時接続数は `check_workers × (2 + quality_check_count)` となる。
 
 ### 失敗キャッシュ
 
-検証に失敗したプロキシは `data/.proxy_failures.json` に `{addr: unix_timestamp}` 形式で記録される。次回実行時にキャッシュをロードし、TTL (`proxy.failure_cache_ttl_hours`、デフォルト24時間) 内の失敗プロキシは候補から除外する。成功したプロキシはキャッシュしない (時間経過で劣化する可能性があるため)。
+検証に失敗したプロキシ（TCP 不通を含む）は `data/.proxy_failures.json` に `{addr: unix_timestamp}` 形式で記録される。次回実行時にキャッシュをロードし、TTL (`proxy.failure_cache_ttl_hours`、デフォルト24時間) 内の失敗プロキシは候補から除外する。成功したプロキシはキャッシュしない (時間経過で劣化する可能性があるため)。
 
 サイトリストは `scripts/generate_check_sites.py` で Tranco top sites から生成する。Google / GitHub / Yahoo / IR BANK / EDINET 系および CDN・トラッキング系ドメインは除外済み。
 

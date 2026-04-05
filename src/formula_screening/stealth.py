@@ -5,13 +5,17 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import logging
 import random
 import re
+import socket
 import threading
 import time
 from typing import TYPE_CHECKING
 
 import requests
+
+logger: logging.Logger = logging.getLogger("formula_screening.stealth")
 
 from formula_screening.config import MAGIC, PROXY_FAILURE_CACHE, VALIDATION_SITES_FILE
 
@@ -217,16 +221,46 @@ def _fetch_single_source(url: str) -> list[str]:
     return proxies
 
 
-def _fetch_proxy_candidates() -> list[str]:
-    """Fetch raw proxy lists from all sources in parallel, deduplicated."""
-    seen: set[str] = set()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(_PROXY_SOURCES)) as executor:
-        for result in executor.map(_fetch_single_source, _PROXY_SOURCES):
-            seen.update(result)
+def _source_label(url: str) -> str:
+    """Extract a short label from a proxy source URL (GitHub username)."""
+    parts: list[str] = url.split("/")
+    try:
+        return parts[parts.index("raw.githubusercontent.com") + 1]
+    except (ValueError, IndexError):
+        return url
 
-    proxies = list(seen)
+
+def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int]]:
+    """Fetch raw proxy lists from all sources in parallel, deduplicated.
+
+    Returns:
+        Tuple of (shuffled proxy list, per-source counts).
+    """
+    t0: float = time.monotonic()
+    seen: set[str] = set()
+    per_source: dict[str, int] = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(_PROXY_SOURCES)) as executor:
+        future_to_url: dict[concurrent.futures.Future[list[str]], str] = {
+            executor.submit(_fetch_single_source, url): url for url in _PROXY_SOURCES
+        }
+        for future in concurrent.futures.as_completed(future_to_url):
+            url: str = future_to_url[future]
+            result: list[str] = future.result()
+            label: str = _source_label(url)
+            per_source[label] = len(result)
+            before: int = len(seen)
+            seen.update(result)
+            logger.debug("Source %s: %d proxies (%d new)", label, len(result), len(seen) - before)
+
+    elapsed: float = time.monotonic() - t0
+    source_summary: str = ", ".join(f"{k}: {v}" for k, v in sorted(per_source.items()))
+    logger.info("Fetched %d unique candidates from %d sources in %.1fs [%s]",
+                len(seen), len(_PROXY_SOURCES), elapsed, source_summary)
+
+    proxies: list[str] = list(seen)
     random.shuffle(proxies)
-    return proxies
+    return proxies, per_source
 
 
 def _hit_anon(
@@ -312,20 +346,36 @@ def _check_proxy(
                 anon_passed = True
                 break
             if result is False:
+                logger.debug("FAIL %s (anon leak detected)", addr)
                 ex.shutdown(wait=False, cancel_futures=True)
                 return None
 
         if not anon_passed:
+            logger.debug("FAIL %s (anon unreachable)", addr)
             ex.shutdown(wait=False, cancel_futures=True)
             return None
 
         # All quality sites must return 200
         for future in concurrent.futures.as_completed(quality_futures):
             if not future.result():
+                logger.debug("FAIL %s (quality check failed)", addr)
                 ex.shutdown(wait=False, cancel_futures=True)
                 return None
 
+    logger.debug("PASS %s (anon ok, %d/%d quality sites)", addr, quality_check_count, quality_check_count)
     return addr
+
+
+def _tcp_reachable(addr: str, timeout: float = MAGIC["proxy"]["tcp_timeout"]) -> bool:
+    """Quick TCP connect test — True if the port is open."""
+    try:
+        host: str
+        port_str: str
+        host, port_str = addr.rsplit(":", 1)
+        with socket.create_connection((host, int(port_str)), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
 
 
 def _load_failure_cache() -> dict[str, float]:
@@ -338,7 +388,11 @@ def _load_failure_cache() -> dict[str, float]:
         return {}
     ttl_seconds: float = MAGIC["proxy"]["failure_cache_ttl_hours"] * 3600
     now: float = time.time()
-    return {addr: ts for addr, ts in data.items() if now - ts < ttl_seconds}
+    valid: dict[str, float] = {addr: ts for addr, ts in data.items() if now - ts < ttl_seconds}
+    expired: int = len(data) - len(valid)
+    logger.info("Failure cache: %d entries loaded, %d expired (TTL=%dh)",
+                len(valid), expired, MAGIC["proxy"]["failure_cache_ttl_hours"])
+    return valid
 
 
 def _save_failure_cache(cache: dict[str, float]) -> None:
@@ -356,27 +410,46 @@ def fetch_live_proxies(
     """Fetch proxy lists, validate anonymity + quality, return working proxies.
 
     Previously-failed proxies are skipped via a TTL-based on-disk cache.
-    Candidates are fed to a single executor in a producer-consumer style:
-    at most *check_workers* futures are outstanding at any time, and each
-    completed future is immediately replaced with the next candidate.
+    A TCP connect pre-filter eliminates unreachable candidates before the
+    expensive HTTP checks.  Surviving candidates are fed to a single executor
+    in a producer-consumer style: at most *check_workers* futures are
+    outstanding at any time, and each completed future is immediately
+    replaced with the next candidate.
 
     Returns:
         List of ``host:port`` strings for elite-anonymous live proxies (shuffled).
     """
+    overall_t0: float = time.monotonic()
     failure_cache: dict[str, float] = _load_failure_cache()
 
-    all_candidates: list[str] = _fetch_proxy_candidates()
+    all_candidates: list[str]
+    all_candidates, _per_source = _fetch_proxy_candidates()
     candidates: list[str] = [c for c in all_candidates if c not in failure_cache]
-    skipped: int = len(all_candidates) - len(candidates)
-    print(
-        f"  {len(all_candidates)} proxy candidates ({skipped} skipped from failure cache), "
-        f"validating (anonymity + quality)...",
-        flush=True,
-    )
+    cache_skipped: int = len(all_candidates) - len(candidates)
+    logger.info("%d candidates total, %d skipped (failure cache)", len(all_candidates), cache_skipped)
+
+    # TCP pre-filter: quickly discard unreachable hosts
+    tcp_t0: float = time.monotonic()
+    tcp_workers: int = MAGIC["proxy"]["tcp_workers"]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=tcp_workers) as tcp_ex:
+        tcp_results: list[bool] = list(tcp_ex.map(_tcp_reachable, candidates))
+    tcp_passed: list[str] = [c for c, ok in zip(candidates, tcp_results) if ok]
+    tcp_failed_addrs: list[str] = [c for c, ok in zip(candidates, tcp_results) if not ok]
+    tcp_elapsed: float = time.monotonic() - tcp_t0
+    logger.info("TCP pre-filter: %d/%d reachable in %.1fs (workers=%d)",
+                len(tcp_passed), len(candidates), tcp_elapsed, tcp_workers)
+
+    now: float = time.time()
+    for addr in tcp_failed_addrs:
+        failure_cache[addr] = now
+    candidates = tcp_passed
+
+    logger.info("Validating %d candidates (anonymity + %d quality sites, workers=%d)",
+                len(candidates), quality_check_count, check_workers)
 
     alive: list[str] = []
-    now: float = time.time()
-    # Track addr per future so failures can be cached
+    checked: int = 0
+    validate_t0: float = time.monotonic()
     future_to_addr: dict[concurrent.futures.Future[str | None], str] = {}
     executor: concurrent.futures.ThreadPoolExecutor = (
         concurrent.futures.ThreadPoolExecutor(max_workers=check_workers)
@@ -384,7 +457,6 @@ def fetch_live_proxies(
     pending: set[concurrent.futures.Future[str | None]] = set()
     idx: int = 0
 
-    # Seed the pipeline
     while idx < len(candidates) and len(pending) < check_workers:
         f: concurrent.futures.Future[str | None] = executor.submit(
             _check_proxy, candidates[idx], quality_check_count=quality_check_count,
@@ -401,10 +473,14 @@ def fetch_live_proxies(
             for future in done:
                 result: str | None = future.result()
                 addr: str = future_to_addr.pop(future)
+                checked += 1
                 if result is not None:
                     alive.append(result)
                     if len(alive) % 10 == 0:
-                        print(f"  ... {len(alive)} elite proxies so far", flush=True)
+                        elapsed: float = time.monotonic() - validate_t0
+                        rate: float = checked / elapsed if elapsed > 0 else 0
+                        logger.info("%d elite proxies found (%d checked, %.1f/s, %.1fs)",
+                                    len(alive), checked, rate, elapsed)
                 else:
                     failure_cache[addr] = now
 
@@ -423,7 +499,11 @@ def fetch_live_proxies(
 
     _save_failure_cache(failure_cache)
     random.shuffle(alive)
-    print(f"  {len(alive)} elite-anonymous proxies ready", flush=True)
+
+    total_elapsed: float = time.monotonic() - overall_t0
+    pass_rate: float = (len(alive) / checked * 100) if checked > 0 else 0
+    logger.info("%d elite-anonymous proxies ready (%d/%d passed, %.1f%%, %.1fs total)",
+                len(alive), len(alive), checked, pass_rate, total_elapsed)
     return alive
 
 
@@ -454,10 +534,11 @@ class ProxyPool:
         quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
     ) -> ProxyPool:
         """Create a pool by auto-fetching public proxies."""
-        print("Fetching and validating proxies...", flush=True)
+        logger.info("Fetching and validating proxies (target=%d, quality_sites=%d)...",
+                    target_count, quality_check_count)
         proxies = fetch_live_proxies(target_count=target_count, quality_check_count=quality_check_count)
         if not proxies:
-            print("WARNING: No live proxies found. Using direct connection.", flush=True)
+            logger.warning("No live proxies found — using direct connection")
         return cls(proxies)
 
     @classmethod
@@ -490,8 +571,8 @@ class ProxyPool:
         if self._proxies:
             self._index += 1
             self._profile_idx = random.randrange(len(_BROWSER_PROFILES))
-            proxy_url = f"http://{self._proxies[self._index % len(self._proxies)]}"
-            print(f"  Rotated to proxy: {proxy_url}", flush=True)
+            proxy_url: str = f"http://{self._proxies[self._index % len(self._proxies)]}"
+            logger.debug("Rotated to proxy: %s", proxy_url)
 
     def rotate(self) -> None:
         """Move to the next proxy and browser profile in the pool."""
@@ -506,7 +587,9 @@ class ProxyPool:
             addr = self._proxies[self._index % len(self._proxies)]
             self._failures[addr] = self._failures.get(addr, 0) + 1
             if self._failures[addr] >= self._max_failures:
-                print(f"  Proxy {addr} failed {self._max_failures} times, removing", flush=True)
+                logger.info("Proxy %s failed %d times, removing (pool size: %d -> %d)",
+                            addr, self._max_failures, len(self._proxies),
+                            len(self._proxies) - 1)
                 self._proxies = [p for p in self._proxies if p != addr]
                 if self._proxies:
                     self._index = self._index % len(self._proxies)
