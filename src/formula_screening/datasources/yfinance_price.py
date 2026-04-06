@@ -236,7 +236,7 @@ def fetch_and_cache_prices(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     print(f"Targets: {len(targets)} tickers ({skipped} skipped)", flush=True)
-    print(f"Proxy: {pool.get() or 'direct'}", flush=True)
+    print(f"Proxy: {pool.get()}", flush=True)
 
     for batch_start in range(0, len(targets), _BATCH_SIZE):
         if batch_start > 0:
