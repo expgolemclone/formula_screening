@@ -152,7 +152,7 @@ formula_screening/
 | スクリプト              | 使用モジュール                                                | 用途                     |
 | :---------------------- | :------------------------------------------------------------ | :----------------------- |
 | `download_irbank.py`    | `config`, `stealth.fetch_live_proxies`                        | JSON ダウンロード        |
-| `scrape_irbank_bs.py`   | `cli.dispatch_scrape_workers`, `irbank_bs`, `repository`, `db.schema`, `stealth` | BS スクレイピング |
+| `scrape_irbank_bs.py`   | `cli.dispatch_workers`, `irbank_bs`, `repository`, `db.schema`, `stealth` | BS スクレイピング |
 | `fetch_prices.py`       | `yfinance_price`, `repository`, `db.schema`, `stealth`        | 株価取得                 |
 | `export_csv.py`         | `config`, `db.schema`, `screener.build_stock_dict`            | CSV エクスポート         |
 | `generate_check_sites.py` | (外部: Tranco リスト)                                       | プロキシ検証用サイトリスト生成 |
@@ -241,9 +241,9 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 自動プロキシ解決 (`ProxyPool.from_auto()`) で live proxy を 1 件も確保できなかった場合は `stealth.ProxyUnavailableError` を送出し、CLI とスクリプトは `ABORT: ...` を stderr に出して `exit(1)` する。エラーメッセージには直前の `passed / cache_skipped / prefilter / validation` 要約も含まれる。
 
-`fetch-prices` は `dispatch_scrape_workers` を使い、スクレイピング系コマンドと同じワーカー並列パターンで動作する。各ワーカーが異なるプロキシサブプールを持ち、1銘柄ずつ `yf.Ticker().history()` + `fast_info` で個別取得する。レート制限時は `max_retries` 回までプロキシローテーション + ディレイでリトライし、失敗した銘柄はスキップして次へ進む。
+`fetch-prices` は `dispatch_workers` を使い、スクレイピング系コマンドと同じワーカー並列パターンで動作する。各ワーカーが異なるプロキシサブプールを持ち、1銘柄ずつ `yf.Ticker().history()` + `fast_info` で個別取得する。レート制限時は `max_retries` 回までプロキシローテーション + ディレイでリトライし、失敗した銘柄はスキップして次へ進む。
 
-スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) と `refresh` の auto scrape/fetch、および `screen` の自動データ取得では、`dispatch_scrape_workers` がワーカー数をプロキシプールのサイズ以下に制限する。これにより空サブプールの生成を防ぎ、全ワーカーがプロキシ経由で通信する。つまり `--workers 100` を指定しても、確保できた live proxy が 1 本なら実効ワーカー数は `1` になる。
+スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) と `refresh` の auto scrape/fetch、および `screen` の自動データ取得では、`dispatch_workers` がワーカー数をプロキシプールのサイズ以下に制限する。これにより空サブプールの生成を防ぎ、全ワーカーがプロキシ経由で通信する。つまり `--workers 100` を指定しても、確保できた live proxy が 1 本なら実効ワーカー数は `1` になる。
 
 ## 戦略ファイルの仕組み
 

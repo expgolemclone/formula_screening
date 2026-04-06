@@ -81,7 +81,7 @@ def fetch_prices_worker(
     total: int,
     counter: list[int],
 ) -> None:
-    """Worker function for dispatch_scrape_workers.
+    """Worker function for :func:`~formula_screening.cli.dispatch_workers`.
 
     Fetches price + shares for each ticker in the chunk via its own
     proxy sub-pool, with delays between requests.

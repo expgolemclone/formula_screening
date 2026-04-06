@@ -65,7 +65,7 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
     finally:
         conn.close()
 
-    dispatch_scrape_workers(
+    dispatch_workers(
         tickers, pool,
         worker_fn=fetch_prices_worker,
         label="prices",
@@ -75,7 +75,7 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
     )
 
 
-def dispatch_scrape_workers(
+def dispatch_workers(
     tickers: list[str],
     pool: ProxyPool,
     *,
@@ -85,7 +85,7 @@ def dispatch_scrape_workers(
     force: bool = False,
     extra_kwargs: dict | None = None,
 ) -> dict[str, int]:
-    """Dispatch parallel scrape workers and return stats.
+    """Dispatch parallel workers and return stats.
 
     Shared by CLI subcommands and cache_invalidation.refresh_stale_sources.
     """
@@ -107,7 +107,7 @@ def dispatch_scrape_workers(
         worker_parts.append(f"requested={requested_workers}")
     if proxy_count > 0:
         worker_parts.append(f"proxies={proxy_count}")
-    print(f"Scraping {label} for {total} tickers ({', '.join(worker_parts)})")
+    print(f"Fetching {label} for {total} tickers ({', '.join(worker_parts)})")
 
     sub_pools = pool.split(workers)
     chunks: list[list[str]] = [[] for _ in range(workers)]
@@ -142,7 +142,7 @@ def dispatch_scrape_workers(
                     "Worker raised an exception", exc_info=True,
                 )
 
-    print(f"\nDone: {stats['ok']} scraped, {stats['skip']} skipped, {stats['fail']} failed.")
+    print(f"\nDone: {stats['ok']} ok, {stats['skip']} skipped, {stats['fail']} failed.")
     return stats
 
 
@@ -153,7 +153,7 @@ def _run_scrape_workers(
     label: str,
     extra_kwargs: dict | None = None,
 ) -> None:
-    """CLI wrapper: resolve args then delegate to dispatch_scrape_workers."""
+    """CLI wrapper: resolve args then delegate to :func:`dispatch_workers`."""
     from formula_screening.db.repository import get_all_tickers
 
     pool = _resolve_proxy_pool(args)
@@ -166,7 +166,7 @@ def _run_scrape_workers(
     finally:
         conn.close()
 
-    dispatch_scrape_workers(
+    dispatch_workers(
         tickers, pool,
         worker_fn=worker_fn,
         label=label,

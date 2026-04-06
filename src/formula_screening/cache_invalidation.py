@@ -218,11 +218,11 @@ def _import_irbank(conn: sqlite3.Connection) -> None:
 
 
 def _scrape_bs(tickers: list[str], proxy_pool: ProxyPool, *, workers: int | None = None) -> None:
-    from formula_screening.cli import dispatch_scrape_workers
+    from formula_screening.cli import dispatch_workers
     from formula_screening.datasources.irbank_bs import scrape_bs_worker
 
     print("\n[auto] scrape-bs ...")
-    dispatch_scrape_workers(
+    dispatch_workers(
         tickers, proxy_pool,
         worker_fn=scrape_bs_worker,
         label="BS",
@@ -238,13 +238,13 @@ def _scrape_forecast(
     *,
     workers: int | None = None,
 ) -> None:
-    from formula_screening.cli import dispatch_scrape_workers
+    from formula_screening.cli import dispatch_workers
     from formula_screening.datasources.irbank_forecast import (
         scrape_forecast_worker,
     )
 
     print("\n[auto] scrape-forecast ...")
-    dispatch_scrape_workers(
+    dispatch_workers(
         tickers, proxy_pool,
         worker_fn=scrape_forecast_worker,
         label="forecast",
@@ -254,11 +254,11 @@ def _scrape_forecast(
 
 
 def _fetch_prices(tickers: list[str], proxy_pool: ProxyPool) -> None:
-    from formula_screening.cli import dispatch_scrape_workers
+    from formula_screening.cli import dispatch_workers
     from formula_screening.datasources.yfinance_price import fetch_prices_worker
 
     print(f"\n[auto] fetch-prices ({len(tickers)} tickers) ...")
-    dispatch_scrape_workers(
+    dispatch_workers(
         tickers, proxy_pool,
         worker_fn=fetch_prices_worker,
         label="prices",
