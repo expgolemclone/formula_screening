@@ -152,8 +152,8 @@ formula_screening/
 | スクリプト              | 使用モジュール                                                | 用途                     |
 | :---------------------- | :------------------------------------------------------------ | :----------------------- |
 | `download_irbank.py`    | `config`, `stealth.fetch_live_proxies`                        | JSON ダウンロード        |
-| `scrape_irbank_bs.py`   | `cli.dispatch_workers`, `irbank_bs`, `repository`, `db.schema`, `stealth` | BS スクレイピング |
-| `fetch_prices.py`       | `yfinance_price`, `repository`, `db.schema`, `stealth`        | 株価取得                 |
+| `scrape_irbank_bs.py`   | `cli.main` (→ `scrape-bs` サブコマンドに委譲)                 | BS スクレイピング |
+| `fetch_prices.py`       | `cli.main` (→ `fetch-prices` サブコマンドに委譲)              | 株価取得                 |
 | `export_csv.py`         | `config`, `db.schema`, `screener.build_stock_dict`            | CSV エクスポート         |
 | `generate_check_sites.py` | (外部: Tranco リスト)                                       | プロキシ検証用サイトリスト生成 |
 
@@ -233,7 +233,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 全コマンド実行前に `cache_invalidation.check_and_invalidate()` が自動実行され、datasource ファイルの変更があれば対応キャッシュが破棄される (`refresh` コマンド自身は除く)。
 
-プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は共通で `--proxy`, `--target-proxies`, `--check-sites` オプションを持つ。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。`refresh` は追加で `--workers` を持ち、auto `scrape-bs` / `scrape-forecast` の並列数を指定できる。プロキシは常に使用される (直接接続オプションはない)。  
+プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は `_proxy_args` 親パーサー経由で共通の `--proxy`, `--target-proxies`, `--check-sites` オプションを継承する。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。`refresh` は追加で `--workers` を持ち、auto `scrape-bs` / `scrape-forecast` の並列数を指定できる。プロキシは常に使用される (直接接続オプションはない)。  
 
 `probe-proxies` は DB やスクリーニングデータに触れず、公開プロキシ取得だけを診断するためのコマンドで、デフォルトで `--target-proxies` / `--check-sites` を `cli_defaults.toml [probe_proxies]` から取得し最小チェックを行う。`--clear-legacy-cache` を付けると、short TTL に移行する前の legacy failure cache だけを一度削除してから試行できる。
 

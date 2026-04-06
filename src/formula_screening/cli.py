@@ -53,24 +53,11 @@ def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
     from formula_screening.datasources.yfinance_price import fetch_prices_worker
-    from formula_screening.db.repository import get_all_tickers
 
-    pool = _resolve_proxy_pool(args)
-    conn = get_connection()
-    try:
-        tickers = args.ticker if args.ticker else get_all_tickers(conn)
-        if not tickers:
-            print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
-            sys.exit(1)
-    finally:
-        conn.close()
-
-    dispatch_workers(
-        tickers, pool,
+    _run_scrape_workers(
+        args,
         worker_fn=fetch_prices_worker,
         label="prices",
-        workers=args.workers,
-        force=args.force,
         extra_kwargs={"interval": MAGIC["price"]["interval"]},
     )
 
@@ -424,46 +411,39 @@ def main() -> None:
 
     sub = parser.add_subparsers(dest="command", required=True)
 
+    _proxy_args = argparse.ArgumentParser(add_help=False)
+    _proxy_args.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
+    _proxy_args.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
+    _proxy_args.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
+
     # import-irbank
     p_import = sub.add_parser("import-irbank", help="Import IR BANK JSON data into DB")
     p_import.add_argument("--dir", help="IR BANK data directory (default: data/irbank)")
     p_import.add_argument("--years", type=int, help="Only import the most recent N years")
 
     # fetch-prices
-    p_prices = sub.add_parser("fetch-prices", help="Fetch and cache stock prices from yfinance")
+    p_prices = sub.add_parser("fetch-prices", parents=[_proxy_args], help="Fetch and cache stock prices from yfinance")
     p_prices.add_argument("--ticker", nargs="+", help="Specific ticker(s) to fetch")
     p_prices.add_argument("--force", action="store_true", help="Re-fetch even if cached <1 day")
     p_prices.add_argument("--workers", type=int, default=MAGIC["price"]["workers"], help="Number of parallel workers")
-    p_prices.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
-    p_prices.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
-    p_prices.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     # scrape-bs
-    p_bs = sub.add_parser("scrape-bs", help="Scrape detailed BS from IRBank individual pages")
+    p_bs = sub.add_parser("scrape-bs", parents=[_proxy_args], help="Scrape detailed BS from IRBank individual pages")
     p_bs.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
     p_bs.add_argument("--years", type=int, default=MAGIC["scrape"]["bs_years"], help="Store most recent N years")
     p_bs.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
     p_bs.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel workers")
-    p_bs.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
-    p_bs.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
-    p_bs.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     # scrape-forecast
-    p_fc = sub.add_parser("scrape-forecast", help="Scrape forecast data from IRBank /results pages")
+    p_fc = sub.add_parser("scrape-forecast", parents=[_proxy_args], help="Scrape forecast data from IRBank /results pages")
     p_fc.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
     p_fc.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
     p_fc.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel workers")
-    p_fc.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
-    p_fc.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
-    p_fc.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     # refresh
-    p_refresh = sub.add_parser("refresh", help="Check scraper hash changes, invalidate stale cache, and re-fetch")
+    p_refresh = sub.add_parser("refresh", parents=[_proxy_args], help="Check scraper hash changes, invalidate stale cache, and re-fetch")
     p_refresh.add_argument("--force", action="store_true", help="Force re-fetch all sources regardless of hash")
     p_refresh.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel scrape workers for refresh")
-    p_refresh.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
-    p_refresh.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
-    p_refresh.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     # probe-proxies
     p_probe = sub.add_parser("probe-proxies", help="Probe public proxies without touching screening data")
@@ -480,15 +460,12 @@ def main() -> None:
     p_clear.add_argument("--all", action="store_true", help="Remove all active failure-cache entries")
 
     # screen
-    p_screen = sub.add_parser("screen", help="Run a screening strategy")
+    p_screen = sub.add_parser("screen", parents=[_proxy_args], help="Run a screening strategy")
     p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
     p_screen.add_argument("--output", "-o", help="Write results to CSV file")
     p_screen.add_argument("--open", nargs="?", type=int, const=0, default=None,
                            help="Open top N hits on Shikiho Online (omit N for all)")
     p_screen.add_argument("--workers", type=int, default=MAGIC["screening"]["workers"], help="Number of parallel screening workers")
-    p_screen.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
-    p_screen.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
-    p_screen.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
     args = parser.parse_args()
 
