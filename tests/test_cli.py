@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import sys
 from argparse import Namespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from formula_screening.cli import _cmd_clear_failure_cache, _cmd_probe_proxies, _cmd_refresh
+from formula_screening.stealth import ProxyUnavailableError
 
 
 class TestProbeProxies:
@@ -138,3 +142,25 @@ class TestRefresh:
 
         refresh_mock.assert_called_once_with(["irbank_bs.py"], proxy_pool=pool, workers=100)
         save_mock.assert_called_once_with({"irbank_bs.py": "hash"})
+
+
+class TestMain:
+    """Tests for CLI top-level error handling."""
+
+    def test_exits_with_abort_message_on_proxy_error(self, capsys) -> None:
+        from formula_screening.cli import main
+
+        with (
+            patch.object(sys, "argv", ["formula_screening", "probe-proxies"]),
+            patch("formula_screening.cli.setup_logging"),
+            patch("formula_screening.cli.init_db"),
+            patch(
+                "formula_screening.cli._cmd_probe_proxies",
+                side_effect=ProxyUnavailableError("validation_fail_rate=51.0%"),
+            ),
+        ):
+            with pytest.raises(SystemExit, match="1"):
+                main()
+
+        err = capsys.readouterr().err
+        assert "ABORT: validation_fail_rate=51.0%" in err

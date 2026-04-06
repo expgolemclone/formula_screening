@@ -496,6 +496,48 @@ def _format_reason_counts(counts: Counter[str]) -> str:
     return ", ".join(f"{reason}={count}" for reason, count in items)
 
 
+def _validation_failure_rate(validation_failures: Counter[str], checked: int) -> float:
+    """Return the failure rate for fully validated proxy candidates."""
+    if checked <= 0:
+        return 0.0
+    return sum(validation_failures.values()) / checked
+
+
+def _build_proxy_failure_summary(
+    *,
+    alive_count: int,
+    checked: int,
+    cache_skipped: int,
+    cache_skip_reasons: Counter[str],
+    prefilter_failures: Counter[str],
+    validation_failures: Counter[str],
+    validation_failure_rate: float | None = None,
+    validation_failure_threshold: float | None = None,
+    min_validation_checks: int | None = None,
+) -> str:
+    """Build a stable diagnostic summary for proxy acquisition."""
+    summary_parts: list[str] = [f"{alive_count}/{checked} passed"]
+    if (
+        validation_failure_rate is not None
+        and validation_failure_threshold is not None
+        and min_validation_checks is not None
+    ):
+        summary_parts.append(
+            "validation_fail_rate="
+            f"{validation_failure_rate * 100:.1f}% "
+            f"(>{validation_failure_threshold * 100:.1f}%, min_checked={min_validation_checks})",
+        )
+    if cache_skip_reasons:
+        summary_parts.append(
+            f"cache_skipped={cache_skipped} [{_format_reason_counts(cache_skip_reasons)}]",
+        )
+    if prefilter_failures:
+        summary_parts.append(f"prefilter [{_format_reason_counts(prefilter_failures)}]")
+    if validation_failures:
+        summary_parts.append(f"validation [{_format_reason_counts(validation_failures)}]")
+    return "; ".join(summary_parts)
+
+
 def _failure_ttl_seconds(reason: str) -> float:
     """Return the TTL for a cached failure reason."""
     hours = _FAILURE_TTL_HOURS.get(reason, float(MAGIC["proxy"]["failure_cache_ttl_hours"]))
@@ -617,6 +659,9 @@ def fetch_live_proxies(
 
     Returns:
         List of ``host:port`` strings for elite-anonymous live proxies (shuffled).
+
+    Raises:
+        ProxyUnavailableError: If proxy validation fails too often after enough checks.
     """
     global _LAST_PROXY_FAILURE_SUMMARY
 
@@ -687,6 +732,8 @@ def fetch_live_proxies(
     alive: list[str] = []
     checked: int = 0
     validation_failures: Counter[str] = Counter()
+    max_validation_failure_rate: float = float(MAGIC["proxy"]["max_validation_failure_rate"])
+    min_validation_checks_before_abort: int = int(MAGIC["proxy"]["min_validation_checks_before_abort"])
     validate_t0: float = time.monotonic()
     future_to_addr: dict[concurrent.futures.Future[str], str] = {}
     executor: concurrent.futures.ThreadPoolExecutor = (
@@ -725,6 +772,26 @@ def fetch_live_proxies(
                     failure_cache[addr] = _make_failure_cache_entry(result, now)
                     bump_source(addr, f"validated_{result}")
 
+                failure_rate: float = _validation_failure_rate(validation_failures, checked)
+                if (
+                    checked >= min_validation_checks_before_abort
+                    and failure_rate > max_validation_failure_rate
+                ):
+                    _LAST_PROXY_FAILURE_SUMMARY = _build_proxy_failure_summary(
+                        alive_count=len(alive),
+                        checked=checked,
+                        cache_skipped=cache_skipped,
+                        cache_skip_reasons=cache_skip_reasons,
+                        prefilter_failures=prefilter_failures,
+                        validation_failures=validation_failures,
+                        validation_failure_rate=failure_rate,
+                        validation_failure_threshold=max_validation_failure_rate,
+                        min_validation_checks=min_validation_checks_before_abort,
+                    )
+                    _save_failure_cache(failure_cache)
+                    logger.error("Aborting proxy validation: %s", _LAST_PROXY_FAILURE_SUMMARY)
+                    raise ProxyUnavailableError(_LAST_PROXY_FAILURE_SUMMARY)
+
                 if idx < len(candidates) and len(alive) < target_count:
                     f = executor.submit(
                         _check_proxy, candidates[idx], quality_check_count=quality_check_count,
@@ -761,14 +828,14 @@ def fetch_live_proxies(
         )
         if fetched >= 100 and ok == 0:
             logger.warning("Source %s yielded 0 live proxies out of %d fetched candidates", source, fetched)
-    summary_parts: list[str] = [f"{len(alive)}/{checked} passed"]
-    if cache_skip_reasons:
-        summary_parts.append(f"cache_skipped={cache_skipped} [{_format_reason_counts(cache_skip_reasons)}]")
-    if prefilter_failures:
-        summary_parts.append(f"prefilter [{_format_reason_counts(prefilter_failures)}]")
-    if validation_failures:
-        summary_parts.append(f"validation [{_format_reason_counts(validation_failures)}]")
-    _LAST_PROXY_FAILURE_SUMMARY = "; ".join(summary_parts)
+    _LAST_PROXY_FAILURE_SUMMARY = _build_proxy_failure_summary(
+        alive_count=len(alive),
+        checked=checked,
+        cache_skipped=cache_skipped,
+        cache_skip_reasons=cache_skip_reasons,
+        prefilter_failures=prefilter_failures,
+        validation_failures=validation_failures,
+    )
     return alive
 
 

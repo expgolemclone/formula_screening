@@ -442,6 +442,105 @@ class TestFetchLiveProxiesCache:
         saved = json.loads(cache_file.read_text())
         assert saved["10.0.0.1:80"]["reason"] == "not_a_proxy"
 
+    def test_does_not_abort_before_100_validation_checks(self, tmp_path: Path) -> None:
+        cache_file: Path = tmp_path / ".proxy_failures.json"
+        candidates: list[str] = [f"10.0.0.{idx}:80" for idx in range(1, 100)]
+
+        def fake_check(addr: str, *, quality_check_count: int) -> str:
+            last_octet = int(addr.split(".")[-1].split(":")[0])
+            if last_octet <= 60:
+                return "anon_leak"
+            return "ok"
+
+        with (
+            patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch(
+                "formula_screening.stealth._fetch_proxy_candidates",
+                return_value=(
+                    candidates,
+                    {"src": len(candidates)},
+                    {addr: "src" for addr in candidates},
+                ),
+            ),
+            patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
+            patch("formula_screening.stealth._check_proxy", side_effect=fake_check),
+        ):
+            result = fetch_live_proxies(
+                target_count=1000,
+                check_workers=1,
+                quality_check_count=1,
+            )
+
+        assert len(result) == 39
+
+    def test_does_not_abort_at_exactly_50_percent_failure_rate(self, tmp_path: Path) -> None:
+        cache_file: Path = tmp_path / ".proxy_failures.json"
+        candidates: list[str] = [f"10.0.1.{idx}:80" for idx in range(1, 101)]
+
+        def fake_check(addr: str, *, quality_check_count: int) -> str:
+            last_octet = int(addr.split(".")[-1].split(":")[0])
+            if last_octet <= 50:
+                return "anon_leak"
+            return "ok"
+
+        with (
+            patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch(
+                "formula_screening.stealth._fetch_proxy_candidates",
+                return_value=(
+                    candidates,
+                    {"src": len(candidates)},
+                    {addr: "src" for addr in candidates},
+                ),
+            ),
+            patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
+            patch("formula_screening.stealth._check_proxy", side_effect=fake_check),
+        ):
+            result = fetch_live_proxies(
+                target_count=1000,
+                check_workers=1,
+                quality_check_count=1,
+            )
+
+        assert len(result) == 50
+
+    def test_aborts_when_failure_rate_exceeds_50_percent_after_100_checks(self, tmp_path: Path) -> None:
+        cache_file: Path = tmp_path / ".proxy_failures.json"
+        candidates: list[str] = [f"10.0.2.{idx}:80" for idx in range(1, 121)]
+
+        def fake_check(addr: str, *, quality_check_count: int) -> str:
+            last_octet = int(addr.split(".")[-1].split(":")[0])
+            if last_octet <= 51:
+                return "anon_leak"
+            return "ok"
+
+        with (
+            patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch(
+                "formula_screening.stealth._fetch_proxy_candidates",
+                return_value=(
+                    candidates,
+                    {"src": len(candidates)},
+                    {addr: "src" for addr in candidates},
+                ),
+            ),
+            patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
+            patch("formula_screening.stealth._check_proxy", side_effect=fake_check),
+        ):
+            with pytest.raises(
+                ProxyUnavailableError,
+                match="validation_fail_rate=51.0% \\(>50.0%, min_checked=100\\)",
+            ):
+                fetch_live_proxies(
+                    target_count=1000,
+                    check_workers=1,
+                    quality_check_count=1,
+                )
+
+        saved = json.loads(cache_file.read_text())
+        assert len(saved) == 51
+        assert saved["10.0.2.1:80"]["reason"] == "anon_leak"
+
 
 class TestProxyPool:
     """Tests for user-facing proxy acquisition errors."""

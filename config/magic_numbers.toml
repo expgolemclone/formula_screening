@@ -29,6 +29,8 @@ max_failures = 2
 failure_cache_ttl_hours = 24
 tcp_timeout = 0.5
 tcp_workers = 500
+max_validation_failure_rate = 0.5
+min_validation_checks_before_abort = 100
 
 [screening]
 fcf_years = 10
