@@ -13,9 +13,11 @@ rate_limit_wait = 30.0
 [price]
 batch_size = 100
 shares_workers = 100
-max_retries = 3
+max_proxy_tries = 10
 stale_days = 1
 rate_limit_threshold = 0.3
+rate_limit_delay_min = 5.0
+rate_limit_delay_max = 15.0
 
 [proxy]
 target_count = 1000

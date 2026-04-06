@@ -241,6 +241,8 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 自動プロキシ解決 (`ProxyPool.from_auto()`) で live proxy を 1 件も確保できなかった場合は `stealth.ProxyUnavailableError` を送出し、CLI とスクリプトは `ABORT: ...` を stderr に出して `exit(1)` する。エラーメッセージには直前の `passed / cache_skipped / prefilter / validation` 要約も含まれる。`fetch-prices` は実行開始後に全プロキシが失効した場合も同様に中断し、direct connection へはフォールバックしない。
 
+`fetch-prices` はバッチ単位でレート制限を検知した場合、`max_proxy_tries` 回 (デフォルト10) までプロキシをローテーションしつつ `rate_limit_delay_min`〜`rate_limit_delay_max` 秒のディレイを挟んでリトライする。全リトライ失敗時はそのバッチをスキップして次バッチへ進む (プロセス全体は中断しない)。複数回実行することで未取得分を段階的に埋められる。
+
 スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`) と `refresh` の auto scrape、および `screen` の自動データ取得では、`dispatch_scrape_workers` がワーカー数をプロキシプールのサイズ以下に制限する。これにより空サブプールの生成を防ぎ、全ワーカーがプロキシ経由で通信する。つまり `refresh --workers 100` を指定しても、確保できた live proxy が 1 本なら実効ワーカー数は `1` になる。
 
 ## 戦略ファイルの仕組み

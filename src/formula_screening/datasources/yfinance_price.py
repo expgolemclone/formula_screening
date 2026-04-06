@@ -137,7 +137,7 @@ def _fetch_shares_batch(
     return result
 
 
-_MAX_BATCH_RETRIES = MAGIC["price"]["max_retries"]
+_MAX_PROXY_TRIES = MAGIC["price"]["max_proxy_tries"]
 
 
 def _process_batch(
@@ -155,15 +155,19 @@ def _process_batch(
         (fetched_count, failed_count)
     """
     session = create_session(pool)
-    for attempt in range(_MAX_BATCH_RETRIES):
+    for attempt in range(_MAX_PROXY_TRIES):
         try:
             prices = _download_prices_batch(symbols, session=session)
             break
         except RateLimitError as e:
-            print(f"  Rate-limited ({e}), rotating proxy... (attempt {attempt + 1}/{_MAX_BATCH_RETRIES})", flush=True)
+            print(f"  Rate-limited ({e}), rotating proxy... (attempt {attempt + 1}/{_MAX_PROXY_TRIES})", flush=True)
             pool.report_failure()
             if pool.exhausted:
                 raise ProxyUnavailableError("All proxies exhausted")
+            random_delay(
+                MAGIC["price"]["rate_limit_delay_min"],
+                MAGIC["price"]["rate_limit_delay_max"],
+            )
             session = create_session(pool)
     else:
         raise RateLimitError("Rate-limited after all retries")
@@ -248,7 +252,14 @@ def fetch_and_cache_prices(
         label = f"[{batch_start + 1}-{batch_start + len(batch)}/{len(targets)}]"
         print(f"{label} prices + shares...", flush=True)
 
-        fetched, failed = _process_batch(conn, batch, symbols, pool, today, workers=workers)
+        try:
+            fetched, failed = _process_batch(conn, batch, symbols, pool, today, workers=workers)
+        except RateLimitError:
+            print(f"  => batch skipped (rate-limited), rotating proxy...", flush=True)
+            pool.rotate()
+            total_failed += len(batch)
+            continue
+
         total_fetched += fetched
         total_failed += failed
 
