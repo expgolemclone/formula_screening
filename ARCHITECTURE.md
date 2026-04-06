@@ -363,6 +363,7 @@ reason ごとの TTL は次の通り:
 - live proxy が 0 件だった場合の例外メッセージには、`0/N passed; cache_skipped=[...] ; prefilter=[...] ; validation=[...]` のような直前集計が含まれる。
 - 実行中に現在のプロキシがレート制限や接続失敗で失効した場合は `report_failure()` でローテーションする。
 - `fetch-prices` はローテーションの結果プールが空になった時点で `ProxyUnavailableError("All proxies exhausted")` を送出し、中断する。
+- `scripts/download_irbank.py` も同様に、live proxy が 0 件なら `exit(1)` する。
 - この fail-fast 方針により、プロキシ必須の経路で direct connection が使われることはない。
 
 ## キャッシュ無効化の仕組み

@@ -132,7 +132,8 @@ def main() -> None:
     print("Fetching and validating proxies...", flush=True)
     proxies: list[str] = fetch_live_proxies()
     if not proxies:
-        print("WARNING: No live proxies found. Using direct connection.", file=sys.stderr, flush=True)
+        print("ABORT: No live proxies found.", file=sys.stderr, flush=True)
+        sys.exit(1)
 
     codes = _year_codes(args.years)
 
