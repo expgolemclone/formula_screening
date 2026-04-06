@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 import threading
 from typing import TYPE_CHECKING
 
@@ -264,7 +265,7 @@ def build_bs_rows(
 # --- Parallel worker (shared between script and CLI) -------------------------
 
 
-def _on_bs_html(ticker: str, html: str, conn: object) -> None:
+def _on_bs_html(ticker: str, html: str, conn: sqlite3.Connection) -> None:
     """Extract company name from BS page and upsert into stocks table."""
     from formula_screening.db.repository import upsert_stock
 
