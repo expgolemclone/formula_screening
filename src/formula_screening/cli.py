@@ -52,24 +52,27 @@ def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
-    from formula_screening.datasources.yfinance_price import (
-        RateLimitError,
-        fetch_and_cache_prices,
-    )
+    from formula_screening.datasources.yfinance_price import fetch_prices_worker
     from formula_screening.db.repository import get_all_tickers
 
     pool = _resolve_proxy_pool(args)
     conn = get_connection()
     try:
         tickers = args.ticker if args.ticker else get_all_tickers(conn)
-        print(f"Fetching prices for {len(tickers)} tickers...")
-        result = fetch_and_cache_prices(conn, tickers, force=args.force, pool=pool, workers=args.workers)
-        print(f"\nDone: {result['fetched']} fetched, {result['skipped']} skipped, {result['failed']} failed.")
-    except RateLimitError as e:
-        print(f"ABORT: {e}", file=sys.stderr)
-        sys.exit(1)
+        if not tickers:
+            print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
+            sys.exit(1)
     finally:
         conn.close()
+
+    dispatch_scrape_workers(
+        tickers, pool,
+        worker_fn=fetch_prices_worker,
+        label="prices",
+        workers=args.workers,
+        force=args.force,
+        extra_kwargs={"interval": MAGIC["price"]["interval"]},
+    )
 
 
 def dispatch_scrape_workers(
@@ -430,7 +433,7 @@ def main() -> None:
     p_prices = sub.add_parser("fetch-prices", help="Fetch and cache stock prices from yfinance")
     p_prices.add_argument("--ticker", nargs="+", help="Specific ticker(s) to fetch")
     p_prices.add_argument("--force", action="store_true", help="Re-fetch even if cached <1 day")
-    p_prices.add_argument("--workers", type=int, default=MAGIC["price"]["shares_workers"], help="Number of parallel workers for shares fetch")
+    p_prices.add_argument("--workers", type=int, default=MAGIC["price"]["workers"], help="Number of parallel workers")
     p_prices.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
     p_prices.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
     p_prices.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")

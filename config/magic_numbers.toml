@@ -11,11 +11,11 @@ max_proxy_tries = 10
 rate_limit_wait = 30.0
 
 [price]
-batch_size = 100
-shares_workers = 100
-max_proxy_tries = 10
+workers = 100
+interval = 3.0
+interval_jitter = 3.0
+max_retries = 3
 stale_days = 1
-rate_limit_threshold = 0.3
 rate_limit_delay_min = 5.0
 rate_limit_delay_max = 15.0
 

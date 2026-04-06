@@ -199,7 +199,7 @@ def refresh_stale_sources(
             _scrape_forecast(tickers, proxy_pool, workers=workers)
 
         if refetch_prices and tickers:
-            _fetch_prices(conn, tickers, proxy_pool)
+            _fetch_prices(tickers, proxy_pool)
     finally:
         conn.close()
 
@@ -253,17 +253,18 @@ def _scrape_forecast(
     )
 
 
-def _fetch_prices(conn: sqlite3.Connection, tickers: list[str], proxy_pool: ProxyPool) -> None:
-    from formula_screening.datasources.yfinance_price import (
-        fetch_and_cache_prices,
-    )
+def _fetch_prices(tickers: list[str], proxy_pool: ProxyPool) -> None:
+    from formula_screening.cli import dispatch_scrape_workers
+    from formula_screening.datasources.yfinance_price import fetch_prices_worker
 
     print(f"\n[auto] fetch-prices ({len(tickers)} tickers) ...")
-    result: dict[str, int] = fetch_and_cache_prices(conn, tickers, force=True, pool=proxy_pool)
-    print(
-        f"  fetched={result['fetched']}, "
-        f"skipped={result['skipped']}, "
-        f"failed={result['failed']}"
+    dispatch_scrape_workers(
+        tickers, proxy_pool,
+        worker_fn=fetch_prices_worker,
+        label="prices",
+        workers=MAGIC["price"]["workers"],
+        force=True,
+        extra_kwargs={"interval": MAGIC["price"]["interval"]},
     )
 
 
@@ -317,7 +318,7 @@ def ensure_data_available(*, get_proxy_pool: Callable[[], ProxyPool]) -> None:
             _scrape_forecast(tickers, proxy_pool)
 
         if missing_prices:
-            _fetch_prices(conn, tickers, proxy_pool)
+            _fetch_prices(tickers, proxy_pool)
 
         save_hashes(compute_hashes())
         print("\nAuto-fetch complete.")
