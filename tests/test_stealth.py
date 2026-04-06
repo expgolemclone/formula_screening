@@ -12,7 +12,6 @@ import pytest
 
 from formula_screening.stealth import (
     _check_proxy,
-    _fetch_geonode_source,
     _hit_anon,
     _hit_quality,
     _load_failure_cache,
@@ -60,73 +59,10 @@ class TestSourceLabel:
 
         assert _source_label(url) == "proxyscrape_api"
 
-    def test_extracts_geonode_label(self) -> None:
-        url: str = "https://proxylist.geonode.com/api/proxy-list?limit=500"
-
-        assert _source_label(url) == "geonode"
-
     def test_fallback_for_non_github_url(self) -> None:
         url: str = "https://example.com/proxies.txt"
 
         assert _source_label(url) == url
-
-
-# ---------------------------------------------------------------------------
-# _fetch_geonode_source
-# ---------------------------------------------------------------------------
-
-
-class TestFetchGeonodeSource:
-    """Tests for the GeoNode JSON API fetcher."""
-
-    def test_parses_valid_json_response(self) -> None:
-        resp: MagicMock = MagicMock()
-        resp.json.return_value = {
-            "data": [
-                {"ip": "1.2.3.4", "port": "8080"},
-                {"ip": "5.6.7.8", "port": "3128"},
-            ],
-        }
-
-        with patch("formula_screening.stealth.requests.get", return_value=resp):
-            result: list[str] = _fetch_geonode_source()
-
-        assert result == ["1.2.3.4:8080", "5.6.7.8:3128"]
-
-    def test_skips_invalid_entries(self) -> None:
-        resp: MagicMock = MagicMock()
-        resp.json.return_value = {
-            "data": [
-                {"ip": "1.2.3.4", "port": "8080"},
-                {"ip": "not_an_ip", "port": "80"},
-                {"ip": "", "port": ""},
-            ],
-        }
-
-        with patch("formula_screening.stealth.requests.get", return_value=resp):
-            result: list[str] = _fetch_geonode_source()
-
-        assert result == ["1.2.3.4:8080"]
-
-    def test_returns_empty_on_request_error(self) -> None:
-        import requests
-
-        with patch(
-            "formula_screening.stealth.requests.get",
-            side_effect=requests.ConnectionError,
-        ):
-            result: list[str] = _fetch_geonode_source()
-
-        assert result == []
-
-    def test_returns_empty_on_malformed_json(self) -> None:
-        resp: MagicMock = MagicMock()
-        resp.json.side_effect = ValueError("bad json")
-
-        with patch("formula_screening.stealth.requests.get", return_value=resp):
-            result: list[str] = _fetch_geonode_source()
-
-        assert result == []
 
 
 # ---------------------------------------------------------------------------

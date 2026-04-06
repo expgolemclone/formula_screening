@@ -326,7 +326,6 @@ COLUMNS = [                              # 追加表示カラム
 - `vakhov/fresh-proxy-list`
 - `clarketm/proxy-list`
 - ProxyScrape API (`api.proxyscrape.com`) — GitHub 外、plain text
-- GeoNode Free Proxy API (`proxylist.geonode.com`) — GitHub 外、JSON
 
 ### 検証パイプライン
 
