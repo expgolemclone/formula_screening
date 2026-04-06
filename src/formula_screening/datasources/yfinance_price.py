@@ -15,6 +15,7 @@ from formula_screening.db.repository import (
 )
 from formula_screening.stealth import (
     ProxyPool,
+    ProxyUnavailableError,
     create_session,
     random_delay,
 )
@@ -62,6 +63,8 @@ def _fetch_one(
             continue
         except yf.exceptions.YFPricesMissingError:
             return {"price": None, "shares_outstanding": None}
+        except ProxyUnavailableError:
+            raise
         except Exception:
             logger.debug("Failed to fetch %s (attempt %d)", symbol, attempt + 1, exc_info=True)
             pool.report_failure()

@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from formula_screening.stealth import ProxyPool
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
+_TRANSIENT_PROXY_FAILURE_REASONS: set[str] = {"tcp_unreachable", "anon_unreachable"}
+logger = logging.getLogger("formula_screening.cli")
 
 
 def _cmd_import_irbank(args: argparse.Namespace) -> None:
@@ -42,13 +44,32 @@ def _cmd_import_irbank(args: argparse.Namespace) -> None:
 
 def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
     """Build a ProxyPool from CLI args."""
-    from formula_screening.stealth import ProxyPool
+    from formula_screening.stealth import ProxyPool, clear_failure_cache
 
     if args.proxy:
         return ProxyPool.from_url(args.proxy)
+    if _should_clear_transient_proxy_failures(args):
+        removed, remaining = clear_failure_cache(reasons=_TRANSIENT_PROXY_FAILURE_REASONS)
+        logger.info(
+            "Cleared %d transient proxy failure-cache entries (%d remaining)",
+            removed,
+            remaining,
+        )
     target: int = getattr(args, "target_proxies", MAGIC["proxy"]["target_count"])
     check_sites: int = getattr(args, "check_sites", MAGIC["proxy"]["quality_check_count"])
     return ProxyPool.from_auto(target_count=target, quality_check_count=check_sites)
+
+
+def _should_clear_transient_proxy_failures(args: argparse.Namespace) -> bool:
+    """Return True when a command should reset transient proxy failures."""
+    if getattr(args, "proxy", None):
+        return False
+    command = getattr(args, "command", None)
+    if command in {"refresh", "screen"}:
+        return True
+    if command in {"fetch-prices", "scrape-bs", "scrape-forecast"}:
+        return not bool(getattr(args, "ticker", None))
+    return False
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
@@ -79,6 +100,8 @@ def dispatch_workers(
     import concurrent.futures
     import random
     import threading
+
+    from formula_screening.stealth import ProxyUnavailableError
 
     tickers = list(tickers)
     random.shuffle(tickers)
@@ -115,19 +138,28 @@ def dispatch_workers(
         **(extra_kwargs or {}),
     }
 
+    proxy_error: Exception | None = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [
             executor.submit(worker_fn, chunk, sub_pool, **kwargs)
             for chunk, sub_pool in zip(chunks, sub_pools)
         ]
-        concurrent.futures.wait(futures)
-        for f in futures:
+        for f in concurrent.futures.as_completed(futures):
             try:
                 f.result()
+            except ProxyUnavailableError as exc:
+                proxy_error = exc
+                for pending in futures:
+                    if pending is not f:
+                        pending.cancel()
+                break
             except Exception:
-                logging.getLogger("formula_screening.cli").warning(
+                logger.warning(
                     "Worker raised an exception", exc_info=True,
                 )
+
+    if proxy_error is not None:
+        raise proxy_error
 
     print(f"\nDone: {stats['ok']} ok, {stats['skip']} skipped, {stats['fail']} failed.")
     return stats

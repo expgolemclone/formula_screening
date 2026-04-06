@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +13,7 @@ import pytest
 
 from formula_screening.stealth import (
     _check_proxy,
+    _load_proxy_sources,
     _hit_anon,
     _hit_quality,
     _load_failure_cache,
@@ -21,6 +23,7 @@ from formula_screening.stealth import (
     _tcp_reachable,
     ProxyPool,
     ProxyUnavailableError,
+    create_session,
     clear_failure_cache,
     failure_cache_reason_counts,
     failure_cache_reasons,
@@ -63,6 +66,33 @@ class TestSourceLabel:
         url: str = "https://example.com/proxies.txt"
 
         assert _source_label(url) == url
+
+    def test_extracts_proxy_list_download_label(self) -> None:
+        url: str = "https://www.proxy-list.download/api/v1/get?type=http&anon=elite"
+
+        assert _source_label(url) == "proxy_list_download"
+
+
+class TestLoadProxySources:
+    """Tests for proxy source config loading."""
+
+    def test_loads_urls_while_skipping_comments_and_blank_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "proxy_sources.txt"
+            source_file.write_text(
+                "\n".join([
+                    "# comment",
+                    "https://example.com/one.txt",
+                    "",
+                    " https://example.com/two.txt ",
+                ]),
+            )
+
+            with patch("formula_screening.stealth.PROXY_SOURCES_FILE", source_file):
+                assert _load_proxy_sources() == [
+                    "https://example.com/one.txt",
+                    "https://example.com/two.txt",
+                ]
 
 
 # ---------------------------------------------------------------------------
@@ -555,3 +585,7 @@ class TestProxyPool:
         ):
             with pytest.raises(ProxyUnavailableError, match="validation \\[not_a_proxy=10\\]"):
                 ProxyPool.from_auto(target_count=1, quality_check_count=1)
+
+    def test_create_session_raises_when_pool_is_exhausted(self) -> None:
+        with pytest.raises(ProxyUnavailableError, match="Proxy pool exhausted"):
+            create_session(ProxyPool([]))

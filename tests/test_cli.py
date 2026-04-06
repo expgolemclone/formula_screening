@@ -8,7 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from formula_screening.cli import _cmd_clear_failure_cache, _cmd_probe_proxies, _cmd_refresh
+from formula_screening.cli import (
+    _cmd_clear_failure_cache,
+    _cmd_probe_proxies,
+    _cmd_refresh,
+    _resolve_proxy_pool,
+    dispatch_workers,
+)
 from formula_screening.stealth import ProxyUnavailableError
 
 
@@ -62,6 +68,73 @@ class TestProbeProxies:
         from_url_mock.assert_called_once_with("http://9.9.9.9:8080")
         auto_mock.assert_not_called()
         assert "Live proxies ready: 1" in out
+
+
+class TestResolveProxyPool:
+    """Tests for proxy-pool resolution and transient cache handling."""
+
+    def test_clears_transient_failure_cache_for_full_fetch_prices_run(self) -> None:
+        args = Namespace(
+            command="fetch-prices",
+            proxy=None,
+            ticker=None,
+            target_proxies=1,
+            check_sites=0,
+        )
+        pool = MagicMock()
+
+        with (
+            patch(
+                "formula_screening.stealth.clear_failure_cache",
+                return_value=(3, 4),
+            ) as clear_mock,
+            patch("formula_screening.stealth.ProxyPool.from_auto", return_value=pool) as auto_mock,
+        ):
+            result = _resolve_proxy_pool(args)
+
+        assert result is pool
+        clear_mock.assert_called_once_with(reasons={"tcp_unreachable", "anon_unreachable"})
+        auto_mock.assert_called_once_with(target_count=1, quality_check_count=0)
+
+    def test_does_not_clear_transient_failure_cache_for_targeted_fetch_prices_run(self) -> None:
+        args = Namespace(
+            command="fetch-prices",
+            proxy=None,
+            ticker=["7203"],
+            target_proxies=1,
+            check_sites=0,
+        )
+        pool = MagicMock()
+
+        with (
+            patch("formula_screening.stealth.clear_failure_cache") as clear_mock,
+            patch("formula_screening.stealth.ProxyPool.from_auto", return_value=pool) as auto_mock,
+        ):
+            result = _resolve_proxy_pool(args)
+
+        assert result is pool
+        clear_mock.assert_not_called()
+        auto_mock.assert_called_once_with(target_count=1, quality_check_count=0)
+
+    def test_does_not_clear_transient_failure_cache_for_explicit_proxy(self) -> None:
+        args = Namespace(
+            command="refresh",
+            proxy="http://9.9.9.9:8080",
+            ticker=None,
+            target_proxies=1,
+            check_sites=0,
+        )
+        pool = MagicMock()
+
+        with (
+            patch("formula_screening.stealth.clear_failure_cache") as clear_mock,
+            patch("formula_screening.stealth.ProxyPool.from_url", return_value=pool) as from_url_mock,
+        ):
+            result = _resolve_proxy_pool(args)
+
+        assert result is pool
+        clear_mock.assert_not_called()
+        from_url_mock.assert_called_once_with("http://9.9.9.9:8080")
 
 
 class TestClearFailureCache:
@@ -164,3 +237,24 @@ class TestMain:
 
         err = capsys.readouterr().err
         assert "ABORT: validation_fail_rate=51.0%" in err
+
+
+class TestDispatchWorkers:
+    """Tests for worker-level fatal proxy errors."""
+
+    def test_reraises_proxy_unavailable_error_from_worker(self) -> None:
+        pool = MagicMock()
+        pool.size = 1
+        pool.split.return_value = [MagicMock()]
+
+        def worker_fn(*args, **kwargs) -> None:
+            raise ProxyUnavailableError("Proxy pool exhausted during request execution")
+
+        with pytest.raises(ProxyUnavailableError, match="Proxy pool exhausted"):
+            dispatch_workers(
+                ["7203"],
+                pool,
+                worker_fn=worker_fn,
+                label="prices",
+                workers=1,
+            )

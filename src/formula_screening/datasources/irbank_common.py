@@ -43,7 +43,11 @@ def fetch_irbank_html(
     Returns:
         HTML string if successful, None on failure.
     """
-    from formula_screening.stealth import create_session, random_delay
+    from formula_screening.stealth import (
+        ProxyUnavailableError,
+        create_session,
+        random_delay,
+    )
 
     url = _IRBANK_URL_TEMPLATE.format(ticker=ticker, path=path)
 
@@ -64,6 +68,8 @@ def fetch_irbank_html(
                 )
                 continue
             return None
+        except ProxyUnavailableError:
+            raise
         except Exception:
             pool.report_failure()
             continue

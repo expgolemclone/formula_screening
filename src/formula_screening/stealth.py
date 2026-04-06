@@ -18,7 +18,12 @@ import requests
 
 logger: logging.Logger = logging.getLogger("formula_screening.stealth")
 
-from formula_screening.config import MAGIC, PROXY_FAILURE_CACHE, VALIDATION_SITES_FILE
+from formula_screening.config import (
+    MAGIC,
+    PROXY_FAILURE_CACHE,
+    PROXY_SOURCES_FILE,
+    VALIDATION_SITES_FILE,
+)
 
 if TYPE_CHECKING:
     from curl_cffi.requests import Session
@@ -27,19 +32,6 @@ _HOST_PORT_RE = re.compile(
     r"^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$",
 )
 
-
-_PROXY_SOURCES = [
-    # Curated, actively generated lists. These are materially higher quality
-    # than generic "fresh proxy" dumps that mostly contain dead web servers.
-    "https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/http.txt",
-    "https://raw.githubusercontent.com/ProxyScraper/ProxyScraper/main/http.txt",
-    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-    "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt",
-    "https://vakhov.github.io/fresh-proxy-list/http.txt",
-    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
-    # Non-GitHub sources for host diversity
-    "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
-]
 
 # --- Browser profiles (TLS fingerprint + UA + headers, always consistent) ------
 #
@@ -173,6 +165,19 @@ def _load_validation_sites() -> list[str]:
 _VALIDATION_SITES: list[str] = _load_validation_sites()
 
 
+def _load_proxy_sources() -> list[str]:
+    """Load proxy source URLs from the sources list file."""
+    text: str = PROXY_SOURCES_FILE.read_text()
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+_PROXY_SOURCES: list[str] = _load_proxy_sources()
+
+
 def random_ua() -> str:
     """Return a randomly chosen browser User-Agent string."""
     return random.choice(_BROWSER_PROFILES)[1]
@@ -203,8 +208,9 @@ def create_session(
 
     if pool is not None:
         proxy_url = pool.get()
-        if proxy_url:
-            session.proxies = {"http": proxy_url, "https": proxy_url}
+        if proxy_url is None:
+            raise ProxyUnavailableError("Proxy pool exhausted during request execution")
+        session.proxies = {"http": proxy_url, "https": proxy_url}
 
     return session
 
@@ -246,6 +252,9 @@ def _source_label(url: str) -> str:
     # api.proxyscrape.com → proxyscrape_api
     if "api.proxyscrape.com" in url:
         return "proxyscrape_api"
+    # proxy-list.download API → proxy_list_download
+    if "proxy-list.download" in url:
+        return "proxy_list_download"
     # raw.githubusercontent.com/{user}/... → user
     try:
         return parts[parts.index("raw.githubusercontent.com") + 1]
