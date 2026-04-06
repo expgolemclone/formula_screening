@@ -14,6 +14,11 @@ def _pct(a: float | None, b: float | None) -> float | None:
     return val * 100 if val is not None else None
 
 
+def _prefer(direct: float | None, fallback: float | None) -> float | None:
+    """Return *direct* when present (including 0.0), otherwise *fallback*."""
+    return direct if direct is not None else fallback
+
+
 def compute_metrics(
     financials: dict[str, dict[str, float | None]],
     price: float | None,
@@ -71,20 +76,20 @@ def compute_metrics(
 
     # Margin metrics: prefer IR BANK direct values, compute as fallback
     metrics["gross_margin"] = _pct(gross_profit, revenue)
-    metrics["operating_margin"] = pl.get("operating_margin") or _pct(operating_income, revenue)
-    metrics["ordinary_margin"] = pl.get("ordinary_income_margin") or _pct(ordinary_income, revenue)
-    metrics["net_income_margin"] = pl.get("net_income_margin") or _pct(net_income, revenue)
+    metrics["operating_margin"] = _prefer(pl.get("operating_margin"), _pct(operating_income, revenue))
+    metrics["ordinary_margin"] = _prefer(pl.get("ordinary_income_margin"), _pct(ordinary_income, revenue))
+    metrics["net_income_margin"] = _prefer(pl.get("net_income_margin"), _pct(net_income, revenue))
 
     # Return metrics: prefer IR BANK direct values
-    metrics["roe"] = pl.get("roe") or _pct(net_income, stockholders_equity)
-    metrics["roa"] = pl.get("roa") or _pct(net_income, total_assets)
+    metrics["roe"] = _prefer(pl.get("roe"), _pct(net_income, stockholders_equity))
+    metrics["roa"] = _prefer(pl.get("roa"), _pct(net_income, total_assets))
 
     # Balance sheet ratios
-    metrics["equity_ratio"] = bs.get("equity_ratio") or _pct(stockholders_equity, total_assets)
-    metrics["debt_equity_ratio"] = bs.get("debt_equity_ratio") or _pct(total_debt, stockholders_equity)
+    metrics["equity_ratio"] = _prefer(bs.get("equity_ratio"), _pct(stockholders_equity, total_assets))
+    metrics["debt_equity_ratio"] = _prefer(bs.get("debt_equity_ratio"), _pct(total_debt, stockholders_equity))
 
     # Cash flow ratios
-    metrics["operating_cf_margin"] = cf.get("operating_cf_margin") or _pct(cf.get("operating_cf"), revenue)
+    metrics["operating_cf_margin"] = _prefer(cf.get("operating_cf_margin"), _pct(cf.get("operating_cf"), revenue))
     metrics["free_cf_ratio"] = _pct(free_cf, revenue)
 
     # Total liabilities

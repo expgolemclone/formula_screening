@@ -46,7 +46,7 @@ def test_missing_data_returns_none():
     assert m["roe"] is None
 
 
-def test_zero_denominator_returns_none():
+def test_zero_denominator_returns_none() -> None:
     financials = {
         "pl": {"revenue": 0, "operating_income": 100, "basic_eps": 0},
         "bs": {"total_assets": 0, "stockholders_equity": 0, "total_equity": 0},
@@ -56,3 +56,43 @@ def test_zero_denominator_returns_none():
     assert m["per"] is None  # eps = 0
     assert m["operating_margin"] is None  # revenue = 0
     assert m["roe"] is None  # equity = 0
+
+
+def test_zero_direct_values_are_preserved() -> None:
+    """IR BANK direct values of 0.0 must not fall through to computation."""
+    financials: dict[str, dict[str, float]] = {
+        "pl": {
+            "revenue": 1000,
+            "operating_income": 200,
+            "ordinary_income": 300,
+            "net_income": 100,
+            "operating_margin": 0.0,
+            "ordinary_income_margin": 0.0,
+            "net_income_margin": 0.0,
+            "roe": 0.0,
+            "roa": 0.0,
+        },
+        "bs": {
+            "total_assets": 2000,
+            "stockholders_equity": 800,
+            "total_equity": 900,
+            "total_debt": 500,
+            "equity_ratio": 0.0,
+            "debt_equity_ratio": 0.0,
+        },
+        "cf": {
+            "operating_cf": 200,
+            "operating_cf_margin": 0.0,
+        },
+    }
+
+    m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
+
+    assert m["operating_margin"] == 0.0
+    assert m["ordinary_margin"] == 0.0
+    assert m["net_income_margin"] == 0.0
+    assert m["roe"] == 0.0
+    assert m["roa"] == 0.0
+    assert m["equity_ratio"] == 0.0
+    assert m["debt_equity_ratio"] == 0.0
+    assert m["operating_cf_margin"] == 0.0
