@@ -231,6 +231,22 @@ def _fetch_single_source(url: str) -> list[str]:
             headers={"User-Agent": random_ua()},
             timeout=MAGIC["proxy"]["anon_timeout"],
         )
+        content_type = resp.headers.get("Content-Type", "").lower()
+        if "application/json" in content_type:
+            payload = resp.json()
+            if isinstance(payload, dict):
+                data = payload.get("data")
+                if isinstance(data, list):
+                    for item in data:
+                        if not isinstance(item, dict):
+                            continue
+                        ip = item.get("ip")
+                        port = item.get("port")
+                        if isinstance(ip, str) and isinstance(port, str):
+                            addr = f"{ip}:{port}"
+                            if _HOST_PORT_RE.match(addr):
+                                proxies.append(addr)
+            return proxies
         for line in resp.text.strip().splitlines():
             addr = line.strip()
             if not addr or addr.startswith("<"):
@@ -255,6 +271,9 @@ def _source_label(url: str) -> str:
     # proxy-list.download API → proxy_list_download
     if "proxy-list.download" in url:
         return "proxy_list_download"
+    # proxylist.geonode.com API → geonode_api
+    if "proxylist.geonode.com" in url:
+        return "geonode_api"
     # raw.githubusercontent.com/{user}/... → user
     try:
         return parts[parts.index("raw.githubusercontent.com") + 1]

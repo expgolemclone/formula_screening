@@ -13,6 +13,7 @@ import pytest
 
 from formula_screening.stealth import (
     _check_proxy,
+    _fetch_single_source,
     _load_proxy_sources,
     _hit_anon,
     _hit_quality,
@@ -72,6 +73,14 @@ class TestSourceLabel:
 
         assert _source_label(url) == "proxy_list_download"
 
+    def test_extracts_geonode_api_label(self) -> None:
+        url: str = (
+            "https://proxylist.geonode.com/api/proxy-list?"
+            "limit=500&page=1&sort_by=lastChecked&sort_type=desc&protocols=http"
+        )
+
+        assert _source_label(url) == "geonode_api"
+
 
 class TestLoadProxySources:
     """Tests for proxy source config loading."""
@@ -93,6 +102,42 @@ class TestLoadProxySources:
                     "https://example.com/one.txt",
                     "https://example.com/two.txt",
                 ]
+
+
+class TestFetchSingleSource:
+    """Tests for proxy source payload parsing."""
+
+    def test_parses_plaintext_source(self) -> None:
+        resp: MagicMock = MagicMock()
+        resp.headers = {"Content-Type": "text/plain"}
+        resp.text = "\n".join([
+            "1.2.3.4:80",
+            "invalid",
+            "https://5.6.7.8:8080",
+        ])
+
+        with patch("formula_screening.stealth.requests.get", return_value=resp):
+            result = _fetch_single_source("https://example.com/http.txt")
+
+        assert result == ["1.2.3.4:80", "5.6.7.8:8080"]
+
+    def test_parses_geonode_json_source(self) -> None:
+        resp: MagicMock = MagicMock()
+        resp.headers = {"Content-Type": "application/json; charset=utf-8"}
+        resp.json.return_value = {
+            "data": [
+                {"ip": "1.2.3.4", "port": "80"},
+                {"ip": "bad", "port": "oops"},
+                {"ip": "5.6.7.8", "port": "8080"},
+            ],
+        }
+
+        with patch("formula_screening.stealth.requests.get", return_value=resp):
+            result = _fetch_single_source(
+                "https://proxylist.geonode.com/api/proxy-list?limit=500&page=1",
+            )
+
+        assert result == ["1.2.3.4:80", "5.6.7.8:8080"]
 
 
 # ---------------------------------------------------------------------------
