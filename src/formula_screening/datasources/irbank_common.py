@@ -60,17 +60,29 @@ def fetch_irbank_html(
             if resp.status_code == 429 or (
                 resp.status_code == 200 and not validate_fn(resp.text)
             ):
-                logger.info("Rate-limited for %s (attempt %d), rotating...", ticker, attempt + 1)
+                snippet: str = resp.text[:500].replace("\n", " ")
+                logger.warning(
+                    "Blocked for %s (status=%d, attempt %d): %s",
+                    ticker, resp.status_code, attempt + 1, snippet,
+                )
                 pool.report_failure()
                 random_delay(
                     MAGIC["scrape"]["rate_limit_delay_min"],
                     MAGIC["scrape"]["rate_limit_delay_max"],
                 )
                 continue
+            logger.warning(
+                "Unexpected status %d for %s (attempt %d)",
+                resp.status_code, ticker, attempt + 1,
+            )
             return None
         except ProxyUnavailableError:
             raise
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Connection error for %s (attempt %d): %s: %s",
+                ticker, attempt + 1, type(exc).__name__, exc,
+            )
             pool.report_failure()
             continue
     return None
