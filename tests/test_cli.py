@@ -187,7 +187,7 @@ class TestClearFailureCache:
 class TestRefresh:
     """Tests for refresh CLI wiring."""
 
-    def test_passes_workers_to_refresh_stale_sources(self) -> None:
+    def test_passes_workers_and_browser_to_refresh_stale_sources(self) -> None:
         args = Namespace(
             force=False,
             workers=100,
@@ -196,10 +196,12 @@ class TestRefresh:
             target_proxies=1,
             check_sites=1,
         )
-        pool = object()
+        pool: object = object()
+        browser: MagicMock = MagicMock()
 
         with (
             patch("formula_screening.cli._resolve_proxy_pool", return_value=pool),
+            patch("formula_screening.cli._start_browser_service", return_value=browser),
             patch(
                 "formula_screening.cache_invalidation.check_and_invalidate",
                 return_value=["irbank_bs.py"],
@@ -213,8 +215,11 @@ class TestRefresh:
         ):
             _cmd_refresh(args)
 
-        refresh_mock.assert_called_once_with(["irbank_bs.py"], proxy_pool=pool, workers=100)
+        refresh_mock.assert_called_once_with(
+            ["irbank_bs.py"], proxy_pool=pool, browser=browser, workers=100,
+        )
         save_mock.assert_called_once_with({"irbank_bs.py": "hash"})
+        browser.shutdown.assert_called_once()
 
 
 class TestMain:

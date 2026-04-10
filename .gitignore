@@ -3,6 +3,7 @@
 
 # 許可するファイル
 !.gitignore
+!CLAUDE.md
 !ARCHITECTURE.md
 !plan.md
 !pyproject.toml
@@ -20,6 +21,10 @@
 !tests/**
 !scripts/
 !scripts/**
+!browser_service/
+!browser_service/package.json
+!browser_service/package-lock.json
+!browser_service/server.js
 !data/
 !data/irbank/
 !data/irbank/*/

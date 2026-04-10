@@ -19,6 +19,7 @@ from formula_screening.config import DB_PATH, HASH_FILE, MAGIC
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from formula_screening.browser import BrowserService
     from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.cache_invalidation")
@@ -168,6 +169,7 @@ def refresh_stale_sources(
     changed_files: list[str],
     *,
     proxy_pool: ProxyPool,
+    browser: BrowserService,
     workers: int | None = None,
 ) -> None:
     """Re-fetch data sources corresponding to *changed_files*.
@@ -179,7 +181,7 @@ def refresh_stale_sources(
     from formula_screening.db.schema import get_connection
 
     sources: set[str] = set()
-    refetch_prices = False
+    refetch_prices: bool = False
     for name in changed_files:
         if name in _PRICE_FILES:
             refetch_prices = True
@@ -187,16 +189,16 @@ def refresh_stale_sources(
 
     conn = get_connection()
     try:
-        tickers = get_all_tickers(conn)
+        tickers: list[str] = get_all_tickers(conn)
 
         if "irbank" in sources:
             _import_irbank(conn)
 
         if "irbank_bs" in sources:
-            _scrape_bs(tickers, proxy_pool, workers=workers)
+            _scrape_bs(tickers, proxy_pool, browser=browser, workers=workers)
 
         if "irbank_forecast" in sources:
-            _scrape_forecast(tickers, proxy_pool, workers=workers)
+            _scrape_forecast(tickers, proxy_pool, browser=browser, workers=workers)
 
         if refetch_prices and tickers:
             _fetch_prices(tickers, proxy_pool)
@@ -217,7 +219,13 @@ def _import_irbank(conn: sqlite3.Connection) -> None:
         print(f"\n[auto] irbank data dir not found: {irbank_dir}")
 
 
-def _scrape_bs(tickers: list[str], proxy_pool: ProxyPool, *, workers: int | None = None) -> None:
+def _scrape_bs(
+    tickers: list[str],
+    proxy_pool: ProxyPool,
+    *,
+    browser: BrowserService,
+    workers: int | None = None,
+) -> None:
     from formula_screening.cli import dispatch_workers
     from formula_screening.datasources.irbank_bs import scrape_bs_worker
 
@@ -228,7 +236,7 @@ def _scrape_bs(tickers: list[str], proxy_pool: ProxyPool, *, workers: int | None
         label="BS",
         workers=workers or MAGIC["scrape"]["workers"],
         force=True,
-        extra_kwargs={"years": 1},
+        extra_kwargs={"years": 1, "browser": browser},
     )
 
 
@@ -236,6 +244,7 @@ def _scrape_forecast(
     tickers: list[str],
     proxy_pool: ProxyPool,
     *,
+    browser: BrowserService,
     workers: int | None = None,
 ) -> None:
     from formula_screening.cli import dispatch_workers
@@ -250,6 +259,7 @@ def _scrape_forecast(
         label="forecast",
         workers=workers or MAGIC["scrape"]["workers"],
         force=True,
+        extra_kwargs={"browser": browser},
     )
 
 
@@ -268,18 +278,21 @@ def _fetch_prices(tickers: list[str], proxy_pool: ProxyPool) -> None:
     )
 
 
-def ensure_data_available(*, get_proxy_pool: Callable[[], ProxyPool]) -> None:
+def ensure_data_available(
+    *,
+    get_proxy_pool: Callable[[], ProxyPool],
+    get_browser: Callable[[], BrowserService],
+) -> None:
     """Check DB for missing data sources and auto-fetch if empty.
 
-    The proxy pool is created lazily via *get_proxy_pool* so that the
-    expensive proxy discovery is skipped when all data is already present.
+    The proxy pool and browser service are created lazily so that
+    the expensive startup is skipped when all data is already present.
     """
     from formula_screening.db.repository import get_all_tickers
     from formula_screening.db.schema import get_connection
 
     conn = get_connection()
     try:
-        # Check which sources have data
         missing_sources: list[str] = []
         for source in ("irbank", "irbank_bs", "irbank_forecast"):
             row = conn.execute(
@@ -290,7 +303,7 @@ def ensure_data_available(*, get_proxy_pool: Callable[[], ProxyPool]) -> None:
                 missing_sources.append(source)
 
         price_row = conn.execute("SELECT COUNT(*) AS cnt FROM prices").fetchone()
-        missing_prices = price_row["cnt"] == 0
+        missing_prices: bool = price_row["cnt"] == 0
 
         if not missing_sources and not missing_prices:
             return
@@ -301,21 +314,24 @@ def ensure_data_available(*, get_proxy_pool: Callable[[], ProxyPool]) -> None:
         if missing_prices:
             print("  - prices")
 
-        proxy_pool = get_proxy_pool()
+        proxy_pool: ProxyPool = get_proxy_pool()
 
         if "irbank" in missing_sources:
             _import_irbank(conn)
 
-        tickers = get_all_tickers(conn)
+        tickers: list[str] = get_all_tickers(conn)
         if not tickers:
             print("No tickers in DB after import. Cannot scrape.")
             return
 
-        if "irbank_bs" in missing_sources:
-            _scrape_bs(tickers, proxy_pool)
+        needs_browser: bool = "irbank_bs" in missing_sources or "irbank_forecast" in missing_sources
+        browser: BrowserService | None = get_browser() if needs_browser else None
 
-        if "irbank_forecast" in missing_sources:
-            _scrape_forecast(tickers, proxy_pool)
+        if "irbank_bs" in missing_sources and browser is not None:
+            _scrape_bs(tickers, proxy_pool, browser=browser)
+
+        if "irbank_forecast" in missing_sources and browser is not None:
+            _scrape_forecast(tickers, proxy_pool, browser=browser)
 
         if missing_prices:
             _fetch_prices(tickers, proxy_pool)

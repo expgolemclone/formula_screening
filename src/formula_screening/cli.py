@@ -17,6 +17,7 @@ from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
 
 if TYPE_CHECKING:
+    from formula_screening.browser import BrowserService
     from formula_screening.stealth import ProxyPool
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
@@ -70,6 +71,15 @@ def _should_clear_transient_proxy_failures(args: argparse.Namespace) -> bool:
     if command in {"fetch-prices", "scrape-bs", "scrape-forecast"}:
         return not bool(getattr(args, "ticker", None))
     return False
+
+
+def _start_browser_service() -> BrowserService:
+    """Create and start a BrowserService instance."""
+    from formula_screening.browser import BrowserService
+
+    browser: BrowserService = BrowserService()
+    browser.start()
+    return browser
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
@@ -198,22 +208,31 @@ def _run_scrape_workers(
 def _cmd_scrape_bs(args: argparse.Namespace) -> None:
     from formula_screening.datasources.irbank_bs import scrape_bs_worker
 
-    _run_scrape_workers(
-        args,
-        worker_fn=scrape_bs_worker,
-        label="BS",
-        extra_kwargs={"years": args.years},
-    )
+    browser: BrowserService = _start_browser_service()
+    try:
+        _run_scrape_workers(
+            args,
+            worker_fn=scrape_bs_worker,
+            label="BS",
+            extra_kwargs={"years": args.years, "browser": browser},
+        )
+    finally:
+        browser.shutdown()
 
 
 def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
     from formula_screening.datasources.irbank_forecast import scrape_forecast_worker
 
-    _run_scrape_workers(
-        args,
-        worker_fn=scrape_forecast_worker,
-        label="forecast",
-    )
+    browser: BrowserService = _start_browser_service()
+    try:
+        _run_scrape_workers(
+            args,
+            worker_fn=scrape_forecast_worker,
+            label="forecast",
+            extra_kwargs={"browser": browser},
+        )
+    finally:
+        browser.shutdown()
 
 
 def _cmd_refresh(args: argparse.Namespace) -> None:
@@ -224,7 +243,7 @@ def _cmd_refresh(args: argparse.Namespace) -> None:
         save_hashes,
     )
 
-    pool = _resolve_proxy_pool(args)
+    pool: ProxyPool = _resolve_proxy_pool(args)
 
     if args.force:
         current = compute_hashes()
@@ -246,7 +265,11 @@ def _cmd_refresh(args: argparse.Namespace) -> None:
         print("Cache is up to date. Nothing to refresh.")
         return
 
-    refresh_stale_sources(changed, proxy_pool=pool, workers=args.workers)
+    browser: BrowserService = _start_browser_service()
+    try:
+        refresh_stale_sources(changed, proxy_pool=pool, browser=browser, workers=args.workers)
+    finally:
+        browser.shutdown()
     save_hashes(compute_hashes())
     print("\nRefresh complete.")
 
@@ -297,7 +320,22 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening.cache_invalidation import ensure_data_available
     from formula_screening.screener import load_strategy, run_screening
 
-    ensure_data_available(get_proxy_pool=lambda: _resolve_proxy_pool(args))
+    _screen_browser: BrowserService | None = None
+
+    def _get_screen_browser() -> BrowserService:
+        nonlocal _screen_browser
+        if _screen_browser is None:
+            _screen_browser = _start_browser_service()
+        return _screen_browser
+
+    try:
+        ensure_data_available(
+            get_proxy_pool=lambda: _resolve_proxy_pool(args),
+            get_browser=_get_screen_browser,
+        )
+    finally:
+        if _screen_browser is not None:
+            _screen_browser.shutdown()
 
     strategy_path = Path(args.strategy)
     if not strategy_path.exists():

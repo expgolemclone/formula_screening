@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from formula_screening.config import MAGIC
 
 if TYPE_CHECKING:
+    from formula_screening.browser import BrowserService
     from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.irbank_bs")
@@ -198,12 +199,14 @@ def _validate_bs_html(html: str) -> bool:
 def fetch_bs_html(
     ticker: str,
     pool: ProxyPool,
+    browser: BrowserService,
 ) -> str | None:
-    """Fetch /bs page HTML using requests + ProxyPool.
+    """Fetch /bs page HTML via the browser service.
 
     Args:
         ticker: Stock ticker code.
-        pool: A ``ProxyPool`` instance (uses ``.get()`` and ``.report_failure()``).
+        pool: A ``ProxyPool`` instance.
+        browser: A running ``BrowserService`` instance.
 
     Returns:
         HTML string if successful, None on failure.
@@ -211,7 +214,7 @@ def fetch_bs_html(
     from formula_screening.datasources.irbank_common import fetch_irbank_html
 
     return fetch_irbank_html(
-        ticker, "bs", pool, validate_fn=_validate_bs_html,
+        ticker, "bs", pool, validate_fn=_validate_bs_html, browser=browser,
     )
 
 
@@ -279,6 +282,7 @@ def scrape_bs_worker(
     pool: ProxyPool,
     *,
     years: int = 1,
+    browser: BrowserService,
     interval: float = MAGIC["scrape"]["interval"],
     force: bool = False,
     stats: dict[str, int],
@@ -293,7 +297,7 @@ def scrape_bs_worker(
     """
     from formula_screening.datasources.irbank_common import scrape_worker
 
-    def _process(ticker: str, html: str) -> list[dict]:
+    def _process(ticker: str, html: str) -> list[dict[str, str | float]]:
         return build_bs_rows(ticker, html, years=years)
 
     scrape_worker(
@@ -304,6 +308,7 @@ def scrape_bs_worker(
         on_html_fn=_on_bs_html,
         fetch_path="bs",
         validate_fn=_validate_bs_html,
+        browser=browser,
         interval=interval,
         force=force,
         stats=stats,

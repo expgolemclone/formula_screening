@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from formula_screening.config import MAGIC
 
 if TYPE_CHECKING:
+    from formula_screening.browser import BrowserService
     from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.irbank_forecast")
@@ -225,6 +226,7 @@ def scrape_forecast_worker(
     tickers: list[str],
     pool: ProxyPool,
     *,
+    browser: BrowserService,
     interval: float = MAGIC["scrape"]["interval"],
     force: bool = False,
     stats: dict[str, int],
@@ -242,6 +244,7 @@ def scrape_forecast_worker(
         process_fn=build_forecast_rows,
         fetch_path="results",
         validate_fn=validate_results_html,
+        browser=browser,
         interval=interval,
         force=force,
         stats=stats,

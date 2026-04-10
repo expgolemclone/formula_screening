@@ -6,6 +6,7 @@ import logging
 import threading
 from datetime import datetime, timedelta, timezone
 
+import requests as _requests
 import yfinance as yf
 
 from formula_screening.config import MAGIC
@@ -16,13 +17,13 @@ from formula_screening.db.repository import (
 from formula_screening.stealth import (
     ProxyPool,
     ProxyUnavailableError,
-    create_session,
     random_delay,
+    random_ua,
 )
 
-logger = logging.getLogger("formula_screening.yfinance_price")
+logger: logging.Logger = logging.getLogger("formula_screening.yfinance_price")
 
-_MAX_RETRIES = MAGIC["price"]["max_retries"]
+_MAX_RETRIES: int = MAGIC["price"]["max_retries"]
 
 
 def is_price_stale(updated_at: str | None) -> bool:
@@ -36,16 +37,27 @@ def is_price_stale(updated_at: str | None) -> bool:
         return True
 
 
+def _create_yf_session(pool: ProxyPool) -> _requests.Session:
+    """Create a ``requests.Session`` with proxy from the pool for yfinance."""
+    session: _requests.Session = _requests.Session()
+    proxy_url: str | None = pool.get()
+    if proxy_url is None:
+        raise ProxyUnavailableError("Proxy pool exhausted during request execution")
+    session.proxies = {"http": proxy_url, "https": proxy_url}
+    session.headers["User-Agent"] = random_ua()
+    return session
+
+
 def _fetch_one(
     ticker: str,
     pool: ProxyPool,
 ) -> dict[str, float | int | None]:
     """Fetch price and shares for a single ticker, with retry on rate-limit."""
-    symbol = f"{ticker}.T"
+    symbol: str = f"{ticker}.T"
 
     for attempt in range(_MAX_RETRIES):
         try:
-            session = create_session(pool)
+            session: _requests.Session = _create_yf_session(pool)
             t = yf.Ticker(symbol, session=session)
             hist = t.history(period="1d", raise_errors=True)
             price: float | None = float(hist["Close"].iloc[-1]) if not hist.empty else None

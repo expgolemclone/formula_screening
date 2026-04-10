@@ -6,7 +6,6 @@ import json
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,15 +23,11 @@ from formula_screening.stealth import (
     _tcp_reachable,
     ProxyPool,
     ProxyUnavailableError,
-    create_session,
     clear_failure_cache,
     failure_cache_reason_counts,
     failure_cache_reasons,
     fetch_live_proxies,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 # ---------------------------------------------------------------------------
@@ -631,6 +626,8 @@ class TestProxyPool:
             with pytest.raises(ProxyUnavailableError, match="validation \\[not_a_proxy=10\\]"):
                 ProxyPool.from_auto(target_count=1, quality_check_count=1)
 
-    def test_create_session_raises_when_pool_is_exhausted(self) -> None:
-        with pytest.raises(ProxyUnavailableError, match="Proxy pool exhausted"):
-            create_session(ProxyPool([]))
+    def test_empty_pool_returns_none_from_get(self) -> None:
+        pool: ProxyPool = ProxyPool([])
+
+        assert pool.get() is None
+        assert pool.exhausted is True

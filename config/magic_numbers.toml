@@ -36,6 +36,12 @@ min_validation_checks_before_abort = 100
 fcf_years = 10
 workers = 4
 
+[browser]
+pool_size = 10
+page_timeout = 30000
+idle_timeout = 300
+startup_timeout = 30
+
 [log]
 max_bytes = 5242880
 backup_count = 3
