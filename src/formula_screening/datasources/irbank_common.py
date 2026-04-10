@@ -26,6 +26,7 @@ logger: logging.Logger = logging.getLogger("formula_screening.irbank_common")
 
 _IRBANK_URL_TEMPLATE: str = "https://irbank.net/{ticker}/{path}"
 _MAX_RETRIES: int = MAGIC["scrape"]["max_retries"]
+_PROXY_REMOVE_ON_ERROR: bool = MAGIC["scrape"]["proxy_remove_on_error"]
 
 
 def fetch_irbank_html(
@@ -53,6 +54,12 @@ def fetch_irbank_html(
     from formula_screening.browser import BrowserResponse, BrowserServiceError
     from formula_screening.stealth import ProxyUnavailableError, random_delay
 
+    def _handle_proxy_error() -> None:
+        if _PROXY_REMOVE_ON_ERROR:
+            pool.report_failure()
+        else:
+            pool.rotate()
+
     url: str = _IRBANK_URL_TEMPLATE.format(ticker=ticker, path=path)
 
     for attempt in range(_MAX_RETRIES):
@@ -67,7 +74,7 @@ def fetch_irbank_html(
                 "Browser service error for %s (attempt %d): %s",
                 ticker, attempt + 1, exc,
             )
-            pool.report_failure()
+            _handle_proxy_error()
             continue
 
         if resp.status == 200 and resp.html is not None and validate_fn(resp.html):
@@ -78,7 +85,7 @@ def fetch_irbank_html(
                 "Fetch error for %s (attempt %d): %s",
                 ticker, attempt + 1, resp.error,
             )
-            pool.report_failure()
+            _handle_proxy_error()
             continue
 
         if resp.html is not None and not validate_fn(resp.html):
@@ -87,7 +94,7 @@ def fetch_irbank_html(
                 "Blocked for %s (status=%d, attempt %d): %s",
                 ticker, resp.status, attempt + 1, snippet,
             )
-            pool.rotate()
+            _handle_proxy_error()
             random_delay(
                 MAGIC["scrape"]["rate_limit_delay_min"],
                 MAGIC["scrape"]["rate_limit_delay_max"],
