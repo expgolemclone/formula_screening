@@ -5,6 +5,11 @@ interval = 3.0
 [export_csv]
 output = "data/all_stocks.csv"
 
+[scrape_bs]
+target_proxies = 0
+check_sites = 0
+workers = 1
+
 [probe_proxies]
 target_proxies = 1
 check_sites = 0

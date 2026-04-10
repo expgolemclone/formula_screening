@@ -510,11 +510,13 @@ def main() -> None:
     p_prices.add_argument("--workers", type=int, default=MAGIC["price"]["workers"], help="Number of parallel workers")
 
     # scrape-bs
+    _bs_defaults = CLI_DEFAULTS["scrape_bs"]
     p_bs = sub.add_parser("scrape-bs", parents=[_proxy_args], help="Scrape detailed BS from IRBank individual pages")
     p_bs.add_argument("--ticker", nargs="+", help="Specific ticker(s) to scrape")
     p_bs.add_argument("--years", type=int, default=MAGIC["scrape"]["bs_years"], help="Store most recent N years")
     p_bs.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
-    p_bs.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel workers")
+    p_bs.add_argument("--workers", type=int, default=_bs_defaults["workers"], help="Number of parallel workers")
+    p_bs.set_defaults(target_proxies=_bs_defaults["target_proxies"], check_sites=_bs_defaults["check_sites"])
 
     # scrape-forecast
     p_fc = sub.add_parser("scrape-forecast", parents=[_proxy_args], help="Scrape forecast data from IRBank /results pages")
