@@ -23,6 +23,7 @@ logger: logging.Logger = logging.getLogger("formula_screening.stealth")
 
 from formula_screening.config import (
     MAGIC,
+    NOT_A_PROXY_LIST,
     PROXY_FAILURE_CACHE,
     PROXY_SOURCES_FILE,
     VALIDATION_SITES_FILE,
@@ -62,7 +63,6 @@ _FAILURE_TTL_HOURS: dict[str, float] = {
     "tcp_unreachable": 1.0,
     "anon_unreachable": 1.0,
     "quality_failed": 1.0,
-    "not_a_proxy": float(MAGIC["proxy"]["failure_cache_ttl_hours"]),
     "anon_leak": float(MAGIC["proxy"]["failure_cache_ttl_hours"]),
 }
 
@@ -519,18 +519,35 @@ def _save_failure_cache(cache: dict[str, dict[str, float | str]]) -> None:
     PROXY_FAILURE_CACHE.write_text(json.dumps(cache, sort_keys=True))
 
 
+def _load_not_a_proxy_set() -> set[str]:
+    """Load the git-tracked not-a-proxy blacklist."""
+    if not NOT_A_PROXY_LIST.exists():
+        return set()
+    text: str = NOT_A_PROXY_LIST.read_text()
+    return {line.strip() for line in text.splitlines() if line.strip()}
+
+
+def _save_not_a_proxy_set(addrs: set[str]) -> None:
+    """Persist the not-a-proxy blacklist sorted for stable git diffs."""
+    NOT_A_PROXY_LIST.parent.mkdir(parents=True, exist_ok=True)
+    NOT_A_PROXY_LIST.write_text("\n".join(sorted(addrs)) + "\n")
+
+
 def failure_cache_reason_counts() -> Counter[str]:
-    """Return the active failure-cache distribution by reason."""
-    cache = _load_failure_cache()
+    """Return the active failure-cache distribution by reason, including the not-a-proxy list."""
+    cache: dict[str, dict[str, float | str]] = _load_failure_cache()
     counts: Counter[str] = Counter()
     for entry in cache.values():
         counts[str(entry["reason"])] += 1
+    not_a_proxy_count: int = len(_load_not_a_proxy_set())
+    if not_a_proxy_count > 0:
+        counts["not_a_proxy"] = not_a_proxy_count
     return counts
 
 
 def failure_cache_reasons() -> list[str]:
     """Return the known failure reasons accepted by cache-management CLI."""
-    return sorted(_FAILURE_TTL_HOURS)
+    return sorted({*_FAILURE_TTL_HOURS, "not_a_proxy"})
 
 
 def clear_failure_cache(*, reasons: set[str] | None = None) -> tuple[int, int]:
@@ -539,10 +556,13 @@ def clear_failure_cache(*, reasons: set[str] | None = None) -> tuple[int, int]:
     Returns:
         Tuple of (removed_count, remaining_count).
     """
-    cache = _load_failure_cache()
+    cache: dict[str, dict[str, float | str]] = _load_failure_cache()
+    not_a_proxy_set: set[str] = _load_not_a_proxy_set()
+
     if reasons is None:
-        removed = len(cache)
+        removed: int = len(cache) + len(not_a_proxy_set)
         _save_failure_cache({})
+        _save_not_a_proxy_set(set())
         return removed, 0
 
     kept: dict[str, dict[str, float | str]] = {}
@@ -553,8 +573,12 @@ def clear_failure_cache(*, reasons: set[str] | None = None) -> tuple[int, int]:
             removed += 1
         else:
             kept[addr] = entry
+    if "not_a_proxy" in reasons:
+        removed += len(not_a_proxy_set)
+        _save_not_a_proxy_set(set())
     _save_failure_cache(kept)
-    return removed, len(kept)
+    remaining: int = len(kept) + (len(not_a_proxy_set) if "not_a_proxy" not in reasons else 0)
+    return removed, remaining
 
 
 def fetch_live_proxies(
@@ -583,6 +607,7 @@ def fetch_live_proxies(
     overall_t0: float = time.monotonic()
     _LAST_PROXY_FAILURE_SUMMARY = "no diagnostics recorded"
     failure_cache: dict[str, dict[str, float | str]] = _load_failure_cache()
+    not_a_proxy_set: set[str] = _load_not_a_proxy_set()
 
     all_candidates: list[str]
     all_candidates, per_source, source_by_addr = _fetch_proxy_candidates()
@@ -598,6 +623,10 @@ def fetch_live_proxies(
     cache_skip_reasons: Counter[str] = Counter()
     candidates: list[str] = []
     for addr in all_candidates:
+        if addr in not_a_proxy_set:
+            cache_skip_reasons["not_a_proxy"] += 1
+            bump_source(addr, "cache_skipped")
+            continue
         entry = failure_cache.get(addr)
         if entry is None:
             candidates.append(addr)
@@ -628,7 +657,10 @@ def fetch_live_proxies(
             bump_source(addr, "prefilter_pass")
             continue
         prefilter_failures[result] += 1
-        failure_cache[addr] = _make_failure_cache_entry(result, now)
+        if result == "not_a_proxy":
+            not_a_proxy_set.add(addr)
+        else:
+            failure_cache[addr] = _make_failure_cache_entry(result, now)
         bump_source(addr, f"prefilter_{result}")
     prefilter_elapsed: float = time.monotonic() - prefilter_t0
     logger.info(
@@ -684,7 +716,10 @@ def fetch_live_proxies(
                                     len(alive), checked, rate, elapsed)
                 else:
                     validation_failures[result] += 1
-                    failure_cache[addr] = _make_failure_cache_entry(result, now)
+                    if result == "not_a_proxy":
+                        not_a_proxy_set.add(addr)
+                    else:
+                        failure_cache[addr] = _make_failure_cache_entry(result, now)
                     bump_source(addr, f"validated_{result}")
 
                 failure_rate: float = _validation_failure_rate(validation_failures, checked)
@@ -704,6 +739,7 @@ def fetch_live_proxies(
                         min_validation_checks=min_validation_checks_before_abort,
                     )
                     _save_failure_cache(failure_cache)
+                    _save_not_a_proxy_set(not_a_proxy_set)
                     logger.error("Aborting proxy validation: %s", _LAST_PROXY_FAILURE_SUMMARY)
                     raise ProxyUnavailableError(_LAST_PROXY_FAILURE_SUMMARY)
 
@@ -721,6 +757,7 @@ def fetch_live_proxies(
         executor.shutdown(wait=False, cancel_futures=True)
 
     _save_failure_cache(failure_cache)
+    _save_not_a_proxy_set(not_a_proxy_set)
     random.shuffle(alive)
 
     total_elapsed: float = time.monotonic() - overall_t0

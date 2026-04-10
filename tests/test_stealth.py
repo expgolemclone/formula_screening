@@ -13,12 +13,14 @@ import pytest
 from formula_screening.stealth import (
     _check_proxy,
     _fetch_single_source,
+    _load_not_a_proxy_set,
     _load_proxy_sources,
     _hit_anon,
     _hit_quality,
     _load_failure_cache,
     _prefilter_proxy,
     _save_failure_cache,
+    _save_not_a_proxy_set,
     _source_label,
     _tcp_reachable,
     ProxyPool,
@@ -332,7 +334,7 @@ class TestFailureCache:
         cache_file: Path = tmp_path / ".proxy_failures.json"
         now: float = time.time()
         cache: dict[str, dict[str, float | str]] = {
-            "1.2.3.4:80": {"reason": "not_a_proxy", "ts": now},
+            "1.2.3.4:80": {"reason": "anon_leak", "ts": now},
             "5.6.7.8:3128": {"reason": "anon_unreachable", "ts": now},
         }
 
@@ -348,7 +350,7 @@ class TestFailureCache:
         old_ts: float = now - 2 * 3600
         cache = {
             "old:80": {"reason": "anon_unreachable", "ts": old_ts},
-            "fresh:80": {"reason": "not_a_proxy", "ts": old_ts},
+            "fresh:80": {"reason": "anon_leak", "ts": old_ts},
         }
 
         cache_file.write_text(json.dumps(cache))
@@ -357,7 +359,7 @@ class TestFailureCache:
             loaded = _load_failure_cache()
 
         assert "old:80" not in loaded
-        assert loaded["fresh:80"]["reason"] == "not_a_proxy"
+        assert loaded["fresh:80"]["reason"] == "anon_leak"
 
     def test_legacy_entries_are_loaded_with_short_ttl(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
@@ -371,33 +373,43 @@ class TestFailureCache:
 
     def test_clear_failure_cache_removes_only_requested_reasons(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
         now: float = time.time()
         cache = {
             "legacy:80": {"reason": "legacy", "ts": now},
-            "new:80": {"reason": "not_a_proxy", "ts": now},
+            "new:80": {"reason": "anon_leak", "ts": now},
         }
         cache_file.write_text(json.dumps(cache))
+        nap_file.write_text("9.9.9.9:80\n")
 
-        with patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file):
+        with (
+            patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
+        ):
             removed, remaining = clear_failure_cache(reasons={"legacy"})
             loaded = _load_failure_cache()
 
         assert removed == 1
-        assert remaining == 1
+        assert remaining == 2
         assert "legacy:80" not in loaded
-        assert loaded["new:80"]["reason"] == "not_a_proxy"
+        assert loaded["new:80"]["reason"] == "anon_leak"
+        assert "9.9.9.9:80" in nap_file.read_text()
 
     def test_failure_cache_reason_counts_reports_active_distribution(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
         now: float = time.time()
         cache = {
-            "a:80": {"reason": "not_a_proxy", "ts": now},
             "b:80": {"reason": "quality_failed", "ts": now},
             "c:80": {"reason": "quality_failed", "ts": now},
         }
         cache_file.write_text(json.dumps(cache))
+        nap_file.write_text("a:80\n")
 
-        with patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file):
+        with (
+            patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
+        ):
             counts = failure_cache_reason_counts()
 
         assert counts == {"not_a_proxy": 1, "quality_failed": 2}
@@ -431,6 +443,52 @@ class TestFailureCache:
 
 
 # ---------------------------------------------------------------------------
+# Not-a-proxy list
+# ---------------------------------------------------------------------------
+
+
+class TestNotAProxyList:
+    """Tests for the git-tracked not-a-proxy blacklist."""
+
+    def test_save_and_load_roundtrip(self, tmp_path: Path) -> None:
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
+        addrs: set[str] = {"3.3.3.3:80", "1.1.1.1:80", "2.2.2.2:80"}
+
+        with patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file):
+            _save_not_a_proxy_set(addrs)
+            loaded: set[str] = _load_not_a_proxy_set()
+
+        assert loaded == addrs
+        lines: list[str] = nap_file.read_text().splitlines()
+        assert lines == sorted(addrs)
+
+    def test_missing_file_returns_empty_set(self, tmp_path: Path) -> None:
+        nap_file: Path = tmp_path / "nonexistent.txt"
+
+        with patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file):
+            loaded: set[str] = _load_not_a_proxy_set()
+
+        assert loaded == set()
+
+    def test_clear_failure_cache_clears_not_a_proxy_list(self, tmp_path: Path) -> None:
+        cache_file: Path = tmp_path / ".proxy_failures.json"
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
+        now: float = time.time()
+        cache_file.write_text(json.dumps({"a:80": {"reason": "anon_leak", "ts": now}}))
+        nap_file.write_text("b:80\nc:80\n")
+
+        with (
+            patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
+        ):
+            removed, remaining = clear_failure_cache(reasons={"not_a_proxy"})
+
+        assert removed == 2
+        assert remaining == 1
+        assert nap_file.read_text().strip() == ""
+
+
+# ---------------------------------------------------------------------------
 # fetch_live_proxies — failure cache integration
 # ---------------------------------------------------------------------------
 
@@ -440,13 +498,13 @@ class TestFetchLiveProxiesCache:
 
     def test_skips_cached_failures(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
-        now: float = time.time()
-        cache_file.write_text(json.dumps({
-            "1.1.1.1:80": {"reason": "not_a_proxy", "ts": now},
-        }))
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
+        cache_file.write_text(json.dumps({}))
+        nap_file.write_text("1.1.1.1:80\n")
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
             patch(
                 "formula_screening.stealth._fetch_proxy_candidates",
                 return_value=(
@@ -467,9 +525,11 @@ class TestFetchLiveProxiesCache:
 
     def test_records_new_failures(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
             patch(
                 "formula_screening.stealth._fetch_proxy_candidates",
                 return_value=(
@@ -489,11 +549,13 @@ class TestFetchLiveProxiesCache:
         saved = json.loads(cache_file.read_text())
         assert saved["9.9.9.9:80"]["reason"] == "anon_leak"
 
-    def test_prefilter_failures_are_cached_with_reason(self, tmp_path: Path) -> None:
+    def test_prefilter_not_a_proxy_saved_to_list_file(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
             patch(
                 "formula_screening.stealth._fetch_proxy_candidates",
                 return_value=(
@@ -509,11 +571,13 @@ class TestFetchLiveProxiesCache:
             )
 
         assert result == []
-        saved = json.loads(cache_file.read_text())
-        assert saved["10.0.0.1:80"]["reason"] == "not_a_proxy"
+        assert "10.0.0.1:80" in nap_file.read_text().splitlines()
+        saved: dict[str, object] = json.loads(cache_file.read_text())
+        assert "10.0.0.1:80" not in saved
 
     def test_does_not_abort_before_100_validation_checks(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
         candidates: list[str] = [f"10.0.0.{idx}:80" for idx in range(1, 100)]
 
         def fake_check(addr: str, *, quality_check_count: int) -> str:
@@ -524,6 +588,7 @@ class TestFetchLiveProxiesCache:
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
             patch(
                 "formula_screening.stealth._fetch_proxy_candidates",
                 return_value=(
@@ -545,6 +610,7 @@ class TestFetchLiveProxiesCache:
 
     def test_does_not_abort_at_exactly_50_percent_failure_rate(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
         candidates: list[str] = [f"10.0.1.{idx}:80" for idx in range(1, 101)]
 
         def fake_check(addr: str, *, quality_check_count: int) -> str:
@@ -555,6 +621,7 @@ class TestFetchLiveProxiesCache:
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
             patch(
                 "formula_screening.stealth._fetch_proxy_candidates",
                 return_value=(
@@ -576,6 +643,7 @@ class TestFetchLiveProxiesCache:
 
     def test_aborts_when_failure_rate_exceeds_50_percent_after_100_checks(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
+        nap_file: Path = tmp_path / "not_a_proxy.txt"
         candidates: list[str] = [f"10.0.2.{idx}:80" for idx in range(1, 121)]
 
         def fake_check(addr: str, *, quality_check_count: int) -> str:
@@ -586,6 +654,7 @@ class TestFetchLiveProxiesCache:
 
         with (
             patch("formula_screening.stealth.PROXY_FAILURE_CACHE", cache_file),
+            patch("formula_screening.stealth.NOT_A_PROXY_LIST", nap_file),
             patch(
                 "formula_screening.stealth._fetch_proxy_candidates",
                 return_value=(
