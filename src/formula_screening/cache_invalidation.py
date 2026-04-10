@@ -37,7 +37,7 @@ _FILE_SOURCE_MAP: dict[str, list[str]] = {
     "irbank_common.py": ["irbank_bs", "irbank_forecast"],
 }
 
-_PRICE_FILES: set[str] = {"yfinance_price.py"}
+_PRICE_FILES: set[str] = {"stooq_price.py"}
 
 _TRACKED_FILES: set[str] = {*_FILE_SOURCE_MAP, *_PRICE_FILES}
 
@@ -201,7 +201,7 @@ def refresh_stale_sources(
             _scrape_forecast(tickers, proxy_pool, browser=browser, workers=workers)
 
         if refetch_prices and tickers:
-            _fetch_prices(tickers, proxy_pool)
+            _fetch_prices(tickers, browser)
     finally:
         conn.close()
 
@@ -261,19 +261,11 @@ def _scrape_forecast(
     )
 
 
-def _fetch_prices(tickers: list[str], proxy_pool: ProxyPool) -> None:
-    from formula_screening.cli import dispatch_workers
-    from formula_screening.worker import fetch_prices_worker
+def _fetch_prices(tickers: list[str], browser: BrowserService | None = None) -> None:
+    from formula_screening.worker import fetch_prices_stooq
 
-    print(f"\n[auto] fetch-prices ({len(tickers)} tickers) ...")
-    dispatch_workers(
-        tickers, proxy_pool,
-        worker_fn=fetch_prices_worker,
-        label="prices",
-        workers=MAGIC["price"]["workers"],
-        force=True,
-        extra_kwargs={"interval": MAGIC["price"]["interval"]},
-    )
+    print(f"\n[auto] fetch-prices via Stooq ({len(tickers)} tickers) ...")
+    fetch_prices_stooq(tickers, browser, force=True)
 
 
 def ensure_data_available(
@@ -322,7 +314,11 @@ def ensure_data_available(
             print("No tickers in DB after import. Cannot scrape.")
             return
 
-        needs_browser: bool = "irbank_bs" in missing_sources or "irbank_forecast" in missing_sources
+        needs_browser: bool = (
+            "irbank_bs" in missing_sources
+            or "irbank_forecast" in missing_sources
+            or missing_prices
+        )
         browser: BrowserService | None = get_browser() if needs_browser else None
 
         if "irbank_bs" in missing_sources and browser is not None:
@@ -331,8 +327,8 @@ def ensure_data_available(
         if "irbank_forecast" in missing_sources and browser is not None:
             _scrape_forecast(tickers, proxy_pool, browser=browser)
 
-        if missing_prices:
-            _fetch_prices(tickers, proxy_pool)
+        if missing_prices and browser is not None:
+            _fetch_prices(tickers, browser)
 
         save_hashes(compute_hashes())
         print("\nAuto-fetch complete.")

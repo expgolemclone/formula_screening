@@ -31,8 +31,8 @@ def compute_metrics(
 
     Args:
         financials: Nested dict {statement: {item_name: value}} from DB.
-        price: Current stock price from yfinance.
-        shares_outstanding: Current shares outstanding from yfinance.
+        price: Current stock price from Stooq.
+        shares_outstanding: Current shares outstanding (from IR BANK or Stooq).
 
     Returns:
         Dict of metric_name -> value.

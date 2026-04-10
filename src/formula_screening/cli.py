@@ -48,6 +48,9 @@ def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
     """Build a ProxyPool from CLI args."""
     from formula_screening.stealth import ProxyPool, clear_failure_cache
 
+    proxy_file: str | None = getattr(args, "proxy_file", None)
+    if proxy_file:
+        return ProxyPool.from_file(Path(proxy_file))
     if args.proxy:
         return ProxyPool.from_url(args.proxy)
     if _should_clear_transient_proxy_failures(args):
@@ -84,18 +87,30 @@ def _start_browser_service() -> BrowserService:
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
-    from formula_screening.db.repository import get_fresh_price_tickers
-    from formula_screening.worker import fetch_prices_worker
+    from formula_screening.config import DATA_DIR
+    from formula_screening.db.repository import get_all_tickers
+    from formula_screening.scrape.stooq_price import find_latest_daily_txt
+    from formula_screening.worker import fetch_prices_stooq
 
-    _run_scrape_workers(
-        args,
-        worker_fn=fetch_prices_worker,
-        label="prices",
-        extra_kwargs={"interval": MAGIC["price"]["interval"]},
-        skip_filter_fn=lambda conn, tickers: get_fresh_price_tickers(
-            conn, MAGIC["price"]["stale_days"],
-        ),
-    )
+    conn = get_connection()
+    try:
+        tickers: list[str] = args.ticker if args.ticker else get_all_tickers(conn)
+    finally:
+        conn.close()
+
+    if not tickers:
+        print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
+        sys.exit(1)
+
+    stooq_dir = DATA_DIR / "stooq"
+    has_local_file = find_latest_daily_txt(stooq_dir) is not None
+
+    if has_local_file:
+        fetch_prices_stooq(tickers, force=args.force)
+    else:
+        with _start_browser_service() as browser:
+            fetch_prices_stooq(tickers, browser, force=args.force)
+
 
 
 def dispatch_workers(
@@ -495,6 +510,7 @@ def main() -> None:
 
     _proxy_args = argparse.ArgumentParser(add_help=False)
     _proxy_args.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
+    _proxy_args.add_argument("--proxy-file", help="Path to proxy list file (host:port:user:pass per line)")
     _proxy_args.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
     _proxy_args.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")
 
@@ -504,10 +520,9 @@ def main() -> None:
     p_import.add_argument("--years", type=int, help="Only import the most recent N years")
 
     # fetch-prices
-    p_prices = sub.add_parser("fetch-prices", parents=[_proxy_args], help="Fetch and cache stock prices from yfinance")
+    p_prices = sub.add_parser("fetch-prices", parents=[_proxy_args], help="Fetch and cache stock prices")
     p_prices.add_argument("--ticker", nargs="+", help="Specific ticker(s) to fetch")
     p_prices.add_argument("--force", action="store_true", help="Re-fetch even if cached <1 day")
-    p_prices.add_argument("--workers", type=int, default=MAGIC["price"]["workers"], help="Number of parallel workers")
 
     # scrape-bs
     _bs_defaults = CLI_DEFAULTS["scrape_bs"]

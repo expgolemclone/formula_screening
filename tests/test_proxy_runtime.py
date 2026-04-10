@@ -2,24 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from formula_screening.browser import BrowserResponse, BrowserService
+from formula_screening.browser import BrowserService
 from formula_screening.scrape.irbank_common import fetch_irbank_html
-from formula_screening.scrape.yfinance_price import _fetch_one
 from formula_screening.stealth import ProxyPool, ProxyUnavailableError
-
-
-class TestYfinanceProxyExhaustion:
-    """Tests for fatal proxy errors in yfinance access."""
-
-    def test_fetch_one_reraises_proxy_unavailable_error(self) -> None:
-        pool: ProxyPool = ProxyPool([])
-
-        with pytest.raises(ProxyUnavailableError, match="Proxy pool exhausted"):
-            _fetch_one("7203", pool)
 
 
 class TestIrbankProxyExhaustion:

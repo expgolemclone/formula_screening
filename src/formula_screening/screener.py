@@ -126,7 +126,7 @@ def build_stock_dict(
 ) -> dict:
     """Build the nested dict passed to the user's screen() function.
 
-    Fetches cached financials from DB and live price from yfinance.
+    Fetches cached financials and prices from the DB.
     """
     financials = get_financial_dict(conn, ticker)
     price_data = get_latest_price_with_shares(conn, ticker)

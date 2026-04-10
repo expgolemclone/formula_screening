@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch and cache stock prices from yfinance into the screening DB.
+"""Fetch and cache stock prices from Stooq into the screening DB.
 
 Thin wrapper around: uv run python -m formula_screening fetch-prices
 

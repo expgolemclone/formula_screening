@@ -13,7 +13,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from formula_screening.config import MAGIC
+from formula_screening.config import DATA_DIR, MAGIC
 
 if TYPE_CHECKING:
     from formula_screening.browser import BrowserService
@@ -199,65 +199,77 @@ def scrape_forecast_worker(
 # ---------------------------------------------------------------------------
 
 
-def fetch_prices_worker(
+def fetch_prices_stooq(
     tickers: list[str],
-    pool: ProxyPool,
+    browser: BrowserService | None = None,
     *,
-    interval: float,
     force: bool,
-    stats: dict[str, int],
-    stats_lock: threading.Lock,
-    total: int,
-    counter: list[int],
-) -> None:
-    """Fetch price + shares for a chunk of tickers via yfinance."""
-    from formula_screening.scrape.yfinance_price import _fetch_one
+) -> dict[str, int]:
+    """Fetch prices for all tickers at once via Stooq daily text file.
+
+    Returns stats dict with ``ok``, ``skip``, and ``fail`` counts.
+    Uses an existing local file if available, otherwise downloads via browser.
+    """
+    from formula_screening.scrape.stooq_price import (
+        download_daily_txt,
+        find_latest_daily_txt,
+        parse_daily_txt,
+    )
     from formula_screening.db.repository import (
-        get_latest_price_with_shares,
-        is_price_stale,
+        get_fresh_price_tickers,
         upsert_price,
     )
     from formula_screening.db.schema import get_connection
-    from formula_screening.stealth import random_delay
 
+    stats: dict[str, int] = {"ok": 0, "skip": 0, "fail": 0}
     conn: sqlite3.Connection = get_connection()
-    today: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
     try:
-        for ticker in tickers:
-            if not force:
-                cached = get_latest_price_with_shares(conn, ticker)
-                if not is_price_stale(cached["updated_at"], MAGIC["price"]["stale_days"]):
-                    with stats_lock:
-                        stats["skip"] += 1
-                    continue
+        if force:
+            target_tickers: set[str] = set(tickers)
+        else:
+            fresh: set[str] = get_fresh_price_tickers(conn, MAGIC["price"]["stale_days"])
+            target_tickers = set(tickers) - fresh
+            stats["skip"] = len(set(tickers) & fresh)
 
-            with stats_lock:
-                counter[0] += 1
-                seq: int = counter[0]
+        if not target_tickers:
+            print(f"All {len(tickers)} tickers already fresh, nothing to fetch.", flush=True)
+            return stats
 
-            result = _fetch_one(ticker, pool)
-            price = result["price"]
-            shares = result["shares_outstanding"]
+        stooq_dir = DATA_DIR / "stooq"
+        stooq_dir.mkdir(parents=True, exist_ok=True)
+        txt_path = find_latest_daily_txt(stooq_dir)
 
-            if price is None and shares is None:
-                with stats_lock:
-                    stats["fail"] += 1
-                    print(f"[{seq}/{total}] {ticker} FAILED", flush=True)
-                random_delay(interval, interval + MAGIC["price"]["interval_jitter"])
-                continue
+        if txt_path is None:
+            if browser is None:
+                print("No local Stooq file found and no browser available.", flush=True)
+                return stats
+            print(f"Downloading Stooq daily txt ({len(target_tickers)} tickers needed)...", flush=True)
+            txt_path = download_daily_txt(browser, str(stooq_dir))
 
-            upsert_price(
-                conn, ticker, today,
-                close=price,
-                volume=None,
-                shares_outstanding=shares,
-            )
-            conn.commit()
+        print(f"Parsing {txt_path.name}...", flush=True)
+        prices = parse_daily_txt(txt_path, tickers=target_tickers)
 
-            with stats_lock:
+        for ticker in target_tickers:
+            if ticker in prices:
+                row = prices[ticker]
+                upsert_price(
+                    conn, ticker, row["date"],
+                    close=row["price"],
+                    volume=None,
+                )
                 stats["ok"] += 1
-                print(f"[{seq}/{total}] {ticker} OK", flush=True)
+            else:
+                stats["fail"] += 1
 
-            random_delay(interval, interval + MAGIC["price"]["interval_jitter"])
+        conn.commit()
+        print(
+            f"Stooq fetch complete: {stats['ok']} ok, {stats['skip']} skipped, {stats['fail']} not found.",
+            flush=True,
+        )
     finally:
         conn.close()
+
+    return stats
+
+

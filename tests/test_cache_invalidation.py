@@ -18,12 +18,12 @@ from formula_screening.db.repository import upsert_financial_item, upsert_price
 class TestComputeHashes:
     def test_returns_sha256_for_tracked_files(self, tmp_path: Path) -> None:
         (tmp_path / "irbank.py").write_text("# v1")
-        (tmp_path / "yfinance_price.py").write_text("# price v1")
+        (tmp_path / "stooq_price.py").write_text("# price v1")
 
         hashes: dict[str, str] = compute_hashes(tmp_path)
 
         assert "irbank.py" in hashes
-        assert "yfinance_price.py" in hashes
+        assert "stooq_price.py" in hashes
         assert len(hashes["irbank.py"]) == 64
 
     def test_ignores_untracked_files(self, tmp_path: Path) -> None:
@@ -52,7 +52,7 @@ class TestDetectChanges:
         assert result == ["irbank.py"]
 
     def test_no_change(self) -> None:
-        hashes: dict[str, str] = {"irbank.py": "abc123", "yfinance_price.py": "def456"}
+        hashes: dict[str, str] = {"irbank.py": "abc123", "stooq_price.py": "def456"}
 
         result: list[str] = detect_changes(hashes, hashes)
 
@@ -101,7 +101,7 @@ class TestInvalidateCache:
         upsert_price(conn, "7203", "2024-06-01", 2500.0, None, shares_outstanding=1000)
         conn.commit()
 
-        result: dict[str, int] = invalidate_cache(["yfinance_price.py"], conn=conn)
+        result: dict[str, int] = invalidate_cache(["stooq_price.py"], conn=conn)
 
         assert result["prices"] > 0
 
