@@ -227,7 +227,7 @@ def _scrape_bs(
     workers: int | None = None,
 ) -> None:
     from formula_screening.cli import dispatch_workers
-    from formula_screening.datasources.irbank_bs import scrape_bs_worker
+    from formula_screening.worker import scrape_bs_worker
 
     print("\n[auto] scrape-bs ...")
     dispatch_workers(
@@ -248,9 +248,7 @@ def _scrape_forecast(
     workers: int | None = None,
 ) -> None:
     from formula_screening.cli import dispatch_workers
-    from formula_screening.datasources.irbank_forecast import (
-        scrape_forecast_worker,
-    )
+    from formula_screening.worker import scrape_forecast_worker
 
     print("\n[auto] scrape-forecast ...")
     dispatch_workers(
@@ -265,7 +263,7 @@ def _scrape_forecast(
 
 def _fetch_prices(tickers: list[str], proxy_pool: ProxyPool) -> None:
     from formula_screening.cli import dispatch_workers
-    from formula_screening.datasources.yfinance_price import fetch_prices_worker
+    from formula_screening.worker import fetch_prices_worker
 
     print(f"\n[auto] fetch-prices ({len(tickers)} tickers) ...")
     dispatch_workers(

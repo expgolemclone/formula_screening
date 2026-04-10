@@ -14,14 +14,6 @@ from __future__ import annotations
 
 import logging
 import re
-import threading
-from typing import TYPE_CHECKING
-
-from formula_screening.config import MAGIC
-
-if TYPE_CHECKING:
-    from formula_screening.browser import BrowserService
-    from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.irbank_forecast")
 
@@ -217,38 +209,3 @@ def build_forecast_rows(ticker: str, html: str) -> list[dict]:
 def validate_results_html(html: str) -> bool:
     """Return True if the HTML looks like a valid /results page."""
     return "会社業績" in html
-
-
-# --- Parallel worker ----------------------------------------------------------
-
-
-def scrape_forecast_worker(
-    tickers: list[str],
-    pool: ProxyPool,
-    *,
-    browser: BrowserService,
-    interval: float = MAGIC["scrape"]["interval"],
-    force: bool = False,
-    stats: dict[str, int],
-    stats_lock: threading.Lock,
-    total: int,
-    counter: list[int],
-) -> None:
-    """Process a chunk of tickers, storing forecast results in the DB."""
-    from formula_screening.datasources.irbank_common import scrape_worker
-
-    scrape_worker(
-        tickers,
-        pool,
-        source="irbank_forecast",
-        process_fn=build_forecast_rows,
-        fetch_path="results",
-        validate_fn=validate_results_html,
-        browser=browser,
-        interval=interval,
-        force=force,
-        stats=stats,
-        stats_lock=stats_lock,
-        total=total,
-        counter=counter,
-    )

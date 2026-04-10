@@ -3,18 +3,12 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
-import threading
 from datetime import datetime, timedelta, timezone
 
 import requests as _requests
 import yfinance as yf
 
 from formula_screening.config import MAGIC
-from formula_screening.db.repository import (
-    get_latest_price_with_shares,
-    upsert_price,
-)
 from formula_screening.stealth import (
     ProxyPool,
     ProxyUnavailableError,
@@ -25,18 +19,6 @@ from formula_screening.stealth import (
 logger: logging.Logger = logging.getLogger("formula_screening.yfinance_price")
 
 _MAX_RETRIES: int = MAGIC["price"]["max_retries"]
-
-
-def get_fresh_tickers(conn: sqlite3.Connection) -> set[str]:
-    """Return tickers whose cached price is still fresh (not stale)."""
-    threshold: str = (
-        datetime.now(timezone.utc) - timedelta(days=MAGIC["price"]["stale_days"])
-    ).isoformat()
-    rows = conn.execute(
-        "SELECT DISTINCT ticker FROM prices WHERE updated_at > ?",
-        (threshold,),
-    ).fetchall()
-    return {r[0] for r in rows}
 
 
 def is_price_stale(updated_at: str | None) -> bool:
@@ -96,64 +78,3 @@ def _fetch_one(
             continue
 
     return {"price": None, "shares_outstanding": None}
-
-
-def fetch_prices_worker(
-    tickers: list[str],
-    pool: ProxyPool,
-    *,
-    interval: float,
-    force: bool,
-    stats: dict[str, int],
-    stats_lock: threading.Lock,
-    total: int,
-    counter: list[int],
-) -> None:
-    """Worker function for :func:`~formula_screening.cli.dispatch_workers`.
-
-    Fetches price + shares for each ticker in the chunk via its own
-    proxy sub-pool, with delays between requests.
-    """
-    from formula_screening.db.schema import get_connection
-
-    conn = get_connection()
-    today: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    try:
-        for ticker in tickers:
-            if not force:
-                cached = get_latest_price_with_shares(conn, ticker)
-                if not is_price_stale(cached["updated_at"]):
-                    with stats_lock:
-                        stats["skip"] += 1
-                    continue
-
-            with stats_lock:
-                counter[0] += 1
-                seq: int = counter[0]
-
-            result = _fetch_one(ticker, pool)
-            price = result["price"]
-            shares = result["shares_outstanding"]
-
-            if price is None and shares is None:
-                with stats_lock:
-                    stats["fail"] += 1
-                    print(f"[{seq}/{total}] {ticker} FAILED", flush=True)
-                random_delay(interval, interval + MAGIC["price"]["interval_jitter"])
-                continue
-
-            upsert_price(
-                conn, ticker, today,
-                close=price,
-                volume=None,
-                shares_outstanding=shares,
-            )
-            conn.commit()
-
-            with stats_lock:
-                stats["ok"] += 1
-                print(f"[{seq}/{total}] {ticker} OK", flush=True)
-
-            random_delay(interval, interval + MAGIC["price"]["interval_jitter"])
-    finally:
-        conn.close()

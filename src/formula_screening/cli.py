@@ -84,17 +84,17 @@ def _start_browser_service() -> BrowserService:
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
-    from formula_screening.datasources.yfinance_price import (
-        fetch_prices_worker,
-        get_fresh_tickers,
-    )
+    from formula_screening.db.repository import get_fresh_price_tickers
+    from formula_screening.worker import fetch_prices_worker
 
     _run_scrape_workers(
         args,
         worker_fn=fetch_prices_worker,
         label="prices",
         extra_kwargs={"interval": MAGIC["price"]["interval"]},
-        skip_filter_fn=lambda conn, tickers: get_fresh_tickers(conn),
+        skip_filter_fn=lambda conn, tickers: get_fresh_price_tickers(
+            conn, MAGIC["price"]["stale_days"],
+        ),
     )
 
 
@@ -223,8 +223,8 @@ def _run_scrape_workers(
 
 
 def _cmd_scrape_bs(args: argparse.Namespace) -> None:
-    from formula_screening.datasources.irbank_bs import scrape_bs_worker
-    from formula_screening.datasources.irbank_common import get_existing_tickers
+    from formula_screening.db.repository import get_existing_tickers
+    from formula_screening.worker import scrape_bs_worker
 
     with _start_browser_service() as browser:
         _run_scrape_workers(
@@ -237,8 +237,8 @@ def _cmd_scrape_bs(args: argparse.Namespace) -> None:
 
 
 def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
-    from formula_screening.datasources.irbank_common import get_existing_tickers
-    from formula_screening.datasources.irbank_forecast import scrape_forecast_worker
+    from formula_screening.db.repository import get_existing_tickers
+    from formula_screening.worker import scrape_forecast_worker
 
     with _start_browser_service() as browser:
         _run_scrape_workers(

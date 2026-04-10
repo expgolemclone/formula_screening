@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 def _now() -> str:
@@ -41,6 +41,15 @@ def upsert_stock(
 def get_all_tickers(conn: sqlite3.Connection) -> list[str]:
     rows = conn.execute("SELECT ticker FROM stocks ORDER BY ticker").fetchall()
     return [r["ticker"] for r in rows]
+
+
+def get_existing_tickers(conn: sqlite3.Connection, source: str) -> set[str]:
+    """Return tickers that already have data for *source* in the DB."""
+    rows = conn.execute(
+        "SELECT DISTINCT ticker FROM financial_items WHERE source = ?",
+        (source,),
+    ).fetchall()
+    return {r[0] for r in rows}
 
 
 def get_edinet_code(conn: sqlite3.Connection, ticker: str) -> str | None:
@@ -276,3 +285,15 @@ def get_latest_price_with_shares(
         "shares_outstanding": row["shares_outstanding"],
         "updated_at": row["updated_at"],
     }
+
+
+def get_fresh_price_tickers(conn: sqlite3.Connection, stale_days: int) -> set[str]:
+    """Return tickers whose cached price is newer than *stale_days* ago."""
+    threshold: str = (
+        datetime.now(timezone.utc) - timedelta(days=stale_days)
+    ).isoformat()
+    rows = conn.execute(
+        "SELECT DISTINCT ticker FROM prices WHERE updated_at > ?",
+        (threshold,),
+    ).fetchall()
+    return {r[0] for r in rows}

@@ -12,10 +12,7 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
-import threading
 from typing import TYPE_CHECKING
-
-from formula_screening.config import MAGIC
 
 if TYPE_CHECKING:
     from formula_screening.browser import BrowserService
@@ -277,42 +274,3 @@ def _on_bs_html(ticker: str, html: str, conn: sqlite3.Connection) -> None:
         upsert_stock(conn, ticker, name=name, sector="", market="")
 
 
-def scrape_bs_worker(
-    tickers: list[str],
-    pool: ProxyPool,
-    *,
-    years: int = 1,
-    browser: BrowserService,
-    interval: float = MAGIC["scrape"]["interval"],
-    force: bool = False,
-    stats: dict[str, int],
-    stats_lock: threading.Lock,
-    total: int,
-    counter: list[int],
-) -> None:
-    """Process a chunk of tickers, storing results in the DB.
-
-    Designed to run inside a ``ThreadPoolExecutor``.  Each worker opens
-    its own DB connection and uses its own proxy sub-pool.
-    """
-    from formula_screening.datasources.irbank_common import scrape_worker
-
-    def _process(ticker: str, html: str) -> list[dict[str, str | float]]:
-        return build_bs_rows(ticker, html, years=years)
-
-    scrape_worker(
-        tickers,
-        pool,
-        source="irbank_bs",
-        process_fn=_process,
-        on_html_fn=_on_bs_html,
-        fetch_path="bs",
-        validate_fn=_validate_bs_html,
-        browser=browser,
-        interval=interval,
-        force=force,
-        stats=stats,
-        stats_lock=stats_lock,
-        total=total,
-        counter=counter,
-    )
