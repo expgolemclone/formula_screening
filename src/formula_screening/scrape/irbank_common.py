@@ -7,6 +7,7 @@ Page fetching is delegated to the Node.js browser service
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,7 @@ logger: logging.Logger = logging.getLogger("formula_screening.irbank_common")
 _IRBANK_URL_TEMPLATE: str = "https://irbank.net/{ticker}/{path}"
 _MAX_RETRIES: int = MAGIC["scrape"]["max_retries"]
 _PROXY_REMOVE_ON_ERROR: bool = MAGIC["scrape"]["proxy_remove_on_error"]
+_RETRY_DELAY: float = MAGIC["scrape"]["retry_delay"]
 
 
 def fetch_irbank_html(
@@ -57,6 +59,8 @@ def fetch_irbank_html(
     url: str = _IRBANK_URL_TEMPLATE.format(ticker=ticker, path=path)
 
     for attempt in range(_MAX_RETRIES):
+        if attempt > 0:
+            time.sleep(_RETRY_DELAY)
         proxy_url: str | None = pool.get()
         if proxy_url is None:
             raise ProxyUnavailableError("Proxy pool exhausted during request execution")

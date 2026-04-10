@@ -259,7 +259,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) と `refresh` の auto scrape/fetch、および `screen` の自動データ取得では、ワーカー数をプロキシプールのサイズ以下に制限する。これにより空サブプールの生成を防ぎ、全ワーカーがプロキシ経由で通信する。つまり `--workers 100` を指定しても、確保できた live proxy が 1 本なら実効ワーカー数は `1` になる。
 
-IR BANK へのスクレイピングは `browser.py` (BrowserService) 経由で行う。`irbank_common.py` が BrowserService の `fetch()` を呼び出し、Node.js の puppeteer-real-browser でページをレンダリングして HTML を取得する。ワーカー制御ロジック (`worker.py`) はスクレイピング・パースモジュールから分離されており、ワーカーの進捗表示やスキップ判定の変更がキャッシュ無効化を発動しない設計になっている。
+IR BANK へのスクレイピングは `browser.py` (BrowserService) 経由で行う。`irbank_common.py` が BrowserService の `fetch()` を呼び出し、Node.js の puppeteer-real-browser でページをレンダリングして HTML を取得する。リトライ時は `scrape.retry_delay` (秒) だけ待機してから次の試行に進む。ワーカー制御ロジック (`worker.py`) はスクレイピング・パースモジュールから分離されており、ワーカーの進捗表示やスキップ判定の変更がキャッシュ無効化を発動しない設計になっている。
 
 ## 戦略ファイルの仕組み
 
