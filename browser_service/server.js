@@ -25,7 +25,8 @@ async function launchBrowser(proxyAddr) {
     ],
   };
 
-  if (proxyAddr && proxyAddr !== "direct") {
+  const isDirect = !proxyAddr || proxyAddr.startsWith("direct");
+  if (!isDirect) {
     const [host, port] = proxyAddr.split(":");
     options.proxy = { host, port };
   }
