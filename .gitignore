@@ -2,6 +2,7 @@
 *
 
 # 許可するファイル
+!.gitattributes
 !.gitignore
 !CLAUDE.md
 !ARCHITECTURE.md
@@ -29,6 +30,8 @@
 !data/irbank/
 !data/irbank/*/
 !data/irbank/**/*.json
+!data/screening.db
+!data/not_a_proxy.txt
 
 # バイナリ・キャッシュは常に除外
 __pycache__/
