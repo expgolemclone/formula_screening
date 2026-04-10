@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
 
 import requests as _requests
 import yfinance as yf
@@ -19,17 +18,6 @@ from formula_screening.stealth import (
 logger: logging.Logger = logging.getLogger("formula_screening.yfinance_price")
 
 _MAX_RETRIES: int = MAGIC["price"]["max_retries"]
-
-
-def is_price_stale(updated_at: str | None) -> bool:
-    """Return True if the cached price is older than 1 day or missing."""
-    if updated_at is None:
-        return True
-    try:
-        ts = datetime.fromisoformat(updated_at)
-        return datetime.now(timezone.utc) - ts > timedelta(days=MAGIC["price"]["stale_days"])
-    except ValueError:
-        return True
 
 
 def _create_yf_session(pool: ProxyPool) -> _requests.Session:

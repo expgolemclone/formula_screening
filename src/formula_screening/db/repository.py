@@ -287,6 +287,17 @@ def get_latest_price_with_shares(
     }
 
 
+def is_price_stale(updated_at: str | None, stale_days: int) -> bool:
+    """Return True if the cached price is older than *stale_days* or missing."""
+    if updated_at is None:
+        return True
+    try:
+        ts: datetime = datetime.fromisoformat(updated_at)
+        return datetime.now(timezone.utc) - ts > timedelta(days=stale_days)
+    except ValueError:
+        return True
+
+
 def get_fresh_price_tickers(conn: sqlite3.Connection, stale_days: int) -> set[str]:
     """Return tickers whose cached price is newer than *stale_days* ago."""
     threshold: str = (

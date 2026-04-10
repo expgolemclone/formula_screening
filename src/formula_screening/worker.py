@@ -104,6 +104,16 @@ def scrape_worker(
 # ---------------------------------------------------------------------------
 
 
+def _on_bs_html(ticker: str, html: str, conn: sqlite3.Connection) -> None:
+    """Extract company name from BS page and upsert into stocks table."""
+    from formula_screening.datasources.irbank_bs import parse_company_name
+    from formula_screening.db.repository import upsert_stock
+
+    name: str | None = parse_company_name(html)
+    if name:
+        upsert_stock(conn, ticker, name=name, sector="", market="")
+
+
 def scrape_bs_worker(
     tickers: list[str],
     pool: ProxyPool,
@@ -119,7 +129,6 @@ def scrape_bs_worker(
 ) -> None:
     """Scrape detailed BS data for a chunk of tickers."""
     from formula_screening.datasources.irbank_bs import (
-        _on_bs_html,
         _validate_bs_html,
         build_bs_rows,
     )
@@ -202,12 +211,10 @@ def fetch_prices_worker(
     counter: list[int],
 ) -> None:
     """Fetch price + shares for a chunk of tickers via yfinance."""
-    from formula_screening.datasources.yfinance_price import (
-        _fetch_one,
-        is_price_stale,
-    )
+    from formula_screening.datasources.yfinance_price import _fetch_one
     from formula_screening.db.repository import (
         get_latest_price_with_shares,
+        is_price_stale,
         upsert_price,
     )
     from formula_screening.db.schema import get_connection
@@ -219,7 +226,7 @@ def fetch_prices_worker(
         for ticker in tickers:
             if not force:
                 cached = get_latest_price_with_shares(conn, ticker)
-                if not is_price_stale(cached["updated_at"]):
+                if not is_price_stale(cached["updated_at"], MAGIC["price"]["stale_days"]):
                     with stats_lock:
                         stats["skip"] += 1
                     continue

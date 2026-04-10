@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import re
-import sqlite3
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -260,17 +259,5 @@ def build_bs_rows(
         rows = [r for r in rows if r["period"] in keep]
 
     return rows
-
-
-# --- Parallel worker (shared between script and CLI) -------------------------
-
-
-def _on_bs_html(ticker: str, html: str, conn: sqlite3.Connection) -> None:
-    """Extract company name from BS page and upsert into stocks table."""
-    from formula_screening.db.repository import upsert_stock
-
-    name = parse_company_name(html)
-    if name:
-        upsert_stock(conn, ticker, name=name, sector="", market="")
 
 
