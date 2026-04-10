@@ -15,7 +15,7 @@ formula_screening/
 │   ├── stealth.py              # プロキシ取得・検証・ローテーション
 │   ├── browser.py              # Node.js puppeteer-real-browser サービスのクライアント
 │   ├── worker.py               # スクレイピング・株価取得の並列ワーカー制御
-│   ├── cache_invalidation.py   # scrape ファイルのハッシュ比較によるキャッシュ管理
+│   ├── bootstrap.py            # empty DB からの自動ブートストラップ
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率 等)
 │   ├── indicators/
@@ -50,11 +50,9 @@ formula_screening/
 │   ├── stooq/                  # Stooq 日次テキストファイル (YYYYMMDD_d.txt)
 │   ├── screening.db            # SQLite データベース
 │   ├── logs/                   # ローテーションログ
-│   ├── .scraper_hashes.json    # datasource ファイルのハッシュ (キャッシュ無効化用)
 │   └── .proxy_failures.json    # 検証失敗プロキシの reason 付きキャッシュ (TTL付き)
 └── tests/
     ├── conftest.py
-    ├── test_cache_invalidation.py
     ├── test_fmt.py
     ├── test_metrics.py
     ├── test_screener.py
@@ -127,7 +125,7 @@ formula_screening/
 | `__main__.py`    | `cli.main()`                                                       |
 | `cli.py`         | `config`, `db.schema`, `fmt`, `log`, `stealth`, `browser`, `worker` |
 |                  | サブコマンド経由: `irbank`, `irbank_bs`, `irbank_forecast`          |
-|                  | `stooq_price`, `cache_invalidation`, `screener`, `repository`       |
+|                  | `stooq_price`, `bootstrap`, `screener`, `repository`                |
 
 ### データ取得層 (`scrape/`)
 
@@ -147,7 +145,7 @@ formula_screening/
 | `metrics.py`            | (なし)                                        | 財務データ + 株価 -> 派生指標の事前計算                      |
 | `indicators/`           | `config`                                      | 戦略から呼ぶオンデマンド指標 (FCFイールド, CROIC 等)         |
 | `worker.py`             | `config`, `scrape.*`, `repository`, `db.schema`, `stealth`, `browser` | スクレイピング・株価取得のワーカー制御                       |
-| `cache_invalidation.py` | `config`, `repository`, `db.schema`           | ハッシュ比較によるキャッシュ管理                             |
+| `bootstrap.py`          | `config`, `repository`, `db.schema`, `cli`, `worker`, `scrape.*` | empty DB 検出時の auto-import/scrape/fetch                   |
 
 ### インフラ層
 
@@ -240,14 +238,13 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 | `fetch-prices`      | 全銘柄の株価を Stooq 日次テキストファイルから一括取得        |
 | `scrape-bs`         | IR BANK /bs ページから詳細 BS データをスクレイピング |
 | `scrape-forecast`   | IR BANK /results ページから会社予想をスクレイピング  |
-| `refresh`           | datasource ハッシュ変更を検知し、キャッシュを再構築  |
 | `probe-proxies`     | 公開プロキシ取得だけを診断実行 (`--clear-legacy-cache` で legacy cache を削除) |
 | `clear-failure-cache` | reason を指定して proxy failure cache を削除し、削除前後の分布を表示 |
 | `screen`            | 戦略ファイルを適用してスクリーニング実行 (`--workers` で並列化、`--open [N]` で上位N件を四季報オンラインで開く) |
 
-全コマンド実行前に `cache_invalidation.check_and_invalidate()` が自動実行され、datasource ファイルの変更があれば対応キャッシュが破棄される (`refresh` コマンド自身は除く)。
+`screen` 実行時には `bootstrap.ensure_data_available()` が自動的に呼ばれ、`financial_items` の source 別件数と `prices` テーブルをチェックして、空のソースがあれば対応する import/scrape/fetch を auto 実行する。すべてのデータが揃っている場合はそのまま screening に進む。データの再取得は各サブコマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) を明示的に実行することでのみ行う。
 
-プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は `_proxy_args` 親パーサー経由で共通の `--proxy`, `--proxy-file`, `--target-proxies`, `--check-sites` オプションを継承する。`--proxy-file` は `host:port:user:pass` 形式の認証付きプロキシリストファイルを指定し、`ProxyPool.from_file()` で読み込む。`--proxy` は単一プロキシ URL を直接指定する。どちらも省略時は `ProxyPool.from_auto()` で公開プロキシを自動取得する。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。`refresh` は追加で `--workers` を持ち、auto `scrape-bs` / `scrape-forecast` の並列数を指定できる。
+プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `screen`) は `_proxy_args` 親パーサー経由で共通の `--proxy`, `--proxy-file`, `--target-proxies`, `--check-sites` オプションを継承する。`--proxy-file` は `host:port:user:pass` 形式の認証付きプロキシリストファイルを指定し、`ProxyPool.from_file()` で読み込む。`--proxy` は単一プロキシ URL を直接指定する。どちらも省略時は `ProxyPool.from_auto()` で公開プロキシを自動取得する。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。
 
 `probe-proxies` は DB やスクリーニングデータに触れず、公開プロキシ取得だけを診断するためのコマンドで、デフォルトで `--target-proxies` / `--check-sites` を `cli_defaults.toml [probe_proxies]` から取得し最小チェックを行う。`--clear-legacy-cache` を付けると、short TTL に移行する前の legacy failure cache だけを一度削除してから試行できる。
 
@@ -257,7 +254,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 `fetch-prices` は Stooq の日次テキストファイルから株価を取得する。`data/stooq/` に配置済みの日次テキストファイル (`YYYYMMDD_d.txt`) があればそれをパースし、なければ `browser_service` 経由で `https://stooq.com/db/` の CAPTCHA を解いた後 `https://stooq.com/db/d/?d={date}&t=d` からダウンロードする。プロキシ不要。
 
-スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) と `refresh` の auto scrape/fetch、および `screen` の自動データ取得では、ワーカー数をプロキシプールのサイズ以下に制限する。これにより空サブプールの生成を防ぎ、全ワーカーがプロキシ経由で通信する。つまり `--workers 100` を指定しても、確保できた live proxy が 1 本なら実効ワーカー数は `1` になる。
+スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) および `screen` の自動データ取得では、ワーカー数をプロキシプールのサイズ以下に制限する。これにより空サブプールの生成を防ぎ、全ワーカーがプロキシ経由で通信する。つまり `--workers 100` を指定しても、確保できた live proxy が 1 本なら実効ワーカー数は `1` になる。
 
 IR BANK へのスクレイピングは `browser.py` (BrowserService) 経由で行う。`irbank_common.py` が BrowserService の `fetch()` を呼び出し、Node.js の puppeteer-real-browser でページをレンダリングして HTML を取得する。リトライ時は `scrape.retry_delay` (秒) だけ待機してから次の試行に進む。ワーカー制御ロジック (`worker.py`) はスクレイピング・パースモジュールから分離されており、ワーカーの進捗表示やスキップ判定の変更がキャッシュ無効化を発動しない設計になっている。
 
@@ -381,17 +378,3 @@ reason ごとの TTL は次の通り:
 - `fetch-prices` はローテーションの結果プールが空になった時点で `ProxyUnavailableError("All proxies exhausted")` を送出し、中断する。
 - `scripts/download_irbank.py` も同様に、live proxy が 0 件なら `exit(1)` する。
 - この fail-fast 方針により、プロキシ必須の経路で direct connection が使われることはない。
-
-## キャッシュ無効化の仕組み
-
-`cache_invalidation.py` が `scrape/` 内の各ファイルの SHA256 ハッシュを `data/.scraper_hashes.json` に保存する。CLI 実行時にハッシュを再計算し、差分があれば対応する `financial_items.source` の行を DELETE して再取得する。`worker.py` と `browser.py` はハッシュ追跡対象外で、ワーカー制御やブラウザ通信の変更ではキャッシュ無効化が発動しない。
-
-ファイルと DB source の対応:
-
-| ファイル                 | 無効化される source              |
-| :----------------------- | :------------------------------- |
-| `scrape/irbank.py`       | `irbank`                         |
-| `scrape/irbank_bs.py`    | `irbank_bs`                      |
-| `scrape/irbank_forecast.py` | `irbank_forecast`             |
-| `scrape/irbank_common.py`   | `irbank_bs`, `irbank_forecast` |
-| `scrape/stooq_price.py`     | `prices` テーブル全体          |

@@ -123,10 +123,7 @@ def dispatch_workers(
     force: bool = False,
     extra_kwargs: dict | None = None,
 ) -> dict[str, int]:
-    """Dispatch parallel workers and return stats.
-
-    Shared by CLI subcommands and cache_invalidation.refresh_stale_sources.
-    """
+    """Dispatch parallel workers and return stats."""
     import concurrent.futures
     import random
     import threading
@@ -265,42 +262,6 @@ def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
         )
 
 
-def _cmd_refresh(args: argparse.Namespace) -> None:
-    from formula_screening.cache_invalidation import (
-        check_and_invalidate,
-        compute_hashes,
-        refresh_stale_sources,
-        save_hashes,
-    )
-
-    pool: ProxyPool = _resolve_proxy_pool(args)
-
-    if args.force:
-        current = compute_hashes()
-        from formula_screening.cache_invalidation import (
-            _TRACKED_FILES,
-            invalidate_cache,
-        )
-
-        all_files = sorted(_TRACKED_FILES & set(current))
-        print("Force refresh — invalidating all caches...")
-        deleted = invalidate_cache(all_files)
-        for desc, count in deleted.items():
-            print(f"  {desc}: {count} rows")
-        changed = all_files
-    else:
-        changed = check_and_invalidate(verbose=args.verbose)
-
-    if not changed:
-        print("Cache is up to date. Nothing to refresh.")
-        return
-
-    with _start_browser_service() as browser:
-        refresh_stale_sources(changed, proxy_pool=pool, browser=browser, workers=args.workers)
-    save_hashes(compute_hashes())
-    print("\nRefresh complete.")
-
-
 def _cmd_probe_proxies(args: argparse.Namespace) -> None:
     from formula_screening.stealth import ProxyPool, clear_failure_cache
 
@@ -344,7 +305,7 @@ def _cmd_clear_failure_cache(args: argparse.Namespace) -> None:
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
-    from formula_screening.cache_invalidation import ensure_data_available
+    from formula_screening.bootstrap import ensure_data_available
     from formula_screening.screener import load_strategy, run_screening
 
     _screen_browser: BrowserService | None = None
@@ -539,11 +500,6 @@ def main() -> None:
     p_fc.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
     p_fc.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel workers")
 
-    # refresh
-    p_refresh = sub.add_parser("refresh", parents=[_proxy_args], help="Check scraper hash changes, invalidate stale cache, and re-fetch")
-    p_refresh.add_argument("--force", action="store_true", help="Force re-fetch all sources regardless of hash")
-    p_refresh.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel scrape workers for refresh")
-
     # probe-proxies
     p_probe = sub.add_parser("probe-proxies", help="Probe public proxies without touching screening data")
     p_probe.add_argument("--proxy", help="Specific HTTP proxy URL to validate (e.g. http://host:port)")
@@ -571,18 +527,11 @@ def main() -> None:
     setup_logging(verbose=args.verbose, quiet=args.quiet)
     init_db()
 
-    # Auto-check scraper hashes before any command (refresh handles its own)
-    if args.command not in {"refresh", "probe-proxies", "clear-failure-cache"}:
-        from formula_screening.cache_invalidation import check_and_invalidate
-
-        check_and_invalidate(verbose=args.verbose)
-
     cmds = {
         "import-irbank": _cmd_import_irbank,
         "fetch-prices": _cmd_fetch_prices,
         "scrape-bs": _cmd_scrape_bs,
         "scrape-forecast": _cmd_scrape_forecast,
-        "refresh": _cmd_refresh,
         "probe-proxies": _cmd_probe_proxies,
         "clear-failure-cache": _cmd_clear_failure_cache,
         "screen": _cmd_screen,

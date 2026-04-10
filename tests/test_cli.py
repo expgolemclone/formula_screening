@@ -11,7 +11,6 @@ import pytest
 from formula_screening.cli import (
     _cmd_clear_failure_cache,
     _cmd_probe_proxies,
-    _cmd_refresh,
     _resolve_proxy_pool,
     dispatch_workers,
 )
@@ -182,46 +181,6 @@ class TestClearFailureCache:
         assert "Failure cache before: 9 (anon_unreachable=2, not_a_proxy=4, quality_failed=3)" in out
         assert "Removed 5 entries." in out
         assert "Failure cache after: 4 (not_a_proxy=4)" in out
-
-
-class TestRefresh:
-    """Tests for refresh CLI wiring."""
-
-    def test_passes_workers_and_browser_to_refresh_stale_sources(self) -> None:
-        args = Namespace(
-            force=False,
-            workers=100,
-            verbose=False,
-            proxy=None,
-            target_proxies=1,
-            check_sites=1,
-        )
-        pool: object = object()
-        browser: MagicMock = MagicMock()
-        browser.__enter__ = MagicMock(return_value=browser)
-        browser.__exit__ = MagicMock(return_value=False)
-
-        with (
-            patch("formula_screening.cli._resolve_proxy_pool", return_value=pool),
-            patch("formula_screening.cli._start_browser_service", return_value=browser),
-            patch(
-                "formula_screening.cache_invalidation.check_and_invalidate",
-                return_value=["irbank_bs.py"],
-            ),
-            patch("formula_screening.cache_invalidation.refresh_stale_sources") as refresh_mock,
-            patch("formula_screening.cache_invalidation.save_hashes") as save_mock,
-            patch(
-                "formula_screening.cache_invalidation.compute_hashes",
-                return_value={"irbank_bs.py": "hash"},
-            ),
-        ):
-            _cmd_refresh(args)
-
-        refresh_mock.assert_called_once_with(
-            ["irbank_bs.py"], proxy_pool=pool, browser=browser, workers=100,
-        )
-        save_mock.assert_called_once_with({"irbank_bs.py": "hash"})
-        browser.__exit__.assert_called_once()
 
 
 class TestMain:

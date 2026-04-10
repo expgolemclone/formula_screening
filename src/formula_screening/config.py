@@ -24,7 +24,6 @@ DATA_DIR = _PROJECT_ROOT / PATHS["data"]["root"]
 LOG_DIR = _PROJECT_ROOT / PATHS["data"]["log"]
 DB_PATH = _PROJECT_ROOT / PATHS["data"]["db"]
 IRBANK_DIR = _PROJECT_ROOT / PATHS["data"]["irbank"]
-HASH_FILE = _PROJECT_ROOT / PATHS["data"]["hash_file"]
 PROXY_FAILURE_CACHE = _PROJECT_ROOT / PATHS["data"]["proxy_failure_cache"]
 NOT_A_PROXY_LIST = _PROJECT_ROOT / PATHS["data"]["not_a_proxy_list"]
 
