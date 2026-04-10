@@ -87,7 +87,7 @@ def fetch_irbank_html(
                 "Blocked for %s (status=%d, attempt %d): %s",
                 ticker, resp.status, attempt + 1, snippet,
             )
-            pool.report_failure()
+            pool.rotate()
             random_delay(
                 MAGIC["scrape"]["rate_limit_delay_min"],
                 MAGIC["scrape"]["rate_limit_delay_max"],
