@@ -208,31 +208,25 @@ def _run_scrape_workers(
 def _cmd_scrape_bs(args: argparse.Namespace) -> None:
     from formula_screening.datasources.irbank_bs import scrape_bs_worker
 
-    browser: BrowserService = _start_browser_service()
-    try:
+    with _start_browser_service() as browser:
         _run_scrape_workers(
             args,
             worker_fn=scrape_bs_worker,
             label="BS",
             extra_kwargs={"years": args.years, "browser": browser},
         )
-    finally:
-        browser.shutdown()
 
 
 def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
     from formula_screening.datasources.irbank_forecast import scrape_forecast_worker
 
-    browser: BrowserService = _start_browser_service()
-    try:
+    with _start_browser_service() as browser:
         _run_scrape_workers(
             args,
             worker_fn=scrape_forecast_worker,
             label="forecast",
             extra_kwargs={"browser": browser},
         )
-    finally:
-        browser.shutdown()
 
 
 def _cmd_refresh(args: argparse.Namespace) -> None:
@@ -265,11 +259,8 @@ def _cmd_refresh(args: argparse.Namespace) -> None:
         print("Cache is up to date. Nothing to refresh.")
         return
 
-    browser: BrowserService = _start_browser_service()
-    try:
+    with _start_browser_service() as browser:
         refresh_stale_sources(changed, proxy_pool=pool, browser=browser, workers=args.workers)
-    finally:
-        browser.shutdown()
     save_hashes(compute_hashes())
     print("\nRefresh complete.")
 

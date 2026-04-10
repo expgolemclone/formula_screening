@@ -70,7 +70,7 @@ def fetch_irbank_html(
             pool.report_failure()
             continue
 
-        if resp.status == 200 and resp.html and validate_fn(resp.html):
+        if resp.status == 200 and resp.html is not None and validate_fn(resp.html):
             return resp.html
 
         if resp.error is not None:

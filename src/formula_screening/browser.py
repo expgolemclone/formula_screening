@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,8 +76,21 @@ class BrowserService:
         )
 
         startup_timeout: int = browser_cfg["startup_timeout"]
-        deadline: float = time.monotonic() + startup_timeout
 
+        # Read stdout in a background thread to avoid blocking on readline
+        line_queue: queue.Queue[str] = queue.Queue()
+
+        def _reader() -> None:
+            stdout = self._process.stdout
+            if stdout is None:
+                return
+            for raw_line in stdout:
+                line_queue.put(raw_line.strip())
+
+        reader_thread: threading.Thread = threading.Thread(target=_reader, daemon=True)
+        reader_thread.start()
+
+        deadline: float = time.monotonic() + startup_timeout
         while time.monotonic() < deadline:
             if self._process.poll() is not None:
                 stderr_output: str = self._process.stderr.read() if self._process.stderr else ""
@@ -83,14 +98,16 @@ class BrowserService:
                     f"Browser service exited with code {self._process.returncode}: {stderr_output}"
                 )
 
-            line: str = self._process.stdout.readline().strip() if self._process.stdout else ""
+            try:
+                line: str = line_queue.get(timeout=_STARTUP_POLL_INTERVAL)
+            except queue.Empty:
+                continue
+
             if line.startswith("BROWSER_SERVICE_PORT="):
                 self._port = int(line.split("=", 1)[1])
                 self._base_url = f"http://127.0.0.1:{self._port}"
                 logger.info("Browser service started on port %d", self._port)
                 return
-
-            time.sleep(_STARTUP_POLL_INTERVAL)
 
         self._kill()
         raise BrowserServiceError(

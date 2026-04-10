@@ -6,7 +6,7 @@ const POOL_SIZE = parseInt(process.env.BROWSER_POOL_SIZE || "10", 10);
 const PAGE_TIMEOUT = parseInt(process.env.BROWSER_PAGE_TIMEOUT || "30000", 10);
 const IDLE_TIMEOUT = parseInt(process.env.BROWSER_IDLE_TIMEOUT || "300", 10) * 1000;
 
-/** @typedef {{ browser: import('puppeteer-core').Browser, page: import('puppeteer-core').Page, lastUsed: number }} BrowserEntry */
+/** @typedef {{ browser: import('puppeteer-core').Browser, lastUsed: number }} BrowserEntry */
 
 /** @type {Map<string, BrowserEntry>} proxy address -> browser instance */
 const browserPool = new Map();
@@ -24,7 +24,9 @@ async function launchBrowser(proxyAddr) {
   };
 
   const { browser, page } = await connect(options);
-  return { browser, page, lastUsed: Date.now() };
+  // Close the initial page that connect() opens — each request creates its own
+  await page.close();
+  return { browser, lastUsed: Date.now() };
 }
 
 async function getBrowser(proxyAddr) {
@@ -113,9 +115,10 @@ app.post("/fetch", async (req, res) => {
 
   const pageTimeout = timeout || PAGE_TIMEOUT;
 
+  let page = null;
   try {
     const entry = await getBrowser(proxy);
-    const { page } = entry;
+    page = await entry.browser.newPage();
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: pageTimeout });
     const html = await page.content();
@@ -129,6 +132,10 @@ app.post("/fetch", async (req, res) => {
       status: 502,
       html: null,
     });
+  } finally {
+    if (page) {
+      try { await page.close(); } catch { /* already closed */ }
+    }
   }
 });
 

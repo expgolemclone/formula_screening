@@ -198,6 +198,8 @@ class TestRefresh:
         )
         pool: object = object()
         browser: MagicMock = MagicMock()
+        browser.__enter__ = MagicMock(return_value=browser)
+        browser.__exit__ = MagicMock(return_value=False)
 
         with (
             patch("formula_screening.cli._resolve_proxy_pool", return_value=pool),
@@ -219,7 +221,7 @@ class TestRefresh:
             ["irbank_bs.py"], proxy_pool=pool, browser=browser, workers=100,
         )
         save_mock.assert_called_once_with({"irbank_bs.py": "hash"})
-        browser.shutdown.assert_called_once()
+        browser.__exit__.assert_called_once()
 
 
 class TestMain:
