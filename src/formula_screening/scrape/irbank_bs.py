@@ -207,7 +207,7 @@ def fetch_bs_html(
     Returns:
         HTML string if successful, None on failure.
     """
-    from formula_screening.datasources.irbank_common import fetch_irbank_html
+    from formula_screening.scrape.irbank_common import fetch_irbank_html
 
     return fetch_irbank_html(
         ticker, "bs", pool, validate_fn=_validate_bs_html, browser=browser,

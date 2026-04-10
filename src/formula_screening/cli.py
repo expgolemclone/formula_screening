@@ -28,7 +28,7 @@ logger = logging.getLogger("formula_screening.cli")
 
 def _cmd_import_irbank(args: argparse.Namespace) -> None:
     from formula_screening.config import IRBANK_DIR
-    from formula_screening.datasources.irbank import import_irbank_json
+    from formula_screening.scrape.irbank import import_irbank_json
 
     data_dir = Path(args.dir) if args.dir else IRBANK_DIR
     if not data_dir.is_dir():

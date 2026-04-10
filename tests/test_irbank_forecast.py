@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from formula_screening.datasources.irbank_forecast import (
+from formula_screening.scrape.irbank_forecast import (
     build_forecast_rows,
     parse_forecast_table,
     parse_jp_number,

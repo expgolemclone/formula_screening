@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from formula_screening.datasources.irbank_bs import (
+from formula_screening.scrape.irbank_bs import (
     _parse_data_rows,
     build_bs_rows,
     parse_bs_charts,

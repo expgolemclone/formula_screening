@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from formula_screening.browser import BrowserResponse, BrowserService
-from formula_screening.datasources.irbank_common import fetch_irbank_html
-from formula_screening.datasources.yfinance_price import _fetch_one
+from formula_screening.scrape.irbank_common import fetch_irbank_html
+from formula_screening.scrape.yfinance_price import _fetch_one
 from formula_screening.stealth import ProxyPool, ProxyUnavailableError
 
 

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from formula_screening.datasources.irbank import import_irbank_json
+from formula_screening.scrape.irbank import import_irbank_json
 from formula_screening.db.repository import get_all_tickers, get_financial_dict
 
 

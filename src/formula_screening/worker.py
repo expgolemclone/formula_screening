@@ -46,7 +46,7 @@ def scrape_worker(
 
     Designed to run inside a ``ThreadPoolExecutor``.
     """
-    from formula_screening.datasources.irbank_common import fetch_irbank_html
+    from formula_screening.scrape.irbank_common import fetch_irbank_html
     from formula_screening.db.repository import upsert_financial_items_bulk
     from formula_screening.db.schema import get_connection
     from formula_screening.stealth import random_delay
@@ -106,7 +106,7 @@ def scrape_worker(
 
 def _on_bs_html(ticker: str, html: str, conn: sqlite3.Connection) -> None:
     """Extract company name from BS page and upsert into stocks table."""
-    from formula_screening.datasources.irbank_bs import parse_company_name
+    from formula_screening.scrape.irbank_bs import parse_company_name
     from formula_screening.db.repository import upsert_stock
 
     name: str | None = parse_company_name(html)
@@ -128,7 +128,7 @@ def scrape_bs_worker(
     counter: list[int],
 ) -> None:
     """Scrape detailed BS data for a chunk of tickers."""
-    from formula_screening.datasources.irbank_bs import (
+    from formula_screening.scrape.irbank_bs import (
         _validate_bs_html,
         build_bs_rows,
     )
@@ -172,7 +172,7 @@ def scrape_forecast_worker(
     counter: list[int],
 ) -> None:
     """Scrape forecast data for a chunk of tickers."""
-    from formula_screening.datasources.irbank_forecast import (
+    from formula_screening.scrape.irbank_forecast import (
         build_forecast_rows,
         validate_results_html,
     )
@@ -211,7 +211,7 @@ def fetch_prices_worker(
     counter: list[int],
 ) -> None:
     """Fetch price + shares for a chunk of tickers via yfinance."""
-    from formula_screening.datasources.yfinance_price import _fetch_one
+    from formula_screening.scrape.yfinance_price import _fetch_one
     from formula_screening.db.repository import (
         get_latest_price_with_shares,
         is_price_stale,

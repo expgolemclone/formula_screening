@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("formula_screening.cache_invalidation")
 
-_DATASOURCES_DIR = Path(__file__).resolve().parent / "datasources"
+_SCRAPE_DIR = Path(__file__).resolve().parent / "scrape"
 
 # ---------------------------------------------------------------------------
 # File → DB source mapping
@@ -46,9 +46,9 @@ _TRACKED_FILES: set[str] = {*_FILE_SOURCE_MAP, *_PRICE_FILES}
 # ---------------------------------------------------------------------------
 
 
-def compute_hashes(datasources_dir: Path | None = None) -> dict[str, str]:
-    """Return ``{filename: sha256hex}`` for every tracked datasource file."""
-    base = datasources_dir or _DATASOURCES_DIR
+def compute_hashes(scrape_dir: Path | None = None) -> dict[str, str]:
+    """Return ``{filename: sha256hex}`` for every tracked scrape file."""
+    base: Path = scrape_dir or _SCRAPE_DIR
     hashes: dict[str, str] = {}
     for name in sorted(_TRACKED_FILES):
         path = base / name
@@ -208,7 +208,7 @@ def refresh_stale_sources(
 
 def _import_irbank(conn: sqlite3.Connection) -> None:
     from formula_screening.config import IRBANK_DIR
-    from formula_screening.datasources.irbank import import_irbank_json
+    from formula_screening.scrape.irbank import import_irbank_json
 
     irbank_dir = IRBANK_DIR
     if irbank_dir.is_dir():
