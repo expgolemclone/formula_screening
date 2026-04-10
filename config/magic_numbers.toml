@@ -43,6 +43,10 @@ pool_size = 10
 page_timeout = 30000
 idle_timeout = 300
 startup_timeout = 30
+headless = false
+disable_xvfb = false
+challenge_poll_interval_ms = 250
+challenge_clear_stable_ms = 1000
 
 [log]
 max_bytes = 5242880

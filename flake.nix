@@ -14,6 +14,7 @@
         packages = [
           pkgs.uv
           pkgs.git-lfs
+          pkgs."xorg-server"
         ];
 
         # pip/uvでインストールしたnumpy等のC拡張に必要なシステムライブラリを提供
