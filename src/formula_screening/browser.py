@@ -118,14 +118,14 @@ class BrowserService:
         self,
         url: str,
         *,
-        proxy: str,
+        proxy: str | None = None,
         timeout: int = MAGIC["browser"]["page_timeout"],
     ) -> BrowserResponse:
         """Fetch a URL through the browser service.
 
         Args:
             url: The page URL to navigate to.
-            proxy: Proxy address in ``host:port`` format.
+            proxy: Proxy address in ``host:port`` format.  Omit for direct connection.
             timeout: Page navigation timeout in milliseconds.
 
         Returns:
@@ -134,13 +134,28 @@ class BrowserService:
         if not self.running:
             raise BrowserServiceError("Browser service is not running")
 
-        # Strip http:// prefix if present (ProxyPool.get() returns "http://host:port")
-        proxy_addr: str = proxy.removeprefix("http://").removeprefix("https://")
+        fetch_body: dict[str, str | int | None] = {
+            "url": url, "timeout": timeout,
+        }
+
+        if proxy is not None:
+            proxy_type: str | None = None
+            if proxy.startswith("socks5h://") or proxy.startswith("socks5://"):
+                proxy_type = "socks5"
+            proxy_addr: str = (
+                proxy.removeprefix("socks5h://")
+                .removeprefix("socks5://")
+                .removeprefix("http://")
+                .removeprefix("https://")
+            )
+            fetch_body["proxy"] = proxy_addr
+            if proxy_type is not None:
+                fetch_body["proxyType"] = proxy_type
 
         try:
             resp: requests.Response = requests.post(
                 f"{self._base_url}/fetch",
-                json={"url": url, "proxy": proxy_addr, "timeout": timeout},
+                json=fetch_body,
                 timeout=timeout / 1000 + 10,
             )
             data: dict[str, str | int | None] = resp.json()
@@ -151,6 +166,66 @@ class BrowserService:
             )
         except requests.RequestException as exc:
             return BrowserResponse(html=None, status=502, error=str(exc))
+
+    def download(
+        self,
+        url: str,
+        download_dir: str,
+        *,
+        selector: str | None = None,
+        proxy: str | None = None,
+        timeout: int = MAGIC["browser"]["page_timeout"],
+    ) -> str:
+        """Download a file by navigating to *url* via the browser service.
+
+        Args:
+            url: The page URL that triggers a file download.
+            download_dir: Local directory to save the downloaded file.
+            selector: Optional CSS selector to click to start the download.
+            proxy: Proxy address (``host:port``).  Omit for direct connection.
+            timeout: Navigation/download timeout in milliseconds.
+
+        Returns:
+            The absolute path to the downloaded file.
+        """
+        if not self.running:
+            raise BrowserServiceError("Browser service is not running")
+
+        body: dict[str, str | int | None] = {
+            "url": url,
+            "downloadDir": download_dir,
+            "timeout": timeout,
+        }
+        if selector is not None:
+            body["selector"] = selector
+        if proxy is not None:
+            proxy_type: str | None = None
+            if proxy.startswith(("socks5h://", "socks5://")):
+                proxy_type = "socks5"
+            proxy_addr = (
+                proxy.removeprefix("socks5h://")
+                .removeprefix("socks5://")
+                .removeprefix("http://")
+                .removeprefix("https://")
+            )
+            body["proxy"] = proxy_addr
+            if proxy_type is not None:
+                body["proxyType"] = proxy_type
+
+        try:
+            resp: requests.Response = requests.post(
+                f"{self._base_url}/download",
+                json=body,
+                timeout=timeout / 1000 + 10,
+            )
+            data: dict = resp.json()
+            if resp.status_code != 200 or data.get("error"):
+                raise BrowserServiceError(
+                    f"Download failed: {data.get('error', resp.status_code)}"
+                )
+            return str(data["filePath"])
+        except requests.RequestException as exc:
+            raise BrowserServiceError(f"Download request failed: {exc}") from exc
 
     def shutdown(self) -> None:
         """Gracefully shut down the browser service."""

@@ -1,5 +1,7 @@
 import express from "express";
 import { connect } from "puppeteer-real-browser";
+import { readdirSync, existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 // Configuration from environment or defaults (Python passes these via env vars)
 const POOL_SIZE = parseInt(process.env.BROWSER_POOL_SIZE || "10", 10);
@@ -14,7 +16,7 @@ const browserPool = new Map();
 /** @type {Map<string, Promise<BrowserEntry>>} in-flight connect() calls */
 const pendingConnections = new Map();
 
-async function launchBrowser(proxyAddr) {
+async function launchBrowser(proxyAddr, proxyType) {
   const options = {
     headless: "new",
     turnstile: true,
@@ -27,8 +29,12 @@ async function launchBrowser(proxyAddr) {
 
   const isDirect = !proxyAddr || proxyAddr.startsWith("direct");
   if (!isDirect) {
-    const [host, port] = proxyAddr.split(":");
-    options.proxy = { host, port };
+    if (proxyType === "socks5") {
+      options.args.push(`--proxy-server=socks5://${proxyAddr}`);
+    } else {
+      const [host, port] = proxyAddr.split(":");
+      options.proxy = { host, port };
+    }
   }
 
   const { browser, page } = await connect(options);
@@ -37,7 +43,7 @@ async function launchBrowser(proxyAddr) {
   return { browser, lastUsed: Date.now() };
 }
 
-async function getBrowser(proxyAddr) {
+async function getBrowser(proxyAddr, proxyType) {
   const existing = browserPool.get(proxyAddr);
   if (existing) {
     existing.lastUsed = Date.now();
@@ -65,7 +71,7 @@ async function getBrowser(proxyAddr) {
     }
   }
 
-  const promise = launchBrowser(proxyAddr).then((entry) => {
+  const promise = launchBrowser(proxyAddr, proxyType).then((entry) => {
     browserPool.set(proxyAddr, entry);
     pendingConnections.delete(proxyAddr);
     return entry;
@@ -113,19 +119,17 @@ app.get("/health", (_req, res) => {
 });
 
 app.post("/fetch", async (req, res) => {
-  const { url, proxy, timeout } = req.body;
+  const { url, proxy, proxyType, timeout } = req.body;
   if (!url) {
     return res.status(400).json({ error: "url is required" });
   }
-  if (!proxy) {
-    return res.status(400).json({ error: "proxy is required" });
-  }
 
+  const proxyKey = proxy || "direct";
   const pageTimeout = timeout || PAGE_TIMEOUT;
 
   let page = null;
   try {
-    const entry = await getBrowser(proxy);
+    const entry = await getBrowser(proxyKey, proxyType);
     page = await entry.browser.newPage();
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: pageTimeout });
@@ -134,7 +138,7 @@ app.post("/fetch", async (req, res) => {
     res.json({ html, status: 200 });
   } catch (err) {
     // On navigation failure, evict the browser so next request gets a fresh one
-    await closeBrowser(proxy);
+    await closeBrowser(proxyKey);
     res.status(502).json({
       error: err.message,
       status: 502,
@@ -146,6 +150,72 @@ app.post("/fetch", async (req, res) => {
     }
   }
 });
+
+app.post("/download", async (req, res) => {
+  const { url, downloadDir, selector, proxy, proxyType, timeout } = req.body;
+  if (!url || !downloadDir) {
+    return res.status(400).json({ error: "url and downloadDir are required" });
+  }
+
+  const pageTimeout = timeout || PAGE_TIMEOUT;
+  const proxyKey = proxy || "direct";
+  let page = null;
+
+  try {
+    if (!existsSync(downloadDir)) mkdirSync(downloadDir, { recursive: true });
+    const filesBefore = new Set(readdirSync(downloadDir));
+
+    const entry = await getBrowser(proxyKey, proxyType);
+    page = await entry.browser.newPage();
+
+    const client = await page.createCDPSession();
+    await client.send("Page.setDownloadBehavior", {
+      behavior: "allow",
+      downloadPath: downloadDir,
+    });
+
+    // Navigation to a download URL triggers ERR_ABORTED — that is expected
+    try {
+      await page.goto(url, { waitUntil: "networkidle2", timeout: pageTimeout });
+    } catch (navErr) {
+      if (!navErr.message.includes("net::ERR_ABORTED")) {
+        throw navErr;
+      }
+    }
+
+    if (selector) {
+      await page.waitForSelector(selector, { timeout: pageTimeout });
+      await page.click(selector);
+    }
+
+    // Poll until a new non-temp file appears in downloadDir
+    const filePath = await waitForDownload(downloadDir, filesBefore, pageTimeout);
+    res.json({ filePath, status: 200 });
+  } catch (err) {
+    await closeBrowser(proxyKey);
+    res.status(502).json({ error: err.message, status: 502, filePath: null });
+  } finally {
+    if (page) {
+      try { await page.close(); } catch { /* already closed */ }
+    }
+  }
+});
+
+async function waitForDownload(dir, filesBefore, timeout) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 500));
+    const current = readdirSync(dir);
+    const newFiles = current.filter(
+      (f) => !filesBefore.has(f) && !f.endsWith(".crdownload"),
+    );
+    const stillDownloading = current.some((f) => f.endsWith(".crdownload"));
+    if (newFiles.length > 0 && !stillDownloading) {
+      return join(dir, newFiles[0]);
+    }
+  }
+  throw new Error(`Download timed out after ${timeout}ms`);
+}
 
 app.post("/shutdown", async (_req, res) => {
   res.json({ status: "shutting_down" });

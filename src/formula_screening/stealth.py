@@ -15,6 +15,7 @@ import re
 import socket
 import threading
 import time
+from pathlib import Path
 from collections import Counter
 
 import requests
@@ -84,17 +85,28 @@ def _load_validation_sites() -> list[str]:
 _VALIDATION_SITES: list[str] = _load_validation_sites()
 
 
-def _load_proxy_sources() -> list[str]:
-    """Load proxy source URLs from the sources list file."""
+_SOCKS5_TAG: str = "socks5 "
+
+
+def _load_proxy_sources() -> list[tuple[str, str]]:
+    """Load proxy source URLs from the sources list file.
+
+    Lines prefixed with ``socks5 `` yield SOCKS5 candidates; all others are HTTP.
+    """
     text: str = PROXY_SOURCES_FILE.read_text()
-    return [
-        line.strip()
-        for line in text.splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
+    result: list[tuple[str, str]] = []
+    for raw_line in text.splitlines():
+        line: str = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith(_SOCKS5_TAG):
+            result.append((line[len(_SOCKS5_TAG):].strip(), "socks5"))
+        else:
+            result.append((line, "http"))
+    return result
 
 
-_PROXY_SOURCES: list[str] = _load_proxy_sources()
+_PROXY_SOURCES: list[tuple[str, str]] = _load_proxy_sources()
 
 
 def random_ua() -> str:
@@ -161,6 +173,9 @@ def _source_label(url: str) -> str:
     # proxylist.geonode.com API → geonode_api
     if "proxylist.geonode.com" in url:
         return "geonode_api"
+    # databay.com API → databay_api
+    if "databay.com" in url:
+        return "databay_api"
     # raw.githubusercontent.com/{user}/... → user
     try:
         return parts[parts.index("raw.githubusercontent.com") + 1]
@@ -180,24 +195,28 @@ def _source_label(url: str) -> str:
     return url
 
 
-def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int], dict[str, str]]:
+def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int], dict[str, str], dict[str, str]]:
     """Fetch raw proxy lists from all sources in parallel, deduplicated.
 
     Returns:
-        Tuple of (shuffled proxy list, per-source counts, first source by addr).
+        Tuple of (shuffled proxy list, per-source counts, first source by addr,
+        protocol by addr).
     """
     t0: float = time.monotonic()
     seen: set[str] = set()
     per_source: dict[str, int] = {}
     source_by_addr: dict[str, str] = {}
+    proto_by_addr: dict[str, str] = {}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(_PROXY_SOURCES)) as executor:
-        future_to_label: dict[concurrent.futures.Future[list[str]], str] = {
-            executor.submit(_fetch_single_source, url): _source_label(url)
-            for url in _PROXY_SOURCES
+        future_to_meta: dict[concurrent.futures.Future[list[str]], tuple[str, str]] = {
+            executor.submit(_fetch_single_source, url): (_source_label(url), proto)
+            for url, proto in _PROXY_SOURCES
         }
-        for future in concurrent.futures.as_completed(future_to_label):
-            label: str = future_to_label[future]
+        for future in concurrent.futures.as_completed(future_to_meta):
+            label: str
+            proto: str
+            label, proto = future_to_meta[future]
             result: list[str] = future.result()
             per_source[label] = len(result)
             before: int = len(seen)
@@ -205,6 +224,7 @@ def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int], dict[str, str]
                 if addr not in seen:
                     seen.add(addr)
                     source_by_addr[addr] = label
+                    proto_by_addr[addr] = proto
             logger.debug("Source %s: %d proxies (%d new)", label, len(result), len(seen) - before)
 
     elapsed: float = time.monotonic() - t0
@@ -214,7 +234,7 @@ def _fetch_proxy_candidates() -> tuple[list[str], dict[str, int], dict[str, str]
 
     proxies: list[str] = list(seen)
     random.shuffle(proxies)
-    return proxies, per_source, source_by_addr
+    return proxies, per_source, source_by_addr, proto_by_addr
 
 
 def _classify_request_exception(exc: requests.RequestException) -> str:
@@ -316,21 +336,30 @@ def _hit_quality(
     return _hit_quality_detailed(domain, proxies, headers, timeout) == "ok"
 
 
+def _proxy_url(addr: str, proto: str) -> str:
+    """Construct a proxy URL from an address and protocol tag."""
+    if proto == "socks5":
+        return f"socks5h://{addr}"
+    return f"http://{addr}"
+
+
 def _prefilter_proxy(
     addr: str,
     *,
+    proto: str = "http",
     tcp_timeout: float = MAGIC["proxy"]["tcp_timeout"],
     anon_timeout: int = MAGIC["proxy"]["anon_timeout"],
 ) -> str:
     """Fast proxy pre-filter using TCP reachability plus anonymous proxy checks."""
     if not _tcp_reachable(addr, timeout=tcp_timeout):
         return "tcp_unreachable"
-    return _check_proxy(addr, anon_timeout=anon_timeout, quality_check_count=0)
+    return _check_proxy(addr, proto=proto, anon_timeout=anon_timeout, quality_check_count=0)
 
 
 def _check_proxy(
     addr: str,
     *,
+    proto: str = "http",
     timeout: int = MAGIC["proxy"]["check_timeout"],
     anon_timeout: int = MAGIC["proxy"]["anon_timeout"],
     quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
@@ -341,7 +370,7 @@ def _check_proxy(
     Anonymity results are evaluated first; on failure everything is cancelled
     immediately so no time is wasted on quality checks for a leaky proxy.
     """
-    proxy_url: str = f"http://{addr}"
+    proxy_url: str = _proxy_url(addr, proto)
     ua: str = random_ua()
     proxies: dict[str, str] = {"http": proxy_url, "https": proxy_url}
     headers: dict[str, str] = {"User-Agent": ua}
@@ -586,7 +615,7 @@ def fetch_live_proxies(
     target_count: int = MAGIC["proxy"]["target_count"],
     check_workers: int = MAGIC["proxy"]["check_workers"],
     quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
-) -> list[str]:
+) -> list[tuple[str, str]]:
     """Fetch proxy lists, validate anonymity + quality, return working proxies.
 
     Previously-failed proxies are skipped via a TTL-based on-disk cache.
@@ -597,7 +626,8 @@ def fetch_live_proxies(
     immediately replaced with the next candidate.
 
     Returns:
-        List of ``host:port`` strings for elite-anonymous live proxies (shuffled).
+        List of ``(host:port, proto)`` tuples for elite-anonymous live proxies
+        (shuffled).  *proto* is ``"http"`` or ``"socks5"``.
 
     Raises:
         ProxyUnavailableError: If proxy validation fails too often after enough checks.
@@ -610,7 +640,8 @@ def fetch_live_proxies(
     not_a_proxy_set: set[str] = _load_not_a_proxy_set()
 
     all_candidates: list[str]
-    all_candidates, per_source, source_by_addr = _fetch_proxy_candidates()
+    proto_by_addr: dict[str, str]
+    all_candidates, per_source, source_by_addr, proto_by_addr = _fetch_proxy_candidates()
     source_stats: dict[str, Counter[str]] = {
         source: Counter({"fetched": count}) for source, count in per_source.items()
     }
@@ -647,7 +678,10 @@ def fetch_live_proxies(
     prefilter_t0: float = time.monotonic()
     prefilter_workers: int = MAGIC["proxy"]["tcp_workers"]
     with concurrent.futures.ThreadPoolExecutor(max_workers=prefilter_workers) as prefilter_ex:
-        prefilter_results: list[str] = list(prefilter_ex.map(_prefilter_proxy, candidates))
+        prefilter_results: list[str] = list(prefilter_ex.map(
+            lambda addr: _prefilter_proxy(addr, proto=proto_by_addr.get(addr, "http")),
+            candidates,
+        ))
     prefilter_passed: list[str] = []
     prefilter_failures: Counter[str] = Counter()
     now: float = time.time()
@@ -676,7 +710,7 @@ def fetch_live_proxies(
     logger.info("Validating %d candidates (anonymity + %d quality sites, workers=%d)",
                 len(candidates), quality_check_count, check_workers)
 
-    alive: list[str] = []
+    alive: list[tuple[str, str]] = []
     checked: int = 0
     validation_failures: Counter[str] = Counter()
     max_validation_failure_rate: float = float(MAGIC["proxy"]["max_validation_failure_rate"])
@@ -691,7 +725,9 @@ def fetch_live_proxies(
 
     while idx < len(candidates) and len(pending) < check_workers:
         f: concurrent.futures.Future[str] = executor.submit(
-            _check_proxy, candidates[idx], quality_check_count=quality_check_count,
+            _check_proxy, candidates[idx],
+            proto=proto_by_addr.get(candidates[idx], "http"),
+            quality_check_count=quality_check_count,
         )
         future_to_addr[f] = candidates[idx]
         pending.add(f)
@@ -707,7 +743,7 @@ def fetch_live_proxies(
                 addr: str = future_to_addr.pop(future)
                 checked += 1
                 if result == "ok":
-                    alive.append(addr)
+                    alive.append((addr, proto_by_addr.get(addr, "http")))
                     bump_source(addr, "validated_ok")
                     if len(alive) % 10 == 0:
                         elapsed: float = time.monotonic() - validate_t0
@@ -745,7 +781,9 @@ def fetch_live_proxies(
 
                 if idx < len(candidates) and len(alive) < target_count:
                     f = executor.submit(
-                        _check_proxy, candidates[idx], quality_check_count=quality_check_count,
+                        _check_proxy, candidates[idx],
+                        proto=proto_by_addr.get(candidates[idx], "http"),
+                        quality_check_count=quality_check_count,
                     )
                     future_to_addr[f] = candidates[idx]
                     pending.add(f)
@@ -797,14 +835,17 @@ class ProxyPool:
     Usage::
 
         pool = ProxyPool.from_auto()
-        proxy_url = pool.get()       # "http://host:port" or None
+        proxy_url = pool.get()       # "http://host:port" or "socks5h://host:port" or None
         pool.report_failure()        # mark current proxy bad, auto-rotate
         proxy_url = pool.get()       # next proxy
     """
 
-    def __init__(self, proxies: list[str]) -> None:
+    def __init__(self, proxies: list[tuple[str, str]] | list[tuple[str, str, str]]) -> None:
         self._lock = threading.Lock()
-        self._proxies = list(proxies)
+        self._proxies: list[tuple[str, str, str]] = [
+            (*t, "") if len(t) == 2 else t  # type: ignore[misc]
+            for t in proxies
+        ]
         self._index: int = 0
         self._failures: dict[str, int] = {}
         self._max_failures: int = MAGIC["proxy"]["max_failures"]
@@ -827,15 +868,38 @@ class ProxyPool:
     @classmethod
     def from_url(cls, url: str) -> ProxyPool:
         """Create a pool with a single user-specified proxy."""
-        addr = url.removeprefix("http://").removeprefix("https://")
-        return cls([addr])
+        for scheme in ("socks5h://", "socks5://"):
+            if url.startswith(scheme):
+                return cls([(url.removeprefix(scheme), "socks5")])
+        addr: str = url.removeprefix("http://").removeprefix("https://")
+        return cls([(addr, "http")])
+
+    @classmethod
+    def from_file(cls, path: Path) -> ProxyPool:
+        """Create a pool from a ``host:port:user:pass`` proxy list file."""
+        entries: list[tuple[str, str, str]] = []
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(":")
+            if len(parts) == 4:
+                host, port, user, pw = parts
+                entries.append((f"{host}:{port}", "http", f"{user}:{pw}"))
+            elif len(parts) == 2:
+                entries.append((line, "http", ""))
+        return cls(entries)
 
     def get(self) -> str | None:
         """Return the current proxy URL, or None if the pool is empty."""
         with self._lock:
             if not self._proxies:
                 return None
-            return f"http://{self._proxies[self._index % len(self._proxies)]}"
+            addr, proto, auth = self._proxies[self._index % len(self._proxies)]
+            scheme: str = "socks5h" if proto == "socks5" else "http"
+            if auth:
+                return f"{scheme}://{auth}@{addr}"
+            return f"{scheme}://{addr}"
 
     @property
     def size(self) -> int:
@@ -847,8 +911,8 @@ class ProxyPool:
         """Advance to the next proxy (caller must hold ``_lock``)."""
         if self._proxies:
             self._index += 1
-            proxy_url: str = f"http://{self._proxies[self._index % len(self._proxies)]}"
-            logger.debug("Rotated to proxy: %s", proxy_url)
+            addr, proto, _auth = self._proxies[self._index % len(self._proxies)]
+            logger.debug("Rotated to proxy: %s", _proxy_url(addr, proto))
 
     def rotate(self) -> None:
         """Move to the next proxy and browser profile in the pool."""
@@ -860,13 +924,13 @@ class ProxyPool:
         with self._lock:
             if not self._proxies:
                 return
-            addr = self._proxies[self._index % len(self._proxies)]
+            addr, _proto, _auth = self._proxies[self._index % len(self._proxies)]
             self._failures[addr] = self._failures.get(addr, 0) + 1
             if self._failures[addr] >= self._max_failures:
                 logger.info("Proxy %s failed %d times, removing (pool size: %d -> %d)",
                             addr, self._max_failures, len(self._proxies),
                             len(self._proxies) - 1)
-                self._proxies = [p for p in self._proxies if p != addr]
+                self._proxies = [p for p in self._proxies if p[0] != addr]
                 if self._proxies:
                     self._index = self._index % len(self._proxies)
             else:

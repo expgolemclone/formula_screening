@@ -78,6 +78,11 @@ class TestSourceLabel:
 
         assert _source_label(url) == "geonode_api"
 
+    def test_extracts_databay_api_label(self) -> None:
+        url: str = "https://databay.com/api/v1/proxy-list?anonymity=elite&protocol=http&format=txt"
+
+        assert _source_label(url) == "databay_api"
+
 
 class TestLoadProxySources:
     """Tests for proxy source config loading."""
@@ -96,8 +101,27 @@ class TestLoadProxySources:
 
             with patch("formula_screening.stealth.PROXY_SOURCES_FILE", source_file):
                 assert _load_proxy_sources() == [
-                    "https://example.com/one.txt",
-                    "https://example.com/two.txt",
+                    ("https://example.com/one.txt", "http"),
+                    ("https://example.com/two.txt", "http"),
+                ]
+
+    def test_parses_socks5_tagged_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "proxy_sources.txt"
+            source_file.write_text(
+                "\n".join([
+                    "https://example.com/http.txt",
+                    "socks5 https://example.com/socks5.txt",
+                    "# comment",
+                    " socks5 https://example.com/socks5b.txt ",
+                ]),
+            )
+
+            with patch("formula_screening.stealth.PROXY_SOURCES_FILE", source_file):
+                assert _load_proxy_sources() == [
+                    ("https://example.com/http.txt", "http"),
+                    ("https://example.com/socks5.txt", "socks5"),
+                    ("https://example.com/socks5b.txt", "socks5"),
                 ]
 
 
@@ -308,6 +332,23 @@ class TestCheckProxy:
 
         assert result == "not_a_proxy"
 
+    @patch("formula_screening.stealth._VALIDATION_SITES", ["a.com"])
+    def test_uses_socks5h_scheme_for_socks5_proto(self) -> None:
+        captured_proxies: list[dict[str, str]] = []
+
+        def fake_get(url: str, *, proxies: dict[str, str], **kwargs: object) -> MagicMock:
+            captured_proxies.append(proxies)
+            resp: MagicMock = MagicMock()
+            resp.status_code = 200
+            if "httpbin" in url:
+                resp.json.return_value = {"headers": {}}
+            return resp
+
+        with patch("formula_screening.stealth.requests.get", side_effect=fake_get):
+            _check_proxy("1.2.3.4:1080", proto="socks5", quality_check_count=0)
+
+        assert all(p["http"] == "socks5h://1.2.3.4:1080" for p in captured_proxies)
+
 
 # ---------------------------------------------------------------------------
 # _prefilter_proxy
@@ -511,17 +552,19 @@ class TestFetchLiveProxiesCache:
                     ["1.1.1.1:80", "2.2.2.2:80"],
                     {"src": 2},
                     {"1.1.1.1:80": "src", "2.2.2.2:80": "src"},
+                    {"1.1.1.1:80": "http", "2.2.2.2:80": "http"},
                 ),
             ),
             patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
             patch("formula_screening.stealth._check_proxy", return_value="ok"),
         ):
-            result: list[str] = fetch_live_proxies(
+            result: list[tuple[str, str]] = fetch_live_proxies(
                 target_count=1, check_workers=2, quality_check_count=1,
             )
 
-        assert "2.2.2.2:80" in result
-        assert "1.1.1.1:80" not in result
+        result_addrs: list[str] = [addr for addr, _ in result]
+        assert "2.2.2.2:80" in result_addrs
+        assert "1.1.1.1:80" not in result_addrs
 
     def test_records_new_failures(self, tmp_path: Path) -> None:
         cache_file: Path = tmp_path / ".proxy_failures.json"
@@ -536,12 +579,13 @@ class TestFetchLiveProxiesCache:
                     ["9.9.9.9:80"],
                     {"src": 1},
                     {"9.9.9.9:80": "src"},
+                    {"9.9.9.9:80": "http"},
                 ),
             ),
             patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
             patch("formula_screening.stealth._check_proxy", return_value="anon_leak"),
         ):
-            result: list[str] = fetch_live_proxies(
+            result: list[tuple[str, str]] = fetch_live_proxies(
                 target_count=1, check_workers=2, quality_check_count=1,
             )
 
@@ -562,11 +606,12 @@ class TestFetchLiveProxiesCache:
                     ["10.0.0.1:80"],
                     {"src": 1},
                     {"10.0.0.1:80": "src"},
+                    {"10.0.0.1:80": "http"},
                 ),
             ),
             patch("formula_screening.stealth._prefilter_proxy", return_value="not_a_proxy"),
         ):
-            result: list[str] = fetch_live_proxies(
+            result: list[tuple[str, str]] = fetch_live_proxies(
                 target_count=1, check_workers=2, quality_check_count=1,
             )
 
@@ -580,7 +625,7 @@ class TestFetchLiveProxiesCache:
         nap_file: Path = tmp_path / "not_a_proxy.txt"
         candidates: list[str] = [f"10.0.0.{idx}:80" for idx in range(1, 100)]
 
-        def fake_check(addr: str, *, quality_check_count: int) -> str:
+        def fake_check(addr: str, *, proto: str, quality_check_count: int) -> str:
             last_octet = int(addr.split(".")[-1].split(":")[0])
             if last_octet <= 60:
                 return "anon_leak"
@@ -595,6 +640,7 @@ class TestFetchLiveProxiesCache:
                     candidates,
                     {"src": len(candidates)},
                     {addr: "src" for addr in candidates},
+                    {addr: "http" for addr in candidates},
                 ),
             ),
             patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
@@ -613,7 +659,7 @@ class TestFetchLiveProxiesCache:
         nap_file: Path = tmp_path / "not_a_proxy.txt"
         candidates: list[str] = [f"10.0.1.{idx}:80" for idx in range(1, 101)]
 
-        def fake_check(addr: str, *, quality_check_count: int) -> str:
+        def fake_check(addr: str, *, proto: str, quality_check_count: int) -> str:
             last_octet = int(addr.split(".")[-1].split(":")[0])
             if last_octet <= 50:
                 return "anon_leak"
@@ -628,6 +674,7 @@ class TestFetchLiveProxiesCache:
                     candidates,
                     {"src": len(candidates)},
                     {addr: "src" for addr in candidates},
+                    {addr: "http" for addr in candidates},
                 ),
             ),
             patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
@@ -646,7 +693,7 @@ class TestFetchLiveProxiesCache:
         nap_file: Path = tmp_path / "not_a_proxy.txt"
         candidates: list[str] = [f"10.0.2.{idx}:80" for idx in range(1, 121)]
 
-        def fake_check(addr: str, *, quality_check_count: int) -> str:
+        def fake_check(addr: str, *, proto: str, quality_check_count: int) -> str:
             last_octet = int(addr.split(".")[-1].split(":")[0])
             if last_octet <= 51:
                 return "anon_leak"
@@ -661,6 +708,7 @@ class TestFetchLiveProxiesCache:
                     candidates,
                     {"src": len(candidates)},
                     {addr: "src" for addr in candidates},
+                    {addr: "http" for addr in candidates},
                 ),
             ),
             patch("formula_screening.stealth._prefilter_proxy", return_value="ok"),
@@ -700,3 +748,49 @@ class TestProxyPool:
 
         assert pool.get() is None
         assert pool.exhausted is True
+
+    def test_get_returns_http_scheme_for_http_proxy(self) -> None:
+        pool: ProxyPool = ProxyPool([("1.2.3.4:8080", "http")])
+
+        assert pool.get() == "http://1.2.3.4:8080"
+
+    def test_get_returns_socks5h_scheme_for_socks5_proxy(self) -> None:
+        pool: ProxyPool = ProxyPool([("5.6.7.8:1080", "socks5")])
+
+        assert pool.get() == "socks5h://5.6.7.8:1080"
+
+    def test_from_url_parses_socks5_scheme(self) -> None:
+        pool: ProxyPool = ProxyPool.from_url("socks5://9.9.9.9:1080")
+
+        assert pool.get() == "socks5h://9.9.9.9:1080"
+
+    def test_from_url_parses_socks5h_scheme(self) -> None:
+        pool: ProxyPool = ProxyPool.from_url("socks5h://9.9.9.9:1080")
+
+        assert pool.get() == "socks5h://9.9.9.9:1080"
+
+    def test_from_url_defaults_to_http(self) -> None:
+        pool: ProxyPool = ProxyPool.from_url("http://1.2.3.4:8080")
+
+        assert pool.get() == "http://1.2.3.4:8080"
+
+    def test_from_file_parses_host_port_user_pass(self, tmp_path: Path) -> None:
+        proxy_file: Path = tmp_path / "proxies.txt"
+        proxy_file.write_text(
+            "\n".join([
+                "",
+                "1.2.3.4:8080:myuser:mypass",
+                "5.6.7.8:3128:myuser:mypass",
+                "",
+            ]),
+        )
+
+        pool: ProxyPool = ProxyPool.from_file(proxy_file)
+
+        assert pool.size == 2
+        assert pool.get() == "http://myuser:mypass@1.2.3.4:8080"
+
+    def test_get_returns_auth_url_for_authenticated_proxy(self) -> None:
+        pool: ProxyPool = ProxyPool([("1.2.3.4:8080", "http", "user:pass")])
+
+        assert pool.get() == "http://user:pass@1.2.3.4:8080"
