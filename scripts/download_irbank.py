@@ -151,20 +151,24 @@ def main() -> None:
     for filename in _QY_FILES:
         jobs.append((f"{_BASE_URL}/0000/{filename}", qy_dir / filename))
 
-    total = len(jobs)
-    ok = 0
-    skip = 0
-    fail = 0
+    ok: int = 0
+    fail: int = 0
+
+    if args.force:
+        download_jobs = jobs
+        skip: int = 0
+    else:
+        download_jobs = [(url, t) for url, t in jobs if not _is_valid_json_file(t)]
+        skip = len(jobs) - len(download_jobs)
+
+    total: int = len(download_jobs)
 
     print(f"Downloading {total} files for years: {', '.join(codes)} + quarterly", flush=True)
+    if skip > 0:
+        print(f"Skipping {skip} files (already downloaded)", flush=True)
     print(f"Destination: {dest}", flush=True)
 
-    for count, (url, target) in enumerate(jobs, 1):
-        if not args.force and _is_valid_json_file(target):
-            print(f"[{count}/{total}] SKIP {target.name}", flush=True)
-            skip += 1
-            continue
-
+    for count, (url, target) in enumerate(download_jobs, 1):
         if len(proxies) < _MAX_PROXY_TRIES:
             print("  Refreshing proxies...", flush=True)
             proxies = fetch_live_proxies()

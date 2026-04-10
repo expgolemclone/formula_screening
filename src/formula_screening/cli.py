@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -83,13 +84,17 @@ def _start_browser_service() -> BrowserService:
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
-    from formula_screening.datasources.yfinance_price import fetch_prices_worker
+    from formula_screening.datasources.yfinance_price import (
+        fetch_prices_worker,
+        get_fresh_tickers,
+    )
 
     _run_scrape_workers(
         args,
         worker_fn=fetch_prices_worker,
         label="prices",
         extra_kwargs={"interval": MAGIC["price"]["interval"]},
+        skip_filter_fn=lambda conn, tickers: get_fresh_tickers(conn),
     )
 
 
@@ -181,6 +186,7 @@ def _run_scrape_workers(
     worker_fn: Callable[..., None],
     label: str,
     extra_kwargs: dict | None = None,
+    skip_filter_fn: Callable[[sqlite3.Connection, list[str]], set[str]] | None = None,
 ) -> None:
     """CLI wrapper: resolve args then delegate to :func:`dispatch_workers`."""
     from formula_screening.db.repository import get_all_tickers
@@ -188,12 +194,23 @@ def _run_scrape_workers(
     pool = _resolve_proxy_pool(args)
     conn = get_connection()
     try:
-        tickers = args.ticker if args.ticker else get_all_tickers(conn)
+        tickers: list[str] = args.ticker if args.ticker else get_all_tickers(conn)
         if not tickers:
             print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
             sys.exit(1)
+
+        if not args.force and skip_filter_fn is not None:
+            existing: set[str] = skip_filter_fn(conn, tickers)
+            skipped: int = len(existing & set(tickers))
+            if skipped > 0:
+                tickers = [t for t in tickers if t not in existing]
+                print(f"Skipping {skipped} tickers (already have data)")
     finally:
         conn.close()
+
+    if not tickers:
+        print("All tickers already have data. Use --force to re-fetch.")
+        return
 
     dispatch_workers(
         tickers, pool,
@@ -207,6 +224,7 @@ def _run_scrape_workers(
 
 def _cmd_scrape_bs(args: argparse.Namespace) -> None:
     from formula_screening.datasources.irbank_bs import scrape_bs_worker
+    from formula_screening.datasources.irbank_common import get_existing_tickers
 
     with _start_browser_service() as browser:
         _run_scrape_workers(
@@ -214,10 +232,12 @@ def _cmd_scrape_bs(args: argparse.Namespace) -> None:
             worker_fn=scrape_bs_worker,
             label="BS",
             extra_kwargs={"years": args.years, "browser": browser},
+            skip_filter_fn=lambda conn, tickers: get_existing_tickers(conn, "irbank_bs"),
         )
 
 
 def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
+    from formula_screening.datasources.irbank_common import get_existing_tickers
     from formula_screening.datasources.irbank_forecast import scrape_forecast_worker
 
     with _start_browser_service() as browser:
@@ -226,6 +246,7 @@ def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
             worker_fn=scrape_forecast_worker,
             label="forecast",
             extra_kwargs={"browser": browser},
+            skip_filter_fn=lambda conn, tickers: get_existing_tickers(conn, "irbank_forecast"),
         )
 
 

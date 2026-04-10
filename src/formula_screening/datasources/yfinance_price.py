@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -24,6 +25,18 @@ from formula_screening.stealth import (
 logger: logging.Logger = logging.getLogger("formula_screening.yfinance_price")
 
 _MAX_RETRIES: int = MAGIC["price"]["max_retries"]
+
+
+def get_fresh_tickers(conn: sqlite3.Connection) -> set[str]:
+    """Return tickers whose cached price is still fresh (not stale)."""
+    threshold: str = (
+        datetime.now(timezone.utc) - timedelta(days=MAGIC["price"]["stale_days"])
+    ).isoformat()
+    rows = conn.execute(
+        "SELECT DISTINCT ticker FROM prices WHERE updated_at > ?",
+        (threshold,),
+    ).fetchall()
+    return {r[0] for r in rows}
 
 
 def is_price_stale(updated_at: str | None) -> bool:
@@ -104,19 +117,19 @@ def fetch_prices_worker(
     from formula_screening.db.schema import get_connection
 
     conn = get_connection()
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     try:
         for ticker in tickers:
-            with stats_lock:
-                counter[0] += 1
-                seq = counter[0]
-
             if not force:
                 cached = get_latest_price_with_shares(conn, ticker)
                 if not is_price_stale(cached["updated_at"]):
                     with stats_lock:
                         stats["skip"] += 1
                     continue
+
+            with stats_lock:
+                counter[0] += 1
+                seq: int = counter[0]
 
             result = _fetch_one(ticker, pool)
             price = result["price"]

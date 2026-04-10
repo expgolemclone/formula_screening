@@ -25,6 +25,16 @@ if TYPE_CHECKING:
 logger: logging.Logger = logging.getLogger("formula_screening.irbank_common")
 
 _IRBANK_URL_TEMPLATE: str = "https://irbank.net/{ticker}/{path}"
+
+
+def get_existing_tickers(conn: sqlite3.Connection, source: str) -> set[str]:
+    """Return tickers that already have data for *source* in the DB."""
+    rows = conn.execute(
+        "SELECT DISTINCT ticker FROM financial_items WHERE source = ?",
+        (source,),
+    ).fetchall()
+    return {r[0] for r in rows}
+
 _MAX_RETRIES: int = MAGIC["scrape"]["max_retries"]
 _PROXY_REMOVE_ON_ERROR: bool = MAGIC["scrape"]["proxy_remove_on_error"]
 
@@ -147,10 +157,6 @@ def scrape_worker(
     conn: sqlite3.Connection = get_connection()
     try:
         for ticker in tickers:
-            with stats_lock:
-                counter[0] += 1
-                seq: int = counter[0]
-
             if not force:
                 existing = conn.execute(
                     "SELECT 1 FROM financial_items WHERE ticker = ? AND source = ? LIMIT 1",
@@ -160,6 +166,10 @@ def scrape_worker(
                     with stats_lock:
                         stats["skip"] += 1
                     continue
+
+            with stats_lock:
+                counter[0] += 1
+                seq: int = counter[0]
 
             html: str | None = fetch_irbank_html(
                 ticker, fetch_path, pool,
