@@ -15,13 +15,20 @@ const browserPool = new Map();
 const pendingConnections = new Map();
 
 async function launchBrowser(proxyAddr) {
-  const [host, port] = proxyAddr.split(":");
   const options = {
     headless: "new",
     turnstile: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    proxy: { host, port },
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--ignore-certificate-errors",
+    ],
   };
+
+  if (proxyAddr && proxyAddr !== "direct") {
+    const [host, port] = proxyAddr.split(":");
+    options.proxy = { host, port };
+  }
 
   const { browser, page } = await connect(options);
   // Close the initial page that connect() opens — each request creates its own
