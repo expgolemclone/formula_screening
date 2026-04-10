@@ -14,7 +14,8 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Self
+from typing import Self, TypedDict
+from urllib.parse import unquote, urlsplit
 
 import requests
 
@@ -25,6 +26,31 @@ logger: logging.Logger = logging.getLogger("formula_screening.browser")
 _BROWSER_SERVICE_DIR: Path = Path(__file__).resolve().parent.parent.parent / "browser_service"
 _NODE_EXECUTABLE: str = os.environ.get("NODE_PATH", "node")
 _STARTUP_POLL_INTERVAL: float = 0.25
+
+
+class ProxyFields(TypedDict, total=False):
+    proxy: str
+    proxyType: str
+    proxyUsername: str
+    proxyPassword: str
+
+
+def _build_proxy_fields(proxy: str | None) -> ProxyFields:
+    """Parse a proxy URL into the request body fields the browser service expects.
+
+    Chromium's ``--proxy-server`` flag does not accept ``user:pass@host:port``,
+    so auth must be forwarded out-of-band and applied via ``page.authenticate``.
+    """
+    if proxy is None:
+        return {}
+    parsed = urlsplit(proxy)
+    fields: ProxyFields = {"proxy": f"{parsed.hostname}:{parsed.port}"}
+    if parsed.scheme.startswith("socks5"):
+        fields["proxyType"] = "socks5"
+    if parsed.username is not None:
+        fields["proxyUsername"] = unquote(parsed.username)
+        fields["proxyPassword"] = unquote(parsed.password or "")
+    return fields
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,21 +162,8 @@ class BrowserService:
 
         fetch_body: dict[str, str | int | None] = {
             "url": url, "timeout": timeout,
+            **_build_proxy_fields(proxy),
         }
-
-        if proxy is not None:
-            proxy_type: str | None = None
-            if proxy.startswith("socks5h://") or proxy.startswith("socks5://"):
-                proxy_type = "socks5"
-            proxy_addr: str = (
-                proxy.removeprefix("socks5h://")
-                .removeprefix("socks5://")
-                .removeprefix("http://")
-                .removeprefix("https://")
-            )
-            fetch_body["proxy"] = proxy_addr
-            if proxy_type is not None:
-                fetch_body["proxyType"] = proxy_type
 
         try:
             resp: requests.Response = requests.post(
@@ -195,22 +208,10 @@ class BrowserService:
             "url": url,
             "downloadDir": download_dir,
             "timeout": timeout,
+            **_build_proxy_fields(proxy),
         }
         if selector is not None:
             body["selector"] = selector
-        if proxy is not None:
-            proxy_type: str | None = None
-            if proxy.startswith(("socks5h://", "socks5://")):
-                proxy_type = "socks5"
-            proxy_addr = (
-                proxy.removeprefix("socks5h://")
-                .removeprefix("socks5://")
-                .removeprefix("http://")
-                .removeprefix("https://")
-            )
-            body["proxy"] = proxy_addr
-            if proxy_type is not None:
-                body["proxyType"] = proxy_type
 
         try:
             resp: requests.Response = requests.post(

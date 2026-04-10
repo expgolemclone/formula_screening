@@ -3,6 +3,13 @@ import { connect } from "puppeteer-real-browser";
 import { readdirSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+// puppeteer-real-browser's targetcreated listener races with page.close() on
+// the error path: its async page setup throws TargetCloseError against a page
+// we've already closed, which Node 24 treats as a fatal unhandled rejection.
+process.on("unhandledRejection", (reason) => {
+  console.error("unhandledRejection:", reason?.message || reason);
+});
+
 // Configuration from environment or defaults (Python passes these via env vars)
 const POOL_SIZE = parseInt(process.env.BROWSER_POOL_SIZE || "10", 10);
 const PAGE_TIMEOUT = parseInt(process.env.BROWSER_PAGE_TIMEOUT || "30000", 10);
@@ -16,7 +23,11 @@ const browserPool = new Map();
 /** @type {Map<string, Promise<BrowserEntry>>} in-flight connect() calls */
 const pendingConnections = new Map();
 
-async function launchBrowser(proxyAddr, proxyType) {
+function poolKey(proxyAddr, username) {
+  return `${proxyAddr}|${username || ""}`;
+}
+
+async function launchBrowser(proxyAddr, proxyType, username, password) {
   const options = {
     headless: "new",
     turnstile: true,
@@ -32,26 +43,31 @@ async function launchBrowser(proxyAddr, proxyType) {
     if (proxyType === "socks5") {
       options.args.push(`--proxy-server=socks5://${proxyAddr}`);
     } else {
-      const [host, port] = proxyAddr.split(":");
-      options.proxy = { host, port };
+      const [host, portStr] = proxyAddr.split(":");
+      options.proxy = { host, port: parseInt(portStr, 10) };
+      if (username && password !== undefined) {
+        options.proxy.username = username;
+        options.proxy.password = password;
+      }
     }
   }
 
   const { browser, page } = await connect(options);
   // Close the initial page that connect() opens — each request creates its own
   await page.close();
-  return { browser, lastUsed: Date.now() };
+  return { browser, lastUsed: Date.now(), username, password };
 }
 
-async function getBrowser(proxyAddr, proxyType) {
-  const existing = browserPool.get(proxyAddr);
+async function getBrowser(proxyAddr, proxyType, username, password) {
+  const key = poolKey(proxyAddr, username);
+  const existing = browserPool.get(key);
   if (existing) {
     existing.lastUsed = Date.now();
     return existing;
   }
 
   // Deduplicate concurrent connect() calls for the same proxy
-  const pending = pendingConnections.get(proxyAddr);
+  const pending = pendingConnections.get(key);
   if (pending) {
     return pending;
   }
@@ -60,10 +76,10 @@ async function getBrowser(proxyAddr, proxyType) {
   if (browserPool.size >= POOL_SIZE) {
     let oldestKey = null;
     let oldestTime = Infinity;
-    for (const [key, entry] of browserPool) {
+    for (const [k, entry] of browserPool) {
       if (entry.lastUsed < oldestTime) {
         oldestTime = entry.lastUsed;
-        oldestKey = key;
+        oldestKey = k;
       }
     }
     if (oldestKey) {
@@ -71,16 +87,16 @@ async function getBrowser(proxyAddr, proxyType) {
     }
   }
 
-  const promise = launchBrowser(proxyAddr, proxyType).then((entry) => {
-    browserPool.set(proxyAddr, entry);
-    pendingConnections.delete(proxyAddr);
+  const promise = launchBrowser(proxyAddr, proxyType, username, password).then((entry) => {
+    browserPool.set(key, entry);
+    pendingConnections.delete(key);
     return entry;
   }).catch((err) => {
-    pendingConnections.delete(proxyAddr);
+    pendingConnections.delete(key);
     throw err;
   });
 
-  pendingConnections.set(proxyAddr, promise);
+  pendingConnections.set(key, promise);
   return promise;
 }
 
@@ -119,18 +135,25 @@ app.get("/health", (_req, res) => {
 });
 
 app.post("/fetch", async (req, res) => {
-  const { url, proxy, proxyType, timeout } = req.body;
+  const { url, proxy, proxyType, proxyUsername, proxyPassword, timeout } = req.body;
   if (!url) {
     return res.status(400).json({ error: "url is required" });
   }
 
-  const proxyKey = proxy || "direct";
+  const proxyAddr = proxy || "direct";
+  const key = poolKey(proxyAddr, proxyUsername);
   const pageTimeout = timeout || PAGE_TIMEOUT;
 
   let page = null;
   try {
-    const entry = await getBrowser(proxyKey, proxyType);
+    const entry = await getBrowser(proxyAddr, proxyType, proxyUsername, proxyPassword);
     page = await entry.browser.newPage();
+
+    // The pageController targetcreated handler races with newPage(); apply auth
+    // explicitly here to guarantee it lands before the first request.
+    if (proxyUsername && proxyPassword !== undefined) {
+      await page.authenticate({ username: proxyUsername, password: proxyPassword });
+    }
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: pageTimeout });
     const html = await page.content();
@@ -138,7 +161,7 @@ app.post("/fetch", async (req, res) => {
     res.json({ html, status: 200 });
   } catch (err) {
     // On navigation failure, evict the browser so next request gets a fresh one
-    await closeBrowser(proxyKey);
+    await closeBrowser(key);
     res.status(502).json({
       error: err.message,
       status: 502,
@@ -152,21 +175,26 @@ app.post("/fetch", async (req, res) => {
 });
 
 app.post("/download", async (req, res) => {
-  const { url, downloadDir, selector, proxy, proxyType, timeout } = req.body;
+  const { url, downloadDir, selector, proxy, proxyType, proxyUsername, proxyPassword, timeout } = req.body;
   if (!url || !downloadDir) {
     return res.status(400).json({ error: "url and downloadDir are required" });
   }
 
   const pageTimeout = timeout || PAGE_TIMEOUT;
-  const proxyKey = proxy || "direct";
+  const proxyAddr = proxy || "direct";
+  const key = poolKey(proxyAddr, proxyUsername);
   let page = null;
 
   try {
     if (!existsSync(downloadDir)) mkdirSync(downloadDir, { recursive: true });
     const filesBefore = new Set(readdirSync(downloadDir));
 
-    const entry = await getBrowser(proxyKey, proxyType);
+    const entry = await getBrowser(proxyAddr, proxyType, proxyUsername, proxyPassword);
     page = await entry.browser.newPage();
+
+    if (proxyUsername && proxyPassword !== undefined) {
+      await page.authenticate({ username: proxyUsername, password: proxyPassword });
+    }
 
     const client = await page.createCDPSession();
     await client.send("Page.setDownloadBehavior", {
@@ -192,7 +220,7 @@ app.post("/download", async (req, res) => {
     const filePath = await waitForDownload(downloadDir, filesBefore, pageTimeout);
     res.json({ filePath, status: 200 });
   } catch (err) {
-    await closeBrowser(proxyKey);
+    await closeBrowser(key);
     res.status(502).json({ error: err.message, status: 502, filePath: null });
   } finally {
     if (page) {
