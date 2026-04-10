@@ -13,6 +13,7 @@
       devShells.${system}.default = pkgs.mkShell {
         packages = [
           pkgs.uv
+          pkgs.git-lfs
         ];
 
         # pip/uvでインストールしたnumpy等のC拡張に必要なシステムライブラリを提供
