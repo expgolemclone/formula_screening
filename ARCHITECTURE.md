@@ -1,6 +1,6 @@
 # Architecture
 
-日本株スクリーニングツール。IR BANK の財務データと yfinance の株価を SQLite に集約し、ユーザ定義の Python 戦略ファイルでフィルタリングする。
+日本株スクリーニングツール。IR BANK の財務データと Stooq の株価を SQLite に集約し、ユーザ定義の Python 戦略ファイルでフィルタリングする。IR BANK へのスクレイピングは Node.js puppeteer-real-browser サービス経由で行う。Stooq の日次テキストファイルはローカル配置済みファイルを優先し、なければブラウザ経由で自動ダウンロードする。
 
 ## ディレクトリ構成
 
@@ -12,8 +12,10 @@ formula_screening/
 │   ├── config.py               # config/*.toml の読み込み、パス定数の定義
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── fmt.py                  # 全角文字対応のテーブル整形ユーティリティ
-│   ├── stealth.py              # プロキシ取得・検証・ローテーション、TLS指紋偽装
-│   ├── cache_invalidation.py   # datasource ファイルのハッシュ比較によるキャッシュ管理
+│   ├── stealth.py              # プロキシ取得・検証・ローテーション
+│   ├── browser.py              # Node.js puppeteer-real-browser サービスのクライアント
+│   ├── worker.py               # スクレイピング・株価取得の並列ワーカー制御
+│   ├── cache_invalidation.py   # scrape ファイルのハッシュ比較によるキャッシュ管理
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率 等)
 │   ├── indicators/
@@ -23,12 +25,12 @@ formula_screening/
 │   ├── db/
 │   │   ├── schema.py           # SQLite スキーマ定義・マイグレーション・接続管理
 │   │   └── repository.py       # データアクセス層 (stocks, financial_items, prices)
-│   └── datasources/
+│   └── scrape/
 │       ├── irbank.py           # IR BANK JSON ファイルのインポート (PL/BS/CF/配当/四半期)
-│       ├── irbank_bs.py        # IR BANK /bs ページのスクレイピング・パース
-│       ├── irbank_forecast.py  # IR BANK /results ページから会社予想をスクレイピング
-│       ├── irbank_common.py    # irbank_bs / irbank_forecast 共通の HTTP取得・ワーカー
-│       └── yfinance_price.py   # yfinance による株価・発行済株式数の取得
+│       ├── irbank_bs.py        # IR BANK /bs ページのパース・行生成
+│       ├── irbank_forecast.py  # IR BANK /results ページのパース・行生成
+│       ├── irbank_common.py    # irbank_bs / irbank_forecast 共通のブラウザ経由HTML取得
+│       └── stooq_price.py      # Stooq 日次テキストファイルによる株価取得
 ├── scripts/                    # スタンドアロンスクリプト (uv run python scripts/... で実行)
 │   ├── download_irbank.py      # IR BANK JSON ファイルのダウンロード
 │   ├── scrape_irbank_bs.py     # BS スクレイピングのスクリプト版
@@ -45,6 +47,7 @@ formula_screening/
 │   └── validation_sites.txt    # プロキシ品質検証用ドメインリスト (Tranco由来)
 ├── data/
 │   ├── irbank/                 # IR BANK JSON ファイル (年度コード別サブディレクトリ)
+│   ├── stooq/                  # Stooq 日次テキストファイル (YYYYMMDD_d.txt)
 │   ├── screening.db            # SQLite データベース
 │   ├── logs/                   # ローテーションログ
 │   ├── .scraper_hashes.json    # datasource ファイルのハッシュ (キャッシュ無効化用)
@@ -60,7 +63,8 @@ formula_screening/
     ├── test_irbank_bs.py
     ├── test_irbank_forecast.py
     ├── test_repository.py
-    └── test_stealth.py
+    ├── test_stealth.py
+    └── test_stooq_price.py
 ```
 
 ## データフロー
@@ -73,14 +77,22 @@ formula_screening/
               ┌────────────────────┼────────────────────┐
               v                    v                    v
    download_irbank.py     irbank_bs.py         irbank_forecast.py
-   (JSON ダウンロード)    (/bs スクレイピング)   (/results スクレイピング)
+   (JSON ダウンロード)    (/bs パース)          (/results パース)
               │                    │                    │
               v                    │                    │
    data/irbank/*.json              │                    │
               │                    │                    │
               v                    v                    v
          irbank.py          irbank_common.py ◄─────────┘
-     (JSON インポート)     (共通 HTTP/ワーカー)
+     (JSON インポート)     (ブラウザ経由HTML取得)
+              │                    │
+              │                    v
+              │              browser.py ──► browser_service/
+              │             (ブラウザサービス)    (Node.js)
+              │                    │
+              │                    v
+              │              worker.py
+              │             (並列ワーカー制御)
               │                    │
               v                    v
         ┌─────────────────────────────────────┐
@@ -93,8 +105,8 @@ formula_screening/
                        │              ^
                        │              │
                        v              │
-                  repository.py    yfinance_price.py
-                 (データアクセス)   (株価取得)
+                  repository.py    stooq_price.py ──► browser.py
+                 (データアクセス)   (日次txt株価取得)     (CAPTCHA突破)
                        │              ^
                        v              │
                   screener.py ────────┘
@@ -113,39 +125,41 @@ formula_screening/
 | モジュール       | 呼び出し先                                                         |
 | :--------------- | :----------------------------------------------------------------- |
 | `__main__.py`    | `cli.main()`                                                       |
-| `cli.py`         | `config`, `db.schema`, `fmt`, `log`, `stealth`                     |
-|                  | サブコマンド経由: `irbank`, `irbank_bs`, `irbank_forecast`         |
-|                  | `yfinance_price`, `cache_invalidation`, `screener`, `repository`   |
+| `cli.py`         | `config`, `db.schema`, `fmt`, `log`, `stealth`, `browser`, `worker` |
+|                  | サブコマンド経由: `irbank`, `irbank_bs`, `irbank_forecast`          |
+|                  | `stooq_price`, `cache_invalidation`, `screener`, `repository`       |
 
-### データ取得層 (`datasources/`)
+### データ取得層 (`scrape/`)
 
-| モジュール             | 依存先                                 | 役割                              |
-| :--------------------- | :------------------------------------- | :-------------------------------- |
-| `irbank.py`            | `repository`                           | JSON -> DB インポート             |
-| `irbank_bs.py`         | `irbank_common`, `config`, `repository`| /bs ページのパース・行生成        |
-| `irbank_forecast.py`   | `irbank_common`, `config`              | /results ページのパース・行生成   |
-| `irbank_common.py`     | `config`, `stealth` (`create_session`), `repository`, `db.schema` | 共通 HTTP 取得 (TLS 偽装)・並列ワーカー |
-| `yfinance_price.py`    | `config`, `repository`, `stealth`, `db.schema` | yfinance 経由の株価ワーカー取得   |
+| モジュール           | 依存先                           | 役割                                    |
+| :------------------- | :------------------------------- | :-------------------------------------- |
+| `irbank.py`          | `repository`                     | JSON -> DB インポート                   |
+| `irbank_bs.py`       | `config`                         | /bs ページのパース・行生成              |
+| `irbank_forecast.py` | `config`                         | /results ページのパース・行生成         |
+| `irbank_common.py`   | `config`, `browser`, `stealth`   | ブラウザサービス経由の IR BANK HTML取得  |
+| `stooq_price.py`     | `browser`                        | Stooq 日次テキストファイルによる株価一括取得 |
 
 ### コア層
 
-| モジュール               | 依存先                           | 役割                                |
-| :----------------------- | :------------------------------- | :---------------------------------- |
-| `screener.py`            | `config`, `repository`, `metrics`, `db.schema` | 戦略ファイルの動的ロード・宣言的フォーマット解釈・全銘柄並列適用 |
-| `metrics.py`             | (なし)                           | 財務データ + 株価 -> 派生指標の事前計算 |
-| `indicators/`            | `config`                         | 戦略から呼ぶオンデマンド指標 (FCFイールド, CROIC 等)  |
-| `cache_invalidation.py`  | `config`, `repository`, `db.schema`, `cli` | ハッシュ比較によるキャッシュ管理 |
+| モジュール              | 依存先                                        | 役割                                                         |
+| :---------------------- | :-------------------------------------------- | :----------------------------------------------------------- |
+| `screener.py`           | `config`, `repository`, `metrics`, `db.schema` | 戦略ファイルの動的ロード・宣言的フォーマット解釈・全銘柄並列適用 |
+| `metrics.py`            | (なし)                                        | 財務データ + 株価 -> 派生指標の事前計算                      |
+| `indicators/`           | `config`                                      | 戦略から呼ぶオンデマンド指標 (FCFイールド, CROIC 等)         |
+| `worker.py`             | `config`, `scrape.*`, `repository`, `db.schema`, `stealth`, `browser` | スクレイピング・株価取得のワーカー制御                       |
+| `cache_invalidation.py` | `config`, `repository`, `db.schema`           | ハッシュ比較によるキャッシュ管理                             |
 
 ### インフラ層
 
-| モジュール      | 依存先     | 役割                                          |
-| :-------------- | :--------- | :-------------------------------------------- |
-| `config.py`     | (なし)     | TOML 読み込み、パス定数                       |
-| `db/schema.py`  | `config`   | DDL、マイグレーション、接続生成               |
-| `db/repository.py` | (なし)  | CRUD 操作 (stocks, financial_items, prices)   |
-| `stealth.py`    | `config`   | プロキシプール、TLS 偽装、reason 付き失敗キャッシュ、分散サイト検証 |
-| `log.py`        | `config`   | ロギング設定                                  |
-| `fmt.py`        | (なし)     | 全角対応の文字列整形                          |
+| モジュール         | 依存先     | 役割                                                      |
+| :----------------- | :--------- | :-------------------------------------------------------- |
+| `config.py`        | (なし)     | TOML 読み込み、パス定数                                   |
+| `db/schema.py`     | `config`   | DDL、マイグレーション、接続生成                           |
+| `db/repository.py` | (なし)     | CRUD 操作 (stocks, financial_items, prices)               |
+| `browser.py`       | `config`   | Node.js puppeteer-real-browser サービスの起動・終了・fetch/download (プロキシはオプショナル) |
+| `stealth.py`       | `config`   | プロキシプール、reason 付き失敗キャッシュ、分散サイト検証 |
+| `log.py`           | `config`   | ロギング設定                                              |
+| `fmt.py`           | (なし)     | 全角対応の文字列整形                                      |
 
 ### スタンドアロンスクリプト (`scripts/`)
 
@@ -153,7 +167,7 @@ formula_screening/
 | :---------------------- | :------------------------------------------------------------ | :----------------------- |
 | `download_irbank.py`    | `config`, `stealth.fetch_live_proxies`                        | JSON ダウンロード        |
 | `scrape_irbank_bs.py`   | `cli.main` (→ `scrape-bs` サブコマンドに委譲)                 | BS スクレイピング |
-| `fetch_prices.py`       | `cli.main` (→ `fetch-prices` サブコマンドに委譲)              | 株価取得                 |
+| `fetch_prices.py`       | `cli.main` (→ `fetch-prices` サブコマンドに委譲)              | 株価取得 (Stooq)         |
 | `export_csv.py`         | `config`, `db.schema`, `screener.build_stock_dict`            | CSV エクスポート         |
 | `generate_check_sites.py` | (外部: Tranco リスト)                                       | プロキシ検証用サイトリスト生成 |
 
@@ -192,7 +206,7 @@ PK: `(ticker, period, statement, item_name)`
 
 ### prices
 
-yfinance から取得した株価キャッシュ。`updated_at` が 1 日以上古い場合に再取得。
+Stooq から取得した株価キャッシュ。`updated_at` が 1 日以上古い場合に再取得。
 
 | カラム              | 型      | 備考               |
 | :------------------ | :------ | :----------------- |
@@ -223,7 +237,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 | コマンド            | 処理内容                                            |
 | :------------------ | :-------------------------------------------------- |
 | `import-irbank`     | `data/irbank/` の JSON を DB にインポート           |
-| `fetch-prices`      | yfinance で全銘柄の株価・発行済株式数を取得         |
+| `fetch-prices`      | 全銘柄の株価を Stooq 日次テキストファイルから一括取得        |
 | `scrape-bs`         | IR BANK /bs ページから詳細 BS データをスクレイピング |
 | `scrape-forecast`   | IR BANK /results ページから会社予想をスクレイピング  |
 | `refresh`           | datasource ハッシュ変更を検知し、キャッシュを再構築  |
@@ -233,7 +247,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 全コマンド実行前に `cache_invalidation.check_and_invalidate()` が自動実行され、datasource ファイルの変更があれば対応キャッシュが破棄される (`refresh` コマンド自身は除く)。
 
-プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は `_proxy_args` 親パーサー経由で共通の `--proxy`, `--target-proxies`, `--check-sites` オプションを継承する。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。`refresh` は追加で `--workers` を持ち、auto `scrape-bs` / `scrape-forecast` の並列数を指定できる。プロキシは常に使用される (直接接続オプションはない)。  
+プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `refresh`, `screen`) は `_proxy_args` 親パーサー経由で共通の `--proxy`, `--proxy-file`, `--target-proxies`, `--check-sites` オプションを継承する。`--proxy-file` は `host:port:user:pass` 形式の認証付きプロキシリストファイルを指定し、`ProxyPool.from_file()` で読み込む。`--proxy` は単一プロキシ URL を直接指定する。どちらも省略時は `ProxyPool.from_auto()` で公開プロキシを自動取得する。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。`refresh` は追加で `--workers` を持ち、auto `scrape-bs` / `scrape-forecast` の並列数を指定できる。
 
 `probe-proxies` は DB やスクリーニングデータに触れず、公開プロキシ取得だけを診断するためのコマンドで、デフォルトで `--target-proxies` / `--check-sites` を `cli_defaults.toml [probe_proxies]` から取得し最小チェックを行う。`--clear-legacy-cache` を付けると、short TTL に移行する前の legacy failure cache だけを一度削除してから試行できる。
 
@@ -241,9 +255,11 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 自動プロキシ解決 (`ProxyPool.from_auto()`) で live proxy を 1 件も確保できなかった場合は `stealth.ProxyUnavailableError` を送出し、CLI とスクリプトは `ABORT: ...` を stderr に出して `exit(1)` する。エラーメッセージには直前の `passed / cache_skipped / prefilter / validation` 要約も含まれる。
 
-`fetch-prices` は `dispatch_workers` を使い、スクレイピング系コマンドと同じワーカー並列パターンで動作する。各ワーカーが異なるプロキシサブプールを持ち、1銘柄ずつ `yf.Ticker().history()` + `fast_info` で個別取得する。レート制限時は `max_retries` 回までプロキシローテーション + ディレイでリトライし、失敗した銘柄はスキップして次へ進む。
+`fetch-prices` は Stooq の日次テキストファイルから株価を取得する。`data/stooq/` に配置済みの日次テキストファイル (`YYYYMMDD_d.txt`) があればそれをパースし、なければ `browser_service` 経由で `https://stooq.com/db/` の CAPTCHA を解いた後 `https://stooq.com/db/d/?d={date}&t=d` からダウンロードする。プロキシ不要。
 
-スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) と `refresh` の auto scrape/fetch、および `screen` の自動データ取得では、`dispatch_workers` がワーカー数をプロキシプールのサイズ以下に制限する。これにより空サブプールの生成を防ぎ、全ワーカーがプロキシ経由で通信する。つまり `--workers 100` を指定しても、確保できた live proxy が 1 本なら実効ワーカー数は `1` になる。
+スクレイピング系コマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) と `refresh` の auto scrape/fetch、および `screen` の自動データ取得では、ワーカー数をプロキシプールのサイズ以下に制限する。これにより空サブプールの生成を防ぎ、全ワーカーがプロキシ経由で通信する。つまり `--workers 100` を指定しても、確保できた live proxy が 1 本なら実効ワーカー数は `1` になる。
+
+IR BANK へのスクレイピングは `browser.py` (BrowserService) 経由で行う。`irbank_common.py` が BrowserService の `fetch()` を呼び出し、Node.js の puppeteer-real-browser でページをレンダリングして HTML を取得する。ワーカー制御ロジック (`worker.py`) はスクレイピング・パースモジュールから分離されており、ワーカーの進捗表示やスキップ判定の変更がキャッシュ無効化を発動しない設計になっている。
 
 ## 戦略ファイルの仕組み
 
@@ -317,17 +333,15 @@ COLUMNS = [                              # 追加表示カラム
 
 ## プロキシ検証の仕組み
 
-`stealth.py` の `fetch_live_proxies` は公開プロキシリストから候補を収集し、source ごとの件数と候補ごとの初出 source を保持しながら検証する。`ProxyPool.from_auto()` はこの結果を受け取り、1 件も確保できなければ reason 集計付きの `ProxyUnavailableError` で fail-fast する。
+`stealth.py` の `fetch_live_proxies` は公開プロキシリストから候補を収集し、source ごとの件数と候補ごとの初出 source を保持しながら検証する。ページ取得自体は `browser.py` (BrowserService) に委譲されたため、`stealth.py` はプロキシプール管理と検証に専念する。`ProxyPool.from_auto()` はこの結果を受け取り、1 件も確保できなければ reason 集計付きの `ProxyUnavailableError` で fail-fast する。
 
-現在の source は、低品質な大量 dump を避けて、比較的 curated な HTTP list に絞っている:
+ソースは `config/proxy_sources.txt` で管理され、HTTP と SOCKS5 の両プロトコルに対応する。SOCKS5 ソースは行頭に `socks5` タグを付けて区別する。各候補にはソース由来のプロトコルタグ (`http` / `socks5`) が付与され、検証パイプラインと `ProxyPool` はプロトコルに応じて `http://` または `socks5h://` スキームを使い分ける。`socks5h://` は DNS 解決もプロキシ側で行うバリアント。
 
-- `iplocate/free-proxy-list`
-- `ProxyScraper/ProxyScraper`
-- `monosans/proxy-list`
-- `proxifly/free-proxy-list`
-- `vakhov/fresh-proxy-list`
-- `clarketm/proxy-list`
-- ProxyScrape API (`api.proxyscrape.com`) — GitHub 外、plain text
+`ProxyPool` は3種類のファクトリを持つ:
+
+- `from_auto()` — 公開プロキシリストから自動取得・検証
+- `from_url(url)` — 単一プロキシ URL を直接指定
+- `from_file(path)` — `host:port:user:pass` 形式の認証付きプロキシリストファイルから構築。`get()` は `http://user:pass@host:port` 形式の URL を返す
 
 ### 検証パイプライン
 
@@ -370,14 +384,14 @@ reason ごとの TTL は次の通り:
 
 ## キャッシュ無効化の仕組み
 
-`cache_invalidation.py` が `datasources/` 内の各ファイルの SHA256 ハッシュを `data/.scraper_hashes.json` に保存する。CLI 実行時にハッシュを再計算し、差分があれば対応する `financial_items.source` の行を DELETE して再取得する。
+`cache_invalidation.py` が `scrape/` 内の各ファイルの SHA256 ハッシュを `data/.scraper_hashes.json` に保存する。CLI 実行時にハッシュを再計算し、差分があれば対応する `financial_items.source` の行を DELETE して再取得する。`worker.py` と `browser.py` はハッシュ追跡対象外で、ワーカー制御やブラウザ通信の変更ではキャッシュ無効化が発動しない。
 
 ファイルと DB source の対応:
 
-| ファイル               | 無効化される source                  |
-| :--------------------- | :----------------------------------- |
-| `irbank.py`            | `irbank`                             |
-| `irbank_bs.py`         | `irbank_bs`                          |
-| `irbank_forecast.py`   | `irbank_forecast`                    |
-| `irbank_common.py`     | `irbank_bs`, `irbank_forecast`       |
-| `yfinance_price.py`    | `prices` テーブル全体                |
+| ファイル                 | 無効化される source              |
+| :----------------------- | :------------------------------- |
+| `scrape/irbank.py`       | `irbank`                         |
+| `scrape/irbank_bs.py`    | `irbank_bs`                      |
+| `scrape/irbank_forecast.py` | `irbank_forecast`             |
+| `scrape/irbank_common.py`   | `irbank_bs`, `irbank_forecast` |
+| `scrape/stooq_price.py`     | `prices` テーブル全体          |
