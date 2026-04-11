@@ -53,14 +53,17 @@ formula_screening/
 │   └── .proxy_failures.json    # 検証失敗プロキシの reason 付きキャッシュ (TTL付き)
 └── tests/
     ├── conftest.py
+    ├── test_browser.py
+    ├── test_cli.py
     ├── test_fmt.py
-    ├── test_metrics.py
-    ├── test_screener.py
     ├── test_indicators.py
     ├── test_irbank.py
     ├── test_irbank_bs.py
     ├── test_irbank_forecast.py
+    ├── test_metrics.py
+    ├── test_proxy_runtime.py
     ├── test_repository.py
+    ├── test_screener.py
     ├── test_stealth.py
     └── test_stooq_price.py
 ```
