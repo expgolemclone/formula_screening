@@ -50,7 +50,11 @@ def fetch_irbank_html(
     from formula_screening.browser import BrowserResponse, BrowserServiceError
     from formula_screening.stealth import ProxyUnavailableError, random_delay
 
+    direct_mode: bool = pool.direct
+
     def _handle_proxy_error() -> None:
+        if direct_mode:
+            return
         if _PROXY_REMOVE_ON_ERROR:
             pool.report_failure()
         else:
@@ -61,9 +65,12 @@ def fetch_irbank_html(
     for attempt in range(_MAX_RETRIES):
         if attempt > 0:
             time.sleep(_RETRY_DELAY)
-        proxy_url: str | None = pool.get()
-        if proxy_url is None:
-            raise ProxyUnavailableError("Proxy pool exhausted during request execution")
+        if direct_mode:
+            proxy_url: str | None = None
+        else:
+            proxy_url = pool.get()
+            if proxy_url is None:
+                raise ProxyUnavailableError("Proxy pool exhausted during request execution")
 
         try:
             resp: BrowserResponse = browser.fetch(url, proxy=proxy_url, timeout=timeout)

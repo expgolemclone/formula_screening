@@ -840,7 +840,12 @@ class ProxyPool:
         proxy_url = pool.get()       # next proxy
     """
 
-    def __init__(self, proxies: list[tuple[str, str]] | list[tuple[str, str, str]]) -> None:
+    def __init__(
+        self,
+        proxies: list[tuple[str, str]] | list[tuple[str, str, str]],
+        *,
+        direct: bool = False,
+    ) -> None:
         self._lock = threading.Lock()
         self._proxies: list[tuple[str, str, str]] = [
             (*t, "") if len(t) == 2 else t  # type: ignore[misc]
@@ -849,6 +854,12 @@ class ProxyPool:
         self._index: int = 0
         self._failures: dict[str, int] = {}
         self._max_failures: int = MAGIC["proxy"]["max_failures"]
+        self._direct: bool = direct
+
+    @property
+    def direct(self) -> bool:
+        """True when the pool represents direct-connection mode (no proxy)."""
+        return self._direct
 
     @classmethod
     def from_auto(
@@ -946,6 +957,8 @@ class ProxyPool:
         """Split the proxy list into *n* sub-pools (round-robin distribution).
 
         If there are fewer proxies than *n*, some sub-pools will be empty.
+        The ``direct`` flag is propagated to every sub-pool so direct-mode
+        workers continue to bypass proxy rotation.
         """
         if n <= 0:
             raise ValueError("n must be positive")
@@ -953,4 +966,4 @@ class ProxyPool:
             buckets: list[list[str]] = [[] for _ in range(n)]
             for i, addr in enumerate(self._proxies):
                 buckets[i % n].append(addr)
-        return [ProxyPool(b) for b in buckets]
+        return [ProxyPool(b, direct=self._direct) for b in buckets]

@@ -137,6 +137,28 @@ class TestResolveProxyPool:
         clear_mock.assert_not_called()
         from_url_mock.assert_called_once_with("http://9.9.9.9:8080")
 
+    def test_proxy_direct_returns_empty_direct_pool_without_cache_clear(self) -> None:
+        args = Namespace(
+            command="scrape-forecast",
+            proxy="direct",
+            ticker=None,
+            target_proxies=1,
+            check_sites=0,
+        )
+
+        with (
+            patch("formula_screening.stealth.clear_failure_cache") as clear_mock,
+            patch("formula_screening.stealth.ProxyPool.from_auto") as auto_mock,
+            patch("formula_screening.stealth.ProxyPool.from_url") as from_url_mock,
+        ):
+            result = _resolve_proxy_pool(args)
+
+        assert result.size == 0
+        assert result.direct is True
+        clear_mock.assert_not_called()
+        auto_mock.assert_not_called()
+        from_url_mock.assert_not_called()
+
 
 class TestClearFailureCache:
     """Tests for the failure-cache management command."""

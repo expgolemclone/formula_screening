@@ -51,6 +51,8 @@ def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
     proxy_file: str | None = getattr(args, "proxy_file", None)
     if proxy_file:
         return ProxyPool.from_file(Path(proxy_file))
+    if args.proxy == "direct":
+        return ProxyPool([], direct=True)
     if args.proxy:
         return ProxyPool.from_url(args.proxy)
     if _should_clear_transient_proxy_failures(args):
@@ -145,7 +147,9 @@ def dispatch_workers(
     worker_parts = [f"workers={workers}"]
     if requested_workers != workers:
         worker_parts.append(f"requested={requested_workers}")
-    if proxy_count > 0:
+    if pool.direct:
+        worker_parts.append("proxies=direct")
+    elif proxy_count > 0:
         worker_parts.append(f"proxies={proxy_count}")
     print(f"Fetching {label} for {total} tickers ({', '.join(worker_parts)})")
 
@@ -476,7 +480,10 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     _proxy_args = argparse.ArgumentParser(add_help=False)
-    _proxy_args.add_argument("--proxy", help="HTTP proxy URL (e.g. http://host:port)")
+    _proxy_args.add_argument(
+        "--proxy",
+        help="HTTP proxy URL (e.g. http://host:port), or 'direct' to bypass the proxy pool",
+    )
     _proxy_args.add_argument("--proxy-file", help="Path to proxy list file (host:port:user:pass per line)")
     _proxy_args.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
     _proxy_args.add_argument("--check-sites", type=int, default=MAGIC["proxy"]["quality_check_count"], help="Number of sites each proxy must pass")

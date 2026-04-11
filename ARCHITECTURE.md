@@ -253,6 +253,8 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `screen`) は `_proxy_args` 親パーサー経由で共通の `--proxy`, `--proxy-file`, `--target-proxies`, `--check-sites` オプションを継承する。`--proxy-file` は `host:port:user:pass` 形式の認証付きプロキシリストファイルを指定し、`ProxyPool.from_file()` で読み込む。`--proxy` は単一プロキシ URL を直接指定する。どちらも省略時は `ProxyPool.from_auto()` で公開プロキシを自動取得する。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。
 
+`--proxy direct` を特殊値として指定すると、空の `ProxyPool(direct=True)` に解決され、`fetch_irbank_html` は `browser.fetch(proxy=None)` で IR BANK に直接接続する。IR BANK へ直接到達できる回線から `uv run python -m formula_screening scrape-forecast --proxy direct --workers 1` のように実行するユースケース向け。direct mode では `dispatch_workers` の進捗ラベルに `proxies=direct` が表示され、プロキシのローテーションや failure cache のクリアは一切行われない。
+
 `probe-proxies` は DB やスクリーニングデータに触れず、公開プロキシ取得だけを診断するためのコマンドで、デフォルトで `--target-proxies` / `--check-sites` を `cli_defaults.toml [probe_proxies]` から取得し最小チェックを行う。`--clear-legacy-cache` を付けると、short TTL に移行する前の legacy failure cache だけを一度削除してから試行できる。
 
 `clear-failure-cache` は `--reason quality_failed --reason anon_unreachable` のように reason を repeatable に指定して、再試行したい failure cache だけを削除する。`--all` を付けると active cache 全件を削除する。引数なしで実行した場合は、削除せず現在の reason 分布だけを表示する。
