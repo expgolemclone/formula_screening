@@ -1,7 +1,7 @@
 [scrape]
-workers = 100
-interval = 3.0
-interval_jitter = 3.0
+workers = 1
+interval = 1.0
+interval_jitter = 0.0
 timeout = 15
 max_retries = 3
 retry_delay = 1.0

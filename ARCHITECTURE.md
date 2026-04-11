@@ -251,9 +251,13 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 `ensure_data_available()` は `get_proxy_pool` / `get_browser` を lazy callable として受け取り、**scrape (`irbank_bs` / `irbank_forecast`) が実際に必要なときだけ** プロキシ取得を発動する。`prices` のみ不足していてローカル Stooq 日次 txt がある場合はプロキシもブラウザも起動せず、`fetch_prices_stooq` が get_browser callable を内部で参照して "ローカルファイル無し" のときだけ lazy に browser を起動する。
 
-プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `screen`) は `_proxy_args` 親パーサー経由で共通の `--proxy`, `--proxy-file`, `--target-proxies`, `--check-sites` オプションを継承する。`--proxy-file` は `host:port:user:pass` 形式の認証付きプロキシリストファイルを指定し、`ProxyPool.from_file()` で読み込む。`--proxy` は単一プロキシ URL を直接指定する。どちらも省略時は `ProxyPool.from_auto()` で公開プロキシを自動取得する。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。
+プロキシを使うサブコマンド (`fetch-prices`, `scrape-bs`, `scrape-forecast`, `screen`) は `_proxy_args` 親パーサー経由で共通の `--proxy`, `--proxy-file`, `--target-proxies`, `--check-sites` オプションを継承する。`--proxy-file` は `host:port:user:pass` 形式の認証付きプロキシリストファイルを指定し、`ProxyPool.from_file()` で読み込む。`--target-proxies` は検証合格プロキシの目標数 (デフォルト: `proxy.target_count`)、`--check-sites` は各プロキシが通過すべきサイト数 (デフォルト: `proxy.quality_check_count`) を指定する。
 
-`--proxy direct` を特殊値として指定すると、空の `ProxyPool(direct=True)` に解決され、`fetch_irbank_html` は `browser.fetch(proxy=None)` で IR BANK に直接接続する。IR BANK へ直接到達できる回線から `uv run python -m formula_screening scrape-forecast --proxy direct --workers 1` のように実行するユースケース向け。direct mode では `dispatch_workers` の進捗ラベルに `proxies=direct` が表示され、プロキシのローテーションや failure cache のクリアは一切行われない。
+`--proxy` は以下の 3 モードを受け付ける。デフォルトは `direct`:
+
+- `direct` (デフォルト): 空の `ProxyPool(direct=True)` に解決され、`fetch_irbank_html` は `browser.fetch(proxy=None)` で IR BANK に直接接続する。進捗ラベルに `proxies=direct` が表示され、プロキシのローテーションや failure cache のクリアは発動しない
+- `auto`: `ProxyPool.from_auto()` で公開プロキシを自動取得する（旧デフォルト）。auto 時のみ失敗キャッシュの transient reason 自動クリアが走る
+- URL (`http://host:port` / `socks5://host:port` など): `ProxyPool.from_url()` で単一ユーザ指定プロキシ
 
 `probe-proxies` は DB やスクリーニングデータに触れず、公開プロキシ取得だけを診断するためのコマンドで、デフォルトで `--target-proxies` / `--check-sites` を `cli_defaults.toml [probe_proxies]` から取得し最小チェックを行う。`--clear-legacy-cache` を付けると、short TTL に移行する前の legacy failure cache だけを一度削除してから試行できる。
 

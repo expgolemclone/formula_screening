@@ -74,10 +74,10 @@ class TestProbeProxies:
 class TestResolveProxyPool:
     """Tests for proxy-pool resolution and transient cache handling."""
 
-    def test_clears_transient_failure_cache_for_full_fetch_prices_run(self) -> None:
+    def test_clears_transient_failure_cache_for_full_auto_fetch_prices_run(self) -> None:
         args = Namespace(
             command="fetch-prices",
-            proxy=None,
+            proxy="auto",
             ticker=None,
             target_proxies=1,
             check_sites=0,
@@ -97,10 +97,10 @@ class TestResolveProxyPool:
         clear_mock.assert_called_once_with(reasons={"tcp_unreachable", "anon_unreachable"})
         auto_mock.assert_called_once_with(target_count=1, quality_check_count=0)
 
-    def test_does_not_clear_transient_failure_cache_for_targeted_fetch_prices_run(self) -> None:
+    def test_does_not_clear_transient_failure_cache_for_targeted_auto_fetch_prices_run(self) -> None:
         args = Namespace(
             command="fetch-prices",
-            proxy=None,
+            proxy="auto",
             ticker=["7203"],
             target_proxies=1,
             check_sites=0,
@@ -141,6 +141,28 @@ class TestResolveProxyPool:
         args = Namespace(
             command="scrape-forecast",
             proxy="direct",
+            ticker=None,
+            target_proxies=1,
+            check_sites=0,
+        )
+
+        with (
+            patch("formula_screening.stealth.clear_failure_cache") as clear_mock,
+            patch("formula_screening.stealth.ProxyPool.from_auto") as auto_mock,
+            patch("formula_screening.stealth.ProxyPool.from_url") as from_url_mock,
+        ):
+            result = _resolve_proxy_pool(args)
+
+        assert result.size == 0
+        assert result.direct is True
+        clear_mock.assert_not_called()
+        auto_mock.assert_not_called()
+        from_url_mock.assert_not_called()
+
+    def test_unspecified_proxy_falls_back_to_direct_pool(self) -> None:
+        args = Namespace(
+            command="scrape-forecast",
+            proxy=None,
             ticker=None,
             target_proxies=1,
             check_sites=0,

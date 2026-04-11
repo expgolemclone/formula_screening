@@ -45,16 +45,24 @@ def _cmd_import_irbank(args: argparse.Namespace) -> None:
 
 
 def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
-    """Build a ProxyPool from CLI args."""
+    """Build a ProxyPool from CLI args.
+
+    ``--proxy`` accepts three forms:
+
+    - ``"direct"`` (default): bypass the proxy pool and use a direct connection
+    - ``"auto"``: auto-fetch public proxies via :meth:`ProxyPool.from_auto`
+    - any URL (``http://``/``https://``/``socks5://``): a single user proxy
+    """
     from formula_screening.stealth import ProxyPool, clear_failure_cache
 
     proxy_file: str | None = getattr(args, "proxy_file", None)
     if proxy_file:
         return ProxyPool.from_file(Path(proxy_file))
-    if args.proxy == "direct":
+    proxy_value: str = getattr(args, "proxy", None) or "direct"
+    if proxy_value == "direct":
         return ProxyPool([], direct=True)
-    if args.proxy:
-        return ProxyPool.from_url(args.proxy)
+    if proxy_value != "auto":
+        return ProxyPool.from_url(proxy_value)
     if _should_clear_transient_proxy_failures(args):
         removed, remaining = clear_failure_cache(reasons=_TRANSIENT_PROXY_FAILURE_REASONS)
         logger.info(
@@ -68,8 +76,12 @@ def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
 
 
 def _should_clear_transient_proxy_failures(args: argparse.Namespace) -> bool:
-    """Return True when a command should reset transient proxy failures."""
-    if getattr(args, "proxy", None):
+    """Return True when a command should reset transient proxy failures.
+
+    Only applies to the ``--proxy auto`` path; direct-mode and user-specified
+    proxies never touch the failure cache.
+    """
+    if getattr(args, "proxy", None) != "auto":
         return False
     command = getattr(args, "command", None)
     if command in {"refresh", "screen"}:
@@ -482,7 +494,11 @@ def main() -> None:
     _proxy_args = argparse.ArgumentParser(add_help=False)
     _proxy_args.add_argument(
         "--proxy",
-        help="HTTP proxy URL (e.g. http://host:port), or 'direct' to bypass the proxy pool",
+        default="direct",
+        help=(
+            "Proxy mode: 'direct' (default, no proxy), 'auto' (fetch public proxies), "
+            "or a proxy URL (http://host:port)"
+        ),
     )
     _proxy_args.add_argument("--proxy-file", help="Path to proxy list file (host:port:user:pass per line)")
     _proxy_args.add_argument("--target-proxies", type=int, default=MAGIC["proxy"]["target_count"], help="Number of proxies to acquire")
