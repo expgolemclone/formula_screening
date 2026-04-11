@@ -201,14 +201,18 @@ def scrape_forecast_worker(
 
 def fetch_prices_stooq(
     tickers: list[str],
-    browser: BrowserService | None = None,
     *,
+    get_browser: Callable[[], BrowserService] | None = None,
     force: bool,
 ) -> dict[str, int]:
     """Fetch prices for all tickers at once via Stooq daily text file.
 
+    Uses an existing local ``stooq/YYYYMMDD_d.txt`` if available; only when no
+    local file is present does it call ``get_browser()`` to start a browser and
+    download. This keeps browser startup lazy so callers that already have a
+    fresh local dump pay nothing for the orchestration.
+
     Returns stats dict with ``ok``, ``skip``, and ``fail`` counts.
-    Uses an existing local file if available, otherwise downloads via browser.
     """
     from formula_screening.scrape.stooq_price import (
         download_daily_txt,
@@ -241,11 +245,11 @@ def fetch_prices_stooq(
         txt_path = find_latest_daily_txt(stooq_dir)
 
         if txt_path is None:
-            if browser is None:
+            if get_browser is None:
                 print("No local Stooq file found and no browser available.", flush=True)
                 return stats
             print(f"Downloading Stooq daily txt ({len(target_tickers)} tickers needed)...", flush=True)
-            txt_path = download_daily_txt(browser, str(stooq_dir))
+            txt_path = download_daily_txt(get_browser(), str(stooq_dir))
 
         print(f"Parsing {txt_path.name}...", flush=True)
         prices = parse_daily_txt(txt_path, tickers=target_tickers)

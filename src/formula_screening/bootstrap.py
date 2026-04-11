@@ -4,56 +4,73 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING
 
 from formula_screening.config import MAGIC
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from formula_screening.browser import BrowserService
     from formula_screening.stealth import ProxyPool
 
 logger = logging.getLogger("formula_screening.bootstrap")
 
+DATA_SOURCES: frozenset[str] = frozenset(
+    {"irbank", "irbank_bs", "irbank_forecast", "prices"}
+)
+_FINANCIAL_ITEM_SOURCES: tuple[str, ...] = ("irbank", "irbank_bs", "irbank_forecast")
+_SCRAPE_SOURCES: frozenset[str] = frozenset({"irbank_bs", "irbank_forecast"})
+
 
 def ensure_data_available(
     *,
+    required_sources: Iterable[str] | None = None,
     get_proxy_pool: Callable[[], ProxyPool],
     get_browser: Callable[[], BrowserService],
 ) -> None:
-    """Check DB for missing data sources and auto-fetch if empty.
+    """Check DB for missing data sources and auto-fetch only what's needed.
 
-    The proxy pool and browser service are created lazily so that
-    the expensive startup is skipped when all data is already present.
+    ``required_sources`` narrows the scope of what counts as "missing". A
+    strategy that only reads ``irbank`` + ``prices`` need not trigger forecast
+    scraping just because that table happens to be empty.
+
+    ``get_proxy_pool`` and ``get_browser`` are invoked lazily. Neither is
+    called when all required data is already present; furthermore, proxy
+    acquisition only happens when live scraping (``irbank_bs`` /
+    ``irbank_forecast``) is actually required, and browser startup is skipped
+    for price imports if a local Stooq daily file is already on disk.
     """
     from formula_screening.db.repository import get_all_tickers
     from formula_screening.db.schema import get_connection
 
+    required: frozenset[str] = (
+        frozenset(required_sources) if required_sources is not None else DATA_SOURCES
+    )
+    unknown: set[str] = set(required) - DATA_SOURCES
+    if unknown:
+        logger.warning("Unknown REQUIRED_SOURCES entries ignored: %s", sorted(unknown))
+        required = required & DATA_SOURCES
+
     conn = get_connection()
     try:
-        missing_sources: list[str] = []
-        for source in ("irbank", "irbank_bs", "irbank_forecast"):
-            row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM financial_items WHERE source = ?",
-                (source,),
-            ).fetchone()
-            if row["cnt"] == 0:
-                missing_sources.append(source)
+        missing_sources: list[str] = [
+            source
+            for source in _FINANCIAL_ITEM_SOURCES
+            if source in required and _is_source_empty(conn, source)
+        ]
 
-        price_row = conn.execute("SELECT COUNT(*) AS cnt FROM prices").fetchone()
-        missing_prices: bool = price_row["cnt"] == 0
+        missing_prices: bool = (
+            "prices" in required and _is_prices_empty(conn)
+        )
 
         if not missing_sources and not missing_prices:
             return
 
         print("Missing data detected, auto-fetching:")
-        for s in missing_sources:
-            print(f"  - {s}")
+        for source in missing_sources:
+            print(f"  - {source}")
         if missing_prices:
             print("  - prices")
-
-        proxy_pool: ProxyPool = get_proxy_pool()
 
         if "irbank" in missing_sources:
             _import_irbank(conn)
@@ -63,25 +80,35 @@ def ensure_data_available(
             print("No tickers in DB after import. Cannot scrape.")
             return
 
-        needs_browser: bool = (
-            "irbank_bs" in missing_sources
-            or "irbank_forecast" in missing_sources
-            or missing_prices
-        )
-        browser: BrowserService | None = get_browser() if needs_browser else None
+        needs_scrape: bool = bool(set(missing_sources) & _SCRAPE_SOURCES)
+        proxy_pool: ProxyPool | None = get_proxy_pool() if needs_scrape else None
+        browser: BrowserService | None = get_browser() if needs_scrape else None
 
-        if "irbank_bs" in missing_sources and browser is not None:
+        if "irbank_bs" in missing_sources and proxy_pool is not None and browser is not None:
             _scrape_bs(tickers, proxy_pool, browser=browser)
 
-        if "irbank_forecast" in missing_sources and browser is not None:
+        if "irbank_forecast" in missing_sources and proxy_pool is not None and browser is not None:
             _scrape_forecast(tickers, proxy_pool, browser=browser)
 
-        if missing_prices and browser is not None:
-            _fetch_prices(tickers, browser)
+        if missing_prices:
+            _fetch_prices(tickers, get_browser=get_browser)
 
         print("\nAuto-fetch complete.")
     finally:
         conn.close()
+
+
+def _is_source_empty(conn: sqlite3.Connection, source: str) -> bool:
+    row = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM financial_items WHERE source = ?",
+        (source,),
+    ).fetchone()
+    return bool(row["cnt"] == 0)
+
+
+def _is_prices_empty(conn: sqlite3.Connection) -> bool:
+    row = conn.execute("SELECT COUNT(*) AS cnt FROM prices").fetchone()
+    return bool(row["cnt"] == 0)
 
 
 def _import_irbank(conn: sqlite3.Connection) -> None:
@@ -139,8 +166,12 @@ def _scrape_forecast(
     )
 
 
-def _fetch_prices(tickers: list[str], browser: BrowserService | None = None) -> None:
+def _fetch_prices(
+    tickers: list[str],
+    *,
+    get_browser: Callable[[], BrowserService],
+) -> None:
     from formula_screening.worker import fetch_prices_stooq
 
     print(f"\n[auto] fetch-prices via Stooq ({len(tickers)} tickers) ...")
-    fetch_prices_stooq(tickers, browser, force=True)
+    fetch_prices_stooq(tickers, get_browser=get_browser, force=True)

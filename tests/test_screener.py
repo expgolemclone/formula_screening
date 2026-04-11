@@ -39,6 +39,48 @@ def test_load_bundled_strategies() -> None:
         assert callable(mod.screen)
 
 
+class TestRequiredSources:
+    """Strategy files may declare REQUIRED_SOURCES to scope auto-bootstrap."""
+
+    def test_required_sources_exposed_when_declared(self, tmp_path: Path) -> None:
+        # Arrange
+        strategy: Path = tmp_path / "with_req.py"
+        strategy.write_text(
+            'REQUIRED_SOURCES = ["irbank", "prices"]\n'
+            'FILTERS = [("per", ">", 0)]\n'
+        )
+
+        # Act
+        mod = load_strategy(strategy)
+
+        # Assert
+        assert getattr(mod, "REQUIRED_SOURCES", None) == ["irbank", "prices"]
+
+    def test_required_sources_absent_when_not_declared(self, tmp_path: Path) -> None:
+        # Arrange
+        strategy: Path = tmp_path / "no_req.py"
+        strategy.write_text('FILTERS = [("per", ">", 0)]\n')
+
+        # Act
+        mod = load_strategy(strategy)
+
+        # Assert
+        assert getattr(mod, "REQUIRED_SOURCES", None) is None
+
+    def test_bundled_strategies_declare_required_sources(self) -> None:
+        # Arrange
+        strategies_dir: Path = Path(__file__).resolve().parent.parent / "strategies"
+        files: list[Path] = list(strategies_dir.glob("*.py"))
+
+        # Act & Assert
+        assert files
+        for f in files:
+            mod = load_strategy(f)
+            declared: list[str] | None = getattr(mod, "REQUIRED_SOURCES", None)
+            assert declared is not None, f"{f.name} must declare REQUIRED_SOURCES"
+            assert "irbank" in declared and "prices" in declared
+
+
 class TestDeclarativeFilters:
     """Tests for declarative FILTERS / SORT / COLUMNS strategy format."""
 

@@ -87,9 +87,7 @@ def _start_browser_service() -> BrowserService:
 
 
 def _cmd_fetch_prices(args: argparse.Namespace) -> None:
-    from formula_screening.config import DATA_DIR
     from formula_screening.db.repository import get_all_tickers
-    from formula_screening.scrape.stooq_price import find_latest_daily_txt
     from formula_screening.worker import fetch_prices_stooq
 
     conn = get_connection()
@@ -102,14 +100,19 @@ def _cmd_fetch_prices(args: argparse.Namespace) -> None:
         print("No tickers in DB. Run import-irbank first.", file=sys.stderr)
         sys.exit(1)
 
-    stooq_dir = DATA_DIR / "stooq"
-    has_local_file = find_latest_daily_txt(stooq_dir) is not None
+    _cached_browser: BrowserService | None = None
 
-    if has_local_file:
-        fetch_prices_stooq(tickers, force=args.force)
-    else:
-        with _start_browser_service() as browser:
-            fetch_prices_stooq(tickers, browser, force=args.force)
+    def _get_browser() -> BrowserService:
+        nonlocal _cached_browser
+        if _cached_browser is None:
+            _cached_browser = _start_browser_service()
+        return _cached_browser
+
+    try:
+        fetch_prices_stooq(tickers, get_browser=_get_browser, force=args.force)
+    finally:
+        if _cached_browser is not None:
+            _cached_browser.shutdown()
 
 
 
@@ -308,6 +311,14 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening.bootstrap import ensure_data_available
     from formula_screening.screener import load_strategy, run_screening
 
+    strategy_path = Path(args.strategy)
+    if not strategy_path.exists():
+        print(f"Strategy file not found: {strategy_path}", file=sys.stderr)
+        sys.exit(1)
+
+    strategy_mod = load_strategy(strategy_path)
+    required_sources: list[str] | None = getattr(strategy_mod, "REQUIRED_SOURCES", None)
+
     _screen_browser: BrowserService | None = None
 
     def _get_screen_browser() -> BrowserService:
@@ -318,6 +329,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
 
     try:
         ensure_data_available(
+            required_sources=required_sources,
             get_proxy_pool=lambda: _resolve_proxy_pool(args),
             get_browser=_get_screen_browser,
         )
@@ -325,12 +337,6 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         if _screen_browser is not None:
             _screen_browser.shutdown()
 
-    strategy_path = Path(args.strategy)
-    if not strategy_path.exists():
-        print(f"Strategy file not found: {strategy_path}", file=sys.stderr)
-        sys.exit(1)
-
-    strategy_mod = load_strategy(strategy_path)
     extra_cols_fn: _ExtraColsFn | None = getattr(strategy_mod, "columns", None)
 
     conn = get_connection()

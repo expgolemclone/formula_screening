@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from argparse import Namespace
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 from formula_screening.cli import (
     _cmd_clear_failure_cache,
     _cmd_probe_proxies,
+    _cmd_screen,
     _resolve_proxy_pool,
     dispatch_workers,
 )
@@ -224,3 +226,74 @@ class TestDispatchWorkers:
                 label="prices",
                 workers=1,
             )
+
+
+class TestCmdScreenRequiredSources:
+    """_cmd_screen must forward strategy REQUIRED_SOURCES into ensure_data_available."""
+
+    def test_passes_strategy_required_sources_to_bootstrap(self, tmp_path: Path) -> None:
+        # Arrange
+        strategy: Path = tmp_path / "with_req.py"
+        strategy.write_text(
+            'REQUIRED_SOURCES = ["irbank", "prices"]\n'
+            'FILTERS = [("per", ">", 0)]\n'
+        )
+        args = Namespace(
+            strategy=str(strategy),
+            output=None,
+            open=None,
+            workers=1,
+            proxy=None,
+            proxy_file=None,
+            target_proxies=0,
+            check_sites=0,
+            command="screen",
+        )
+
+        captured: dict[str, object] = {}
+
+        def _fake_ensure(**kwargs: object) -> None:
+            captured.update(kwargs)
+
+        with (
+            patch("formula_screening.bootstrap.ensure_data_available", side_effect=_fake_ensure),
+            patch("formula_screening.screener.run_screening", return_value=[]),
+            patch("formula_screening.cli.get_connection", return_value=MagicMock()),
+        ):
+            # Act
+            _cmd_screen(args)
+
+        # Assert
+        assert captured.get("required_sources") == ["irbank", "prices"]
+
+    def test_passes_none_when_strategy_omits_required_sources(self, tmp_path: Path) -> None:
+        # Arrange
+        strategy: Path = tmp_path / "no_req.py"
+        strategy.write_text('FILTERS = [("per", ">", 0)]\n')
+        args = Namespace(
+            strategy=str(strategy),
+            output=None,
+            open=None,
+            workers=1,
+            proxy=None,
+            proxy_file=None,
+            target_proxies=0,
+            check_sites=0,
+            command="screen",
+        )
+
+        captured: dict[str, object] = {}
+
+        def _fake_ensure(**kwargs: object) -> None:
+            captured.update(kwargs)
+
+        with (
+            patch("formula_screening.bootstrap.ensure_data_available", side_effect=_fake_ensure),
+            patch("formula_screening.screener.run_screening", return_value=[]),
+            patch("formula_screening.cli.get_connection", return_value=MagicMock()),
+        ):
+            # Act
+            _cmd_screen(args)
+
+        # Assert
+        assert captured.get("required_sources") is None
