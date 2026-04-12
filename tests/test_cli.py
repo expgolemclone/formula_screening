@@ -10,12 +10,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from formula_screening.cli import (
+    _build_markdown_table,
     _cmd_clear_failure_cache,
     _cmd_probe_proxies,
     _cmd_screen,
+    _render_markdown_with_glow,
     _resolve_proxy_pool,
+    _write_csv,
     dispatch_workers,
 )
+from formula_screening.screen_output import LinkCell
 from formula_screening.stealth import ProxyUnavailableError
 
 
@@ -348,3 +352,114 @@ class TestCmdScreenRequiredSources:
 
         # Assert
         assert captured["required_sources"] == DATA_SOURCES
+
+
+class TestMarkdownOutput:
+    """Tests for Markdown + glow based screen output."""
+
+    def test_build_markdown_table_renders_markdown_links(self) -> None:
+        # Arrange
+        hits = [
+            {
+                "ticker": "7203",
+                "name": "トヨタ自動車",
+                "price": 2500.0,
+                "metrics": {
+                    "net_cash_ratio": 1.23,
+                    "per": 8.5,
+                    "pbr": 1.01,
+                    "dividend_yield": 2.34,
+                },
+            }
+        ]
+
+        def _extra_cols(_: dict) -> list[tuple[str, str | LinkCell]]:
+            return [
+                (
+                    "monex",
+                    LinkCell(
+                        label="monex",
+                        url="https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0",
+                    ),
+                ),
+                (
+                    "sikiho",
+                    LinkCell(
+                        label="sikiho",
+                        url="https://shikiho.toyokeizai.net/stocks/7203/shikiho",
+                    ),
+                ),
+            ]
+
+        # Act
+        markdown = _build_markdown_table(hits, extra_cols_fn=_extra_cols)
+
+        # Assert
+        assert "[monex](https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0)" in markdown
+        assert "[sikiho](https://shikiho.toyokeizai.net/stocks/7203/shikiho)" in markdown
+        assert "| Ticker | Name | Price | NC_Ratio | PER | PBR | Div% | monex | sikiho |" in markdown
+
+    def test_render_markdown_with_glow_uses_glow_when_available(self) -> None:
+        # Arrange
+        markdown = "| A |\n| - |\n| x |\n"
+
+        with (
+            patch("formula_screening.cli.shutil.which", return_value="/usr/bin/glow") as which_mock,
+            patch("formula_screening.cli.subprocess.run") as run_mock,
+        ):
+            # Act
+            rendered = _render_markdown_with_glow(markdown)
+
+        # Assert
+        assert rendered is True
+        which_mock.assert_called_once_with("glow")
+        run_mock.assert_called_once_with(
+            ["/usr/bin/glow", "-"],
+            check=True,
+            input=markdown,
+            text=True,
+        )
+
+    def test_write_csv_writes_raw_urls_for_link_cells(self, tmp_path: Path) -> None:
+        # Arrange
+        path = tmp_path / "result.csv"
+        hits = [
+            {
+                "ticker": "7203",
+                "name": "トヨタ自動車",
+                "price": 2500.0,
+                "metrics": {
+                    "net_cash_ratio": 1.23,
+                    "per": 8.5,
+                    "pbr": 1.01,
+                    "dividend_yield": 2.34,
+                },
+            }
+        ]
+
+        def _extra_cols(_: dict) -> list[tuple[str, str | LinkCell]]:
+            return [
+                (
+                    "monex",
+                    LinkCell(
+                        label="monex",
+                        url="https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0",
+                    ),
+                ),
+                (
+                    "sikiho",
+                    LinkCell(
+                        label="sikiho",
+                        url="https://shikiho.toyokeizai.net/stocks/7203/shikiho",
+                    ),
+                ),
+            ]
+
+        # Act
+        _write_csv(hits, path, extra_cols_fn=_extra_cols)
+
+        # Assert
+        written = path.read_text(encoding="utf-8")
+        assert "monex,sikiho" in written
+        assert "https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0" in written
+        assert "https://shikiho.toyokeizai.net/stocks/7203/shikiho" in written

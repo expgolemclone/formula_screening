@@ -13,6 +13,7 @@ from formula_screening.db.repository import (
     upsert_shares_outstanding,
     upsert_stock,
 )
+from formula_screening.screen_output import LinkCell
 from formula_screening.screener import load_strategy
 
 
@@ -217,6 +218,100 @@ class TestDeclarativeFilters:
         # Assert
         result: list[tuple[str, str]] = mod.columns({"metrics": {"per": 5}})
         assert result == [("MyCol", "12.34%")]
+
+    def test_columns_include_common_link_columns_when_strategy_omits_columns(self, tmp_path: Path) -> None:
+        # Arrange
+        strategy: Path = tmp_path / "links_only.py"
+        strategy.write_text('FILTERS = [("per", ">", 0)]\n')
+
+        # Act
+        mod = load_strategy(strategy)
+
+        # Assert
+        result = mod.columns({"ticker": "7203", "metrics": {"per": 5}})
+        assert result == [
+            (
+                "monex",
+                LinkCell(
+                    label="monex",
+                    url="https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0",
+                ),
+            ),
+            (
+                "sikiho",
+                LinkCell(
+                    label="sikiho",
+                    url="https://shikiho.toyokeizai.net/stocks/7203/shikiho",
+                ),
+            ),
+        ]
+
+    def test_columns_append_common_link_columns_after_declared_columns(self, tmp_path: Path) -> None:
+        # Arrange
+        strategy: Path = tmp_path / "cols_with_links.py"
+        strategy.write_text(
+            'def my_val(stock):\n'
+            '    return 0.1234\n'
+            '\n'
+            'FILTERS = [("per", ">", 0)]\n'
+            'COLUMNS = [("MyCol", my_val, "{:.2%}")]\n'
+        )
+
+        # Act
+        mod = load_strategy(strategy)
+
+        # Assert
+        result = mod.columns({"ticker": "7203", "metrics": {"per": 5}})
+        assert result == [
+            ("MyCol", "12.34%"),
+            (
+                "monex",
+                LinkCell(
+                    label="monex",
+                    url="https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0",
+                ),
+            ),
+            (
+                "sikiho",
+                LinkCell(
+                    label="sikiho",
+                    url="https://shikiho.toyokeizai.net/stocks/7203/shikiho",
+                ),
+            ),
+        ]
+
+    def test_existing_columns_callable_also_gets_common_link_columns(self, tmp_path: Path) -> None:
+        # Arrange
+        strategy: Path = tmp_path / "callable_cols.py"
+        strategy.write_text(
+            'FILTERS = [("per", ">", 0)]\n'
+            '\n'
+            'def columns(stock):\n'
+            '    return [("base", "ok")]\n'
+        )
+
+        # Act
+        mod = load_strategy(strategy)
+
+        # Assert
+        result = mod.columns({"ticker": "7203", "metrics": {"per": 5}})
+        assert result == [
+            ("base", "ok"),
+            (
+                "monex",
+                LinkCell(
+                    label="monex",
+                    url="https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0",
+                ),
+            ),
+            (
+                "sikiho",
+                LinkCell(
+                    label="sikiho",
+                    url="https://shikiho.toyokeizai.net/stocks/7203/shikiho",
+                ),
+            ),
+        ]
 
     def test_columns_none_value_shows_dash(self, tmp_path: Path) -> None:
         # Arrange

@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import shutil
 import sqlite3
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -14,14 +16,19 @@ from collections.abc import Callable
 
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.db.schema import get_connection, init_db
-from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
+from formula_screening.screen_output import (
+    LinkCell,
+    ScreenColumn,
+    ScreenColumnValue,
+    build_sikiho_url,
+)
 
 if TYPE_CHECKING:
     from formula_screening.browser import BrowserService
     from formula_screening.stealth import ProxyPool
 
-_ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
+_ExtraColsFn = Callable[[dict], list[ScreenColumn]]
 _TRANSIENT_PROXY_FAILURE_REASONS: set[str] = {"tcp_unreachable", "anon_unreachable"}
 logger = logging.getLogger("formula_screening.cli")
 
@@ -396,16 +403,9 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     finally:
         conn.close()
 
-
-_SHIKIHO_URL_TEMPLATE = "https://shikiho.toyokeizai.net/stocks/{ticker}/shikiho"
-
-
 def _open_shikiho(hits: list[dict]) -> None:
     """Open all hit tickers on Shikiho Online via qutebrowser (fallback: default browser)."""
-    import shutil
-    import subprocess
-
-    urls: list[str] = [_SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"]) for s in hits]
+    urls: list[str] = [build_sikiho_url(str(s["ticker"])) for s in hits]
     qb: str | None = shutil.which("qutebrowser")
     if qb:
         subprocess.Popen([qb, *urls])
@@ -422,38 +422,81 @@ def _print_table(
     *,
     extra_cols_fn: _ExtraColsFn | None = None,
 ) -> None:
-    """Print screening results as a formatted table to stdout."""
+    """Print screening results as a Markdown table via glow when available."""
+    markdown = _build_markdown_table(hits, extra_cols_fn=extra_cols_fn)
+    if not _render_markdown_with_glow(markdown):
+        print(markdown)
+
+
+def _escape_markdown_cell(value: str) -> str:
+    """Escape text for a GitHub-flavored Markdown table cell."""
+
+    return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
+
+
+def _format_markdown_cell(value: ScreenColumnValue) -> str:
+    """Render a screen cell as Markdown."""
+
+    if isinstance(value, LinkCell):
+        label = _escape_markdown_cell(value.label)
+        return f"[{label}]({value.url})"
+    return _escape_markdown_cell(value)
+
+
+def _build_markdown_table(
+    hits: list[dict],
+    *,
+    extra_cols_fn: _ExtraColsFn | None = None,
+) -> str:
+    """Build a Markdown table for screen results."""
+
     headers = ["Ticker", "Name", "Price", "NC_Ratio", "PER", "PBR", "Div%"]
     rows: list[list[str]] = []
 
-    for s in hits:
-        m = s["metrics"]
+    for stock in hits:
+        metrics = stock["metrics"]
         row = [
-            s["ticker"],
-            truncate(s["name"] or "", 20),
-            f'{s["price"]:.0f}' if s["price"] else "-",
-            f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
-            f'{m["per"]:.1f}' if m.get("per") else "-",
-            f'{m["pbr"]:.2f}' if m.get("pbr") else "-",
-            f'{m["dividend_yield"]:.2f}' if m.get("dividend_yield") else "-",
+            _escape_markdown_cell(str(stock["ticker"])),
+            _escape_markdown_cell(str(stock["name"] or "")),
+            f'{stock["price"]:.0f}' if stock["price"] else "-",
+            f'{metrics["net_cash_ratio"]:.2f}' if metrics.get("net_cash_ratio") else "-",
+            f'{metrics["per"]:.1f}' if metrics.get("per") else "-",
+            f'{metrics["pbr"]:.2f}' if metrics.get("pbr") else "-",
+            f'{metrics["dividend_yield"]:.2f}' if metrics.get("dividend_yield") else "-",
         ]
         if extra_cols_fn is not None:
-            extra = extra_cols_fn(s)
+            extra = extra_cols_fn(stock)
             if not rows:
-                headers.extend(h for h, _ in extra)
-            row.extend(v for _, v in extra)
+                headers.extend(header for header, _ in extra)
+            row.extend(_format_markdown_cell(value) for _, value in extra)
         rows.append(row)
 
-    widths = [
-        max(display_width(h), max((display_width(r[i]) for r in rows), default=0))
-        for i, h in enumerate(headers)
-    ]
+    header_row = "| " + " | ".join(headers) + " |"
+    separator_row = "| " + " | ".join("---" for _ in headers) + " |"
+    body_rows = ["| " + " | ".join(row) + " |" for row in rows]
+    return "\n".join([header_row, separator_row, *body_rows])
 
-    sep = "  "
-    print(sep.join(ljust(h, w) for h, w in zip(headers, widths)))
-    print(sep.join("-" * w for w in widths))
-    for row in rows:
-        print(sep.join(ljust(cell, w) for cell, w in zip(row, widths)))
+
+def _render_markdown_with_glow(markdown: str) -> bool:
+    """Render Markdown through glow when it is available."""
+
+    glow = shutil.which("glow")
+    if glow is None:
+        return False
+    try:
+        subprocess.run([glow, "-"], check=True, input=markdown, text=True)
+    except (OSError, subprocess.CalledProcessError):
+        logger.warning("Failed to render markdown via glow", exc_info=True)
+        return False
+    return True
+
+
+def _format_csv_cell(value: ScreenColumnValue) -> str:
+    """Render a screen cell for CSV output."""
+
+    if isinstance(value, LinkCell):
+        return value.url
+    return value
 
 
 def _write_csv(
@@ -486,7 +529,7 @@ def _write_csv(
             }
             if extra_cols_fn is not None:
                 for header, value in extra_cols_fn(s):
-                    row[header] = value
+                    row[header] = _format_csv_cell(value)
             writer.writerow(row)
 
 

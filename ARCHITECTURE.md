@@ -262,7 +262,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 | `scrape-forecast`     | IR BANK /results ページから会社予想をスクレイピング                                                           |
 | `probe-proxies`       | 公開プロキシ取得だけを診断実行 (`--clear-legacy-cache` で legacy cache を削除)                                |
 | `clear-failure-cache` | reason を指定して proxy failure cache を削除し、削除前後の分布を表示                                          |
-| `screen`              | 戦略ファイルを適用してスクリーニング実行 (`--workers` で並列化、`--open [N]` で上位N件を四季報オンラインで開く) |
+| `screen`              | 戦略ファイルを適用してスクリーニング実行 (`--workers` で並列化、結果は Markdown テーブルを `glow` で表示、`--open [N]` で上位N件を四季報オンラインで開く) |
 
 `screen` 実行時には `cli._cmd_screen` が先に `load_strategy()` で戦略モジュールを読み込み、`REQUIRED_SOURCES` を取り出してから `bootstrap.ensure_data_available(required_sources=...)` を呼ぶ。bootstrap は `required_sources` に列挙された `financial_items` の source と `prices` だけをチェック対象にし、空のものがあれば対応する import/scrape/fetch を auto 実行する。戦略が必要としないソース (例: `irbank_forecast`) は空でもスキップされる。すべての required データが揃っている場合はそのまま screening に進む。データの再取得は各サブコマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) を明示的に実行することでのみ行う。
 
@@ -328,6 +328,8 @@ COLUMNS = [                              # 追加表示カラム
 **SORT**: `str` (metric名) または `Callable` (indicator関数)。降順ソート。
 
 **COLUMNS**: `(header, source, format_str)` のリスト。`None` 値は `"-"` 表示。
+
+`screen` の結果には、戦略定義の有無にかかわらず共通リンク列 `monex` / `sikiho` が自動で追加される。標準出力では Markdown リンクとして描画し、`--output` の CSV には同じ列名で生 URL を書き出す。戦略側で `COLUMNS` や `columns(stock)` を定義している場合は、その後ろに共通リンク列が連結される。
 
 `screener.py` の `load_strategy()` が宣言的定義から `screen()` / `sort_key()` / `columns()` 関数を自動生成するため、CLI 側の変更は不要。
 

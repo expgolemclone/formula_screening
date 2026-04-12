@@ -20,6 +20,11 @@ from formula_screening.db.repository import (
 )
 from formula_screening.config import MAGIC
 from formula_screening.metrics import compute_metrics
+from formula_screening.screen_output import (
+    ScreenColumn,
+    build_common_link_columns,
+    merge_screen_columns,
+)
 
 logger = logging.getLogger("formula_screening.screener")
 
@@ -30,32 +35,45 @@ _OPS: dict[str, Callable[[float, float], bool]] = {
     "<=": operator.le,
 }
 
+MetricValue = int | float
+FilterSource = str | Callable[[dict], MetricValue | None]
+FilterThreshold = MetricValue | tuple[MetricValue, MetricValue]
+ColumnSourceValue = MetricValue | str | None
+ColumnSource = str | Callable[[dict], ColumnSourceValue]
+ColumnsFn = Callable[[dict], list[ScreenColumn]]
+
 
 def _resolve_value(
-    source: str | Callable[[dict], float | None],
+    source: FilterSource,
     stock: dict,
-) -> float | None:
+) -> MetricValue | None:
     if callable(source):
         return source(stock)
     return stock["metrics"].get(source)
 
 
 def _build_screen_fn(
-    filters: list[tuple[str | Callable[[dict], float | None], str, float | tuple[float, float]]],
+    filters: list[tuple[FilterSource, str, FilterThreshold]],
 ) -> Callable[[dict], bool]:
     def screen(stock: dict) -> bool:
         for source, op, threshold in filters:
-            value: float | None = _resolve_value(source, stock)
+            value: MetricValue | None = _resolve_value(source, stock)
             if value is None:
                 return False
             if op == "between":
-                lo: float = threshold[0]  # type: ignore[index]
-                hi: float = threshold[1]  # type: ignore[index]
+                if not isinstance(threshold, tuple):
+                    msg = f"between filter requires a tuple threshold: {threshold!r}"
+                    raise TypeError(msg)
+                lo: MetricValue = threshold[0]
+                hi: MetricValue = threshold[1]
                 if not (lo < value < hi):
                     return False
             else:
                 cmp: Callable[[float, float], bool] = _OPS[op]
-                if not cmp(value, threshold):  # type: ignore[arg-type]
+                if isinstance(threshold, tuple):
+                    msg = f"non-between filter requires a scalar threshold: {threshold!r}"
+                    raise TypeError(msg)
+                if not cmp(value, threshold):
                     return False
         return True
 
@@ -63,25 +81,38 @@ def _build_screen_fn(
 
 
 def _build_sort_key_fn(
-    sort_spec: str | Callable[[dict], float | None],
+    sort_spec: FilterSource,
 ) -> Callable[[dict], float]:
     def sort_key(stock: dict) -> float:
-        value: float | None = _resolve_value(sort_spec, stock)
+        value: MetricValue | None = _resolve_value(sort_spec, stock)
         return value if value is not None else float("-inf")
 
     return sort_key
 
 
 def _build_columns_fn(
-    columns_spec: list[tuple[str, str | Callable[[dict], float | None], str]],
-) -> Callable[[dict], list[tuple[str, str]]]:
-    def columns(stock: dict) -> list[tuple[str, str]]:
-        result: list[tuple[str, str]] = []
+    columns_spec: list[tuple[str, ColumnSource, str]],
+) -> ColumnsFn:
+    def columns(stock: dict) -> list[ScreenColumn]:
+        result: list[ScreenColumn] = []
         for header, source, fmt in columns_spec:
-            value: float | None = _resolve_value(source, stock)
+            value: ColumnSourceValue
+            if callable(source):
+                value = source(stock)
+            else:
+                value = stock["metrics"].get(source)
             formatted: str = fmt.format(value) if value is not None else "-"
             result.append((header, formatted))
         return result
+
+    return columns
+
+
+def _build_combined_columns_fn(base_columns_fn: ColumnsFn | None) -> ColumnsFn:
+    def columns(stock: dict) -> list[ScreenColumn]:
+        base_columns: list[ScreenColumn] = [] if base_columns_fn is None else base_columns_fn(stock)
+        common_columns: list[ScreenColumn] = build_common_link_columns(stock)
+        return merge_screen_columns(base_columns, common_columns)
 
     return columns
 
@@ -101,20 +132,27 @@ def load_strategy(path: Path) -> ModuleType:
     sys.modules[f"strategy_{path.stem}"] = mod
     spec.loader.exec_module(mod)
 
-    filters: list | None = getattr(mod, "FILTERS", None)
+    filters: list[tuple[FilterSource, str, FilterThreshold]] | None = getattr(mod, "FILTERS", None)
     if filters is not None:
         mod.screen = _build_screen_fn(filters)
     elif not (hasattr(mod, "screen") and callable(mod.screen)):
         msg = f"Strategy {path} must define FILTERS or a 'screen(stock) -> bool' function"
         raise ImportError(msg)
 
-    sort_spec: str | Callable | None = getattr(mod, "SORT", None)
+    sort_spec: FilterSource | None = getattr(mod, "SORT", None)
     if sort_spec is not None and not hasattr(mod, "sort_key"):
         mod.sort_key = _build_sort_key_fn(sort_spec)
 
-    columns_spec: list | None = getattr(mod, "COLUMNS", None)
-    if columns_spec is not None and not hasattr(mod, "columns"):
-        mod.columns = _build_columns_fn(columns_spec)
+    base_columns_fn: ColumnsFn | None = None
+    columns_attr = getattr(mod, "columns", None)
+    if callable(columns_attr):
+        base_columns_fn = columns_attr
+    else:
+        columns_spec: list[tuple[str, ColumnSource, str]] | None = getattr(mod, "COLUMNS", None)
+        if columns_spec is not None:
+            base_columns_fn = _build_columns_fn(columns_spec)
+
+    mod.columns = _build_combined_columns_fn(base_columns_fn)
 
     return mod
 
