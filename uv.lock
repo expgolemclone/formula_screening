@@ -113,6 +113,7 @@ dependencies = [
     { name = "brotli" },
     { name = "pysocks" },
     { name = "requests" },
+    { name = "stock-db" },
     { name = "truststore" },
 ]
 
@@ -127,6 +128,7 @@ requires-dist = [
     { name = "pysocks", specifier = ">=1.7,<2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0,<9" },
     { name = "requests", specifier = ">=2.28,<3" },
+    { name = "stock-db", editable = "../stock_db" },
     { name = "truststore", specifier = ">=0.9,<1" },
 ]
 provides-extras = ["dev"]
@@ -215,6 +217,28 @@ sdist = { url = "https://files.pythonhosted.org/packages/34/64/8860370b167a9721e
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/5d/c814546c2333ceea4ba42262d8c4d55763003e767fa169adc693bd524478/requests-2.33.0-py3-none-any.whl", hash = "sha256:3324635456fa185245e24865e810cecec7b4caf933d7eb133dcde67d48cee69b", size = 65017, upload-time = "2026-03-25T15:10:40.382Z" },
 ]
+
+[[package]]
+name = "stock-db"
+version = "0.1.0"
+source = { editable = "../stock_db" }
+dependencies = [
+    { name = "brotli" },
+    { name = "pysocks" },
+    { name = "requests" },
+    { name = "truststore" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "brotli", specifier = ">=1.1,<2" },
+    { name = "pysocks", specifier = ">=1.7,<2" },
+    { name = "requests", specifier = ">=2.28,<3" },
+    { name = "truststore", specifier = ">=0.9,<1" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0,<9" }]
 
 [[package]]
 name = "truststore"

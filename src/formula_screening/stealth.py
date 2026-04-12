@@ -70,8 +70,9 @@ _FAILURE_TTL_HOURS: dict[str, float] = {
 _LAST_PROXY_FAILURE_SUMMARY: str = "no diagnostics recorded"
 
 
-class ProxyUnavailableError(RuntimeError):
-    """Raised when a proxy is required but none are available."""
+from stock_db.stealth import ProxyPool as _BaseProxyPool
+from stock_db.stealth import ProxyUnavailableError  # noqa: F401
+from stock_db.stealth import random_delay  # noqa: F401 — re-export; overrides local def below
 
 # --- Quality check sites (loaded from config/validation_sites.txt) ---------------
 
@@ -114,9 +115,8 @@ def random_ua() -> str:
     return random.choice(_VALIDATION_USER_AGENTS)
 
 
-def random_delay(min_s: float = 1.0, max_s: float = 5.0) -> None:
-    """Sleep for a random duration to break request-timing correlation."""
-    time.sleep(random.uniform(min_s, max_s))
+
+# random_delay is re-exported from stock_db.stealth (see import above)
 
 
 # --- Proxy fetching & validation ----------------------------------------------
@@ -832,16 +832,8 @@ def fetch_live_proxies(
     return alive
 
 
-class ProxyPool:
-    """Rotating proxy pool with automatic failover.
-
-    Usage::
-
-        pool = ProxyPool.from_auto()
-        proxy_url = pool.get()       # "http://host:port" or "socks5h://host:port" or None
-        pool.report_failure()        # mark current proxy bad, auto-rotate
-        proxy_url = pool.get()       # next proxy
-    """
+class ProxyPool(_BaseProxyPool):
+    """Extends stock_db.stealth.ProxyPool with auto-fetch from public sources."""
 
     def __init__(
         self,
@@ -849,20 +841,11 @@ class ProxyPool:
         *,
         direct: bool = False,
     ) -> None:
-        self._lock = threading.Lock()
-        self._proxies: list[tuple[str, str, str]] = [
-            (*t, "") if len(t) == 2 else t  # type: ignore[misc]
-            for t in proxies
-        ]
-        self._index: int = 0
-        self._failures: dict[str, int] = {}
-        self._max_failures: int = MAGIC["proxy"]["max_failures"]
-        self._direct: bool = direct
-
-    @property
-    def direct(self) -> bool:
-        """True when the pool represents direct-connection mode (no proxy)."""
-        return self._direct
+        super().__init__(
+            proxies,
+            direct=direct,
+            max_failures=int(MAGIC["proxy"]["max_failures"]),
+        )
 
     @classmethod
     def from_auto(
@@ -871,102 +854,9 @@ class ProxyPool:
         target_count: int = MAGIC["proxy"]["target_count"],
         quality_check_count: int = MAGIC["proxy"]["quality_check_count"],
     ) -> ProxyPool:
-        """Create a pool by auto-fetching public proxies."""
         logger.info("Fetching and validating proxies (target=%d, quality_sites=%d)...",
                     target_count, quality_check_count)
         proxies = fetch_live_proxies(target_count=target_count, quality_check_count=quality_check_count)
         if not proxies:
             raise ProxyUnavailableError(f"No live proxies found ({_LAST_PROXY_FAILURE_SUMMARY})")
         return cls(proxies)
-
-    @classmethod
-    def from_url(cls, url: str) -> ProxyPool:
-        """Create a pool with a single user-specified proxy."""
-        for scheme in ("socks5h://", "socks5://"):
-            if url.startswith(scheme):
-                return cls([(url.removeprefix(scheme), "socks5")])
-        addr: str = url.removeprefix("http://").removeprefix("https://")
-        return cls([(addr, "http")])
-
-    @classmethod
-    def from_file(cls, path: Path) -> ProxyPool:
-        """Create a pool from a ``host:port:user:pass`` proxy list file."""
-        entries: list[tuple[str, str, str]] = []
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split(":")
-            if len(parts) == 4:
-                host, port, user, pw = parts
-                entries.append((f"{host}:{port}", "http", f"{user}:{pw}"))
-            elif len(parts) == 2:
-                entries.append((line, "http", ""))
-        return cls(entries)
-
-    def get(self) -> str | None:
-        """Return the current proxy URL, or None if the pool is empty."""
-        with self._lock:
-            if not self._proxies:
-                return None
-            addr, proto, auth = self._proxies[self._index % len(self._proxies)]
-            scheme: str = "socks5h" if proto == "socks5" else "http"
-            if auth:
-                return f"{scheme}://{auth}@{addr}"
-            return f"{scheme}://{addr}"
-
-    @property
-    def size(self) -> int:
-        """Return the number of proxies currently in the pool."""
-        with self._lock:
-            return len(self._proxies)
-
-    def _rotate_locked(self) -> None:
-        """Advance to the next proxy (caller must hold ``_lock``)."""
-        if self._proxies:
-            self._index += 1
-            addr, proto, _auth = self._proxies[self._index % len(self._proxies)]
-            logger.debug("Rotated to proxy: %s", _proxy_url(addr, proto))
-
-    def rotate(self) -> None:
-        """Move to the next proxy and browser profile in the pool."""
-        with self._lock:
-            self._rotate_locked()
-
-    def report_failure(self) -> None:
-        """Record a failure for the current proxy; rotate if too many."""
-        with self._lock:
-            if not self._proxies:
-                return
-            addr, _proto, _auth = self._proxies[self._index % len(self._proxies)]
-            self._failures[addr] = self._failures.get(addr, 0) + 1
-            if self._failures[addr] >= self._max_failures:
-                logger.info("Proxy %s failed %d times, removing (pool size: %d -> %d)",
-                            addr, self._max_failures, len(self._proxies),
-                            len(self._proxies) - 1)
-                self._proxies = [p for p in self._proxies if p[0] != addr]
-                if self._proxies:
-                    self._index = self._index % len(self._proxies)
-            else:
-                self._rotate_locked()
-
-    @property
-    def exhausted(self) -> bool:
-        """True if all proxies have been removed due to failures."""
-        with self._lock:
-            return len(self._proxies) == 0
-
-    def split(self, n: int) -> list[ProxyPool]:
-        """Split the proxy list into *n* sub-pools (round-robin distribution).
-
-        If there are fewer proxies than *n*, some sub-pools will be empty.
-        The ``direct`` flag is propagated to every sub-pool so direct-mode
-        workers continue to bypass proxy rotation.
-        """
-        if n <= 0:
-            raise ValueError("n must be positive")
-        with self._lock:
-            buckets: list[list[str]] = [[] for _ in range(n)]
-            for i, addr in enumerate(self._proxies):
-                buckets[i % n].append(addr)
-        return [ProxyPool(b, direct=self._direct) for b in buckets]
