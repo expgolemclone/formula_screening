@@ -47,6 +47,7 @@ formula_screening/
 │   ├── path.toml               # データディレクトリ・DB パス等
 │   ├── magic_numbers.toml      # スクレイピング間隔、バッチサイズ等の定数
 │   ├── cli_defaults.toml       # CLIオプションのデフォルト値
+│   ├── scan_fallbacks.toml     # fallback スキャナのプロジェクト固有設定
 │   └── validation_sites.txt    # プロキシ品質検証用ドメインリスト (Tranco由来)
 ├── data/
 │   ├── irbank/                 # IR BANK JSON ファイル (年度コード別サブディレクトリ)
@@ -243,6 +244,7 @@ PK: `(ticker, date)`
 | `config/path.toml`     | データディレクトリ、DB パス、ログディレクトリ等の相対パス |
 | `config/magic_numbers.toml` | スクレイピング間隔・ワーカー数・バッチサイズ等の定数 |
 | `config/cli_defaults.toml`  | CLI オプションのデフォルト値 (ダウンロード年数、`probe-proxies` のデフォルト等) |
+| `config/scan_fallbacks.toml`  | fallback スキャナの scan_roots / exclude_dirs / 関数名設定 |
 | `config/validation_sites.txt` | プロキシ品質検証用ドメインリスト (Tranco top sites 由来) |
 
 TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`, `CLI_DEFAULTS` として公開する。`validation_sites.txt` は `stealth.py` がモジュールロード時に読み込む。
