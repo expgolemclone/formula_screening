@@ -38,8 +38,8 @@ formula_screening/
 │   ├── export_csv.py           # 全銘柄の財務データ + 指標を CSV エクスポート
 │   └── generate_check_sites.py # Tranco リストからプロキシ検証用サイトを生成
 ├── strategies/                 # スクリーニング戦略ファイル (screen(stock) -> bool)
-│   ├── net_cash.py             # ネットキャッシュ比率戦略
-│   └── net_cash_fcf.py         # ネットキャッシュ + FCFイールド + CROIC戦略
+│   ├── net_cash.py             # ネットキャッシュ比率 (net_cash / 時価総額) > 1.0 戦略
+│   └── net_cash_fcf.py         # ネットキャッシュ + 平均FCFイールド戦略 (CROIC は表示カラム)
 ├── config/
 │   ├── path.toml               # データディレクトリ・DB パス等
 │   ├── magic_numbers.toml      # スクレイピング間隔、バッチサイズ等の定数
