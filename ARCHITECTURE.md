@@ -26,15 +26,18 @@ formula_screening/
 │   │   ├── schema.py           # SQLite スキーマ定義・マイグレーション・接続管理
 │   │   └── repository.py       # データアクセス層 (stocks, financial_items, prices)
 │   └── scrape/
+│       ├── http_fetch.py       # ブラウザ経由HTML取得の共通リトライ・プロキシローテーション
 │       ├── irbank.py           # IR BANK JSON ファイルのインポート (PL/BS/CF/配当/四半期)
 │       ├── irbank_bs.py        # IR BANK /bs ページのパース・行生成
 │       ├── irbank_forecast.py  # IR BANK /results ページのパース・行生成
-│       ├── irbank_common.py    # irbank_bs / irbank_forecast 共通のブラウザ経由HTML取得
+│       ├── irbank_common.py    # IR BANK URL ビルダー (http_fetch に委譲)
+│       ├── kabutan_shares.py   # kabutan 発行済株式数スクレイピング (plain HTTPS)
 │       └── stooq_price.py      # Stooq 日次テキストファイルによる株価取得
 ├── scripts/                    # スタンドアロンスクリプト (uv run python scripts/... で実行)
 │   ├── download_irbank.py      # IR BANK JSON ファイルのダウンロード
 │   ├── scrape_irbank_bs.py     # BS スクレイピングのスクリプト版
 │   ├── fetch_prices.py         # 株価取得のスクリプト版
+│   ├── fetch_shares.py         # 発行済株式数取得のスクリプト版
 │   ├── export_csv.py           # 全銘柄の財務データ + 指標を CSV エクスポート
 │   └── generate_check_sites.py # Tranco リストからプロキシ検証用サイトを生成
 ├── strategies/                 # スクリーニング戦略ファイル (screen(stock) -> bool)
@@ -66,10 +69,14 @@ formula_screening/
     ├── test_proxy_runtime.py
     ├── test_repository.py
     ├── test_scan_fallbacks.py      # scan_fallbacks.py の単体テスト
+    ├── test_kabutan_shares.py
     ├── test_screener.py
     ├── test_stealth.py
     ├── test_stooq_price.py
-    └── test_worker.py
+    ├── test_worker.py
+    └── fixtures/
+        ├── kabutan_8046.html       # kabutan 発行済株式数パーサのテスト用 HTML スナップショット
+        └── kabutan_7203.html
 ```
 
 `tests/scan_fallbacks.py` は `src/` / `strategies/` / `scripts/` 配下の Python ファイルを AST + tokenize で走査し、fallback パターン (`or default`, `.get(key, default)`, `getattr(obj, attr, default)`, `try/except: pass`, `x if x is not None else y`, `if x is None: x = default`, `_prefer` / `_safe_*` 呼び出し、`# fallback` コメント、`import` fallback) を種別ごとにレポートする。本プロジェクトは fallback を許容しない方針のため、検出があると exit 1 を返し CI ゲートとして利用できる。`--allow-findings` でインベントリモード (exit 0) に切り替え可能。
@@ -77,28 +84,28 @@ formula_screening/
 ## データフロー
 
 ```
-                          ┌──────────────────┐
-                          │  IR BANK (Web)   │
-                          └────────┬─────────┘
-                                   │
-              ┌────────────────────┼────────────────────┐
-              v                    v                    v
+                          ┌──────────────────┐     ┌─────────────────┐
+                          │  IR BANK (Web)   │     │ kabutan (Web)   │
+                          └────────┬─────────┘     └───────┬─────────┘
+                                   │                       │
+              ┌────────────────────┼────────────────────┐  │
+              v                    v                    v  v
    download_irbank.py     irbank_bs.py         irbank_forecast.py
    (JSON ダウンロード)    (/bs パース)          (/results パース)
               │                    │                    │
-              v                    │                    │
-   data/irbank/*.json              │                    │
-              │                    │                    │
-              v                    v                    v
-         irbank.py          irbank_common.py ◄─────────┘
-     (JSON インポート)     (ブラウザ経由HTML取得)
-              │                    │
-              │                    v
-              │              browser.py ──► browser_service/
-              │             (ブラウザサービス)    (Node.js)
-              │                    │
-              │                    v
-              │              worker.py
+              v                    │                    │  kabutan_shares.py
+   data/irbank/*.json              │                    │  (発行済株式数取得)
+              │                    │                    │       │
+              v                    v                    v       │
+         irbank.py          irbank_common.py ◄─────────┘       │
+     (JSON インポート)       (IR BANK URL)                      │
+              │                    │                            │
+              │                    v                            │
+              │              http_fetch.py ──► browser.py       │
+              │             (共通リトライ)   (Node.js経由)      │
+              │                    │                            │
+              │                    v                            │
+              │              worker.py ◄────────────────────────┘
               │             (並列ワーカー制御)
               │                    │
               v                    v
@@ -106,7 +113,7 @@ formula_screening/
         │         screening.db (SQLite)       │
         │  ┌─────────┬────────────┬────────┐  │
         │  │ stocks  │ financial  │ prices │  │
-        │  │         │  _items    │        │  │
+        │  │ (shares)│  _items    │        │  │
         │  └─────────┴────────────┴────────┘  │
         └──────────────┬──────────────────────┘
                        │              ^
@@ -138,20 +145,22 @@ formula_screening/
 
 ### データ取得層 (`scrape/`)
 
-| モジュール           | 依存先                           | 役割                                    |
-| :------------------- | :------------------------------- | :-------------------------------------- |
-| `irbank.py`          | `repository`                     | JSON -> DB インポート                   |
-| `irbank_bs.py`       | `config`                         | /bs ページのパース・行生成              |
-| `irbank_forecast.py` | `config`                         | /results ページのパース・行生成         |
-| `irbank_common.py`   | `config`, `browser`, `stealth`   | ブラウザサービス経由の IR BANK HTML取得  |
-| `stooq_price.py`     | `browser`                        | Stooq 日次テキストファイルによる株価一括取得 |
+| モジュール           | 依存先                           | 役割                                             |
+| :------------------- | :------------------------------- | :----------------------------------------------- |
+| `http_fetch.py`      | `config`, `browser`, `stealth`   | BrowserService 経由 HTML 取得の共通リトライループ |
+| `irbank.py`          | `repository`                     | JSON -> DB インポート                            |
+| `irbank_bs.py`       | `config`                         | /bs ページのパース・行生成                       |
+| `irbank_forecast.py` | `config`                         | /results ページのパース・行生成                  |
+| `irbank_common.py`   | `http_fetch`                     | IR BANK URL ビルダー (http_fetch に委譲)         |
+| `kabutan_shares.py`  | `config`, `stealth`              | kabutan 発行済株式数の取得・パース (plain HTTPS)  |
+| `stooq_price.py`     | `browser`                        | Stooq 日次テキストファイルによる株価一括取得      |
 
 ### コア層
 
 | モジュール              | 依存先                                        | 役割                                                         |
 | :---------------------- | :-------------------------------------------- | :----------------------------------------------------------- |
 | `screener.py`           | `config`, `repository`, `metrics`, `db.schema` | 戦略ファイルの動的ロード・宣言的フォーマット解釈・全銘柄並列適用 |
-| `metrics.py`            | (なし)                                        | 財務データ + 株価 -> 派生指標の事前計算                      |
+| `metrics.py`            | (なし)                                        | 財務データ + 株価 -> 派生指標の事前計算。PER は `market_cap / net_income` で計算し、per-share 値 (EPS) に依存しない (株式分割安全) |
 | `indicators/`           | `config`                                      | 戦略から呼ぶオンデマンド指標 (FCFイールド, CROIC 等)         |
 | `worker.py`             | `config`, `scrape.*`, `repository`, `db.schema`, `stealth`, `browser` | スクレイピング・株価取得のワーカー制御。`fetch_prices_stooq` は `get_browser` callable を受け取り、ローカル Stooq txt が無い時だけ lazy に browser を起動 |
 | `bootstrap.py`          | `config`, `repository`, `db.schema`, `cli`, `worker`, `scrape.*` | empty DB 検出時の auto-import/scrape/fetch。`required_sources` で対象を絞り、scrape が必要なときだけ proxy / browser を lazy に取得 |
@@ -175,6 +184,7 @@ formula_screening/
 | `download_irbank.py`    | `config`, `stealth.fetch_live_proxies`                        | JSON ダウンロード        |
 | `scrape_irbank_bs.py`   | `cli.main` (→ `scrape-bs` サブコマンドに委譲)                 | BS スクレイピング |
 | `fetch_prices.py`       | `cli.main` (→ `fetch-prices` サブコマンドに委譲)              | 株価取得 (Stooq)         |
+| `fetch_shares.py`       | `cli.main` (→ `fetch-shares` サブコマンドに委譲)              | 発行済株式数取得 (kabutan) |
 | `export_csv.py`         | `config`, `db.schema`, `screener.build_stock_dict`            | CSV エクスポート         |
 | `generate_check_sites.py` | (外部: Tranco リスト)                                       | プロキシ検証用サイトリスト生成 |
 
@@ -184,16 +194,18 @@ formula_screening/
 
 ### stocks
 
-銘柄マスタ。IR BANK JSON インポート時に自動登録、BS スクレイピング時に企業名を更新。
+銘柄マスタ。IR BANK JSON インポート時に自動登録、BS スクレイピング時に企業名を更新。`shares_outstanding` は `fetch-shares` で kabutan から取得し、スクリーニング時の時価総額計算に使う。
 
-| カラム       | 型   | 備考               |
-| :----------- | :--- | :----------------- |
-| ticker       | TEXT | PK                 |
-| edinet_code  | TEXT | UNIQUE (nullable)  |
-| name         | TEXT | 企業名             |
-| sector       | TEXT | セクター           |
-| market       | TEXT | 市場               |
-| updated_at   | TEXT | ISO8601 タイムスタンプ |
+| カラム              | 型      | 備考                                          |
+| :------------------ | :------ | :-------------------------------------------- |
+| ticker              | TEXT    | PK                                            |
+| edinet_code         | TEXT    | UNIQUE (nullable)                             |
+| name                | TEXT    | 企業名                                        |
+| sector              | TEXT    | セクター                                      |
+| market              | TEXT    | 市場                                          |
+| shares_outstanding  | INTEGER | 発行済株式数 (kabutan 由来、分割後の最新値)   |
+| shares_updated_at   | TEXT    | shares_outstanding の取得日時                 |
+| updated_at          | TEXT    | ISO8601 タイムスタンプ                        |
 
 ### financial_items
 
@@ -215,14 +227,13 @@ PK: `(ticker, period, statement, item_name)`
 
 Stooq から取得した株価キャッシュ。`updated_at` が 1 日以上古い場合に再取得。
 
-| カラム              | 型      | 備考               |
-| :------------------ | :------ | :----------------- |
-| ticker              | TEXT    | 銘柄コード         |
-| date                | TEXT    | 日付               |
-| close               | REAL    | 終値               |
-| volume              | INTEGER | 出来高             |
-| shares_outstanding  | INTEGER | 発行済株式数       |
-| updated_at          | TEXT    | ISO8601 タイムスタンプ |
+| カラム     | 型      | 備考                 |
+| :--------- | :------ | :------------------- |
+| ticker     | TEXT    | 銘柄コード           |
+| date       | TEXT    | 日付                 |
+| close      | REAL    | 終値                 |
+| volume     | INTEGER | 出来高               |
+| updated_at | TEXT    | ISO8601 タイムスタンプ |
 
 PK: `(ticker, date)`
 
@@ -241,15 +252,16 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 `uv run python -m formula_screening <command>` で実行。
 
-| コマンド            | 処理内容                                            |
-| :------------------ | :-------------------------------------------------- |
-| `import-irbank`     | `data/irbank/` の JSON を DB にインポート           |
-| `fetch-prices`      | 全銘柄の株価を Stooq 日次テキストファイルから一括取得        |
-| `scrape-bs`         | IR BANK /bs ページから詳細 BS データをスクレイピング |
-| `scrape-forecast`   | IR BANK /results ページから会社予想をスクレイピング  |
-| `probe-proxies`     | 公開プロキシ取得だけを診断実行 (`--clear-legacy-cache` で legacy cache を削除) |
-| `clear-failure-cache` | reason を指定して proxy failure cache を削除し、削除前後の分布を表示 |
-| `screen`            | 戦略ファイルを適用してスクリーニング実行 (`--workers` で並列化、`--open [N]` で上位N件を四季報オンラインで開く) |
+| コマンド              | 処理内容                                                                                                      |
+| :-------------------- | :------------------------------------------------------------------------------------------------------------ |
+| `import-irbank`       | `data/irbank/` の JSON を DB にインポート                                                                     |
+| `fetch-prices`        | 全銘柄の株価を Stooq 日次テキストファイルから一括取得                                                         |
+| `fetch-shares`        | kabutan から発行済株式数を取得し `stocks.shares_outstanding` に保存。BrowserService 不要 (plain HTTPS)         |
+| `scrape-bs`           | IR BANK /bs ページから詳細 BS データをスクレイピング                                                          |
+| `scrape-forecast`     | IR BANK /results ページから会社予想をスクレイピング                                                           |
+| `probe-proxies`       | 公開プロキシ取得だけを診断実行 (`--clear-legacy-cache` で legacy cache を削除)                                |
+| `clear-failure-cache` | reason を指定して proxy failure cache を削除し、削除前後の分布を表示                                          |
+| `screen`              | 戦略ファイルを適用してスクリーニング実行 (`--workers` で並列化、`--open [N]` で上位N件を四季報オンラインで開く) |
 
 `screen` 実行時には `cli._cmd_screen` が先に `load_strategy()` で戦略モジュールを読み込み、`REQUIRED_SOURCES` を取り出してから `bootstrap.ensure_data_available(required_sources=...)` を呼ぶ。bootstrap は `required_sources` に列挙された `financial_items` の source と `prices` だけをチェック対象にし、空のものがあれば対応する import/scrape/fetch を auto 実行する。戦略が必要としないソース (例: `irbank_forecast`) は空でもスキップされる。すべての required データが揃っている場合はそのまま screening に進む。データの再取得は各サブコマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) を明示的に実行することでのみ行う。
 
@@ -343,7 +355,7 @@ COLUMNS = [                              # 追加表示カラム
     "bs": {"total_assets": float, "current_assets": float, ...},
     "cf": {"operating_cf": float, "free_cf": float, ...},
     "dividend": {"dps": float, ...},
-    "forecast": {"basic_eps": float, ...},
+    "forecast": {"net_income": float, "basic_eps": float, ...},
     "metrics": {"per": float, "per_actual": float, "net_cash_ratio": float, ...},
     "cf_history": [("2025-03", {"operating_cf": float, ...}), ...],
 }
