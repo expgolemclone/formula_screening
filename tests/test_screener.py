@@ -276,8 +276,7 @@ def test_build_stock_dict(conn: sqlite3.Connection) -> None:
     assert stock["ticker"] == "7203"
     assert stock["price"] == 2500.0
     assert stock["pl"]["revenue"] == 48036704.0
-    assert stock["metrics"]["per"] is not None
-    assert stock["metrics"]["per"] == pytest.approx(2500.0 / 359.56, rel=0.01)
+    assert stock["metrics"]["per_actual"] == pytest.approx(2500.0 / 359.56, rel=0.01)
 
 
 def test_build_stock_dict_cf_history(conn: sqlite3.Connection) -> None:

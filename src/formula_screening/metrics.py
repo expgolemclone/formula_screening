@@ -50,7 +50,6 @@ def compute_metrics(
     net_income = pl.get("net_income")
     actual_eps = pl.get("basic_eps")
     forecast_eps = financials.get("forecast", {}).get("basic_eps")
-    basic_eps = forecast_eps if forecast_eps is not None else actual_eps
 
     total_assets = bs.get("total_assets")
     stockholders_equity = bs.get("stockholders_equity")
@@ -68,7 +67,8 @@ def compute_metrics(
 
     # Price-dependent metrics (always computed from real-time data)
     metrics["market_cap"] = market_cap
-    metrics["per"] = _safe_div(price, basic_eps)
+    metrics["per"] = _safe_div(price, forecast_eps)
+    metrics["per_actual"] = _safe_div(price, actual_eps)
     metrics["pbr"] = _safe_div(market_cap, total_equity)
 
     dps = financials.get("dividend", {}).get("dps")

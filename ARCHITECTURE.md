@@ -340,7 +340,7 @@ COLUMNS = [                              # 追加表示カラム
     "cf": {"operating_cf": float, "free_cf": float, ...},
     "dividend": {"dps": float, ...},
     "forecast": {"basic_eps": float, ...},
-    "metrics": {"per": float, "net_cash_ratio": float, ...},
+    "metrics": {"per": float, "per_actual": float, "net_cash_ratio": float, ...},
     "cf_history": [("2025-03", {"operating_cf": float, ...}), ...],
 }
 ```

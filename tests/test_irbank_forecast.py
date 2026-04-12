@@ -127,26 +127,28 @@ def test_per_uses_forecast_eps() -> None:
     assert m["per"] == pytest.approx(1000.0 / 55.82)
 
 
-def test_per_falls_back_to_actual_eps() -> None:
+def test_per_actual_from_pl_basic_eps() -> None:
     from formula_screening.metrics import compute_metrics
 
-    financials = {
+    financials: dict[str, dict[str, float]] = {
         "pl": {"basic_eps": 26.71},
         "bs": {},
     }
-    m = compute_metrics(financials, price=1000.0, shares_outstanding=10)
-    assert m["per"] == pytest.approx(1000.0 / 26.71)
+    m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
+
+    assert m["per"] is None
+    assert m["per_actual"] == pytest.approx(1000.0 / 26.71)
 
 
 def test_per_forecast_eps_zero() -> None:
-    """EPS=0 (break-even) should NOT fall back to actual — it should yield per=None."""
     from formula_screening.metrics import compute_metrics
 
-    financials = {
+    financials: dict[str, dict[str, float]] = {
         "pl": {"basic_eps": 50.0},
         "forecast": {"basic_eps": 0.0},
         "bs": {},
     }
-    m = compute_metrics(financials, price=1000.0, shares_outstanding=10)
-    # EPS=0 → _safe_div returns None
+    m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
+
     assert m["per"] is None
+    assert m["per_actual"] == pytest.approx(1000.0 / 50.0)
