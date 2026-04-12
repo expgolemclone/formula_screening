@@ -1,28 +1,18 @@
-"""Shared browser-based HTML fetch for IR BANK scrapers.
-
-Page fetching is delegated to the Node.js browser service
-(``formula_screening.browser.BrowserService``).
-"""
+"""IR BANK URL builder — retry/proxy plumbing lives in ``http_fetch``."""
 
 from __future__ import annotations
 
-import logging
-import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from formula_screening.config import MAGIC
+from formula_screening.scrape.http_fetch import fetch_html
 
 if TYPE_CHECKING:
     from formula_screening.browser import BrowserService
     from formula_screening.stealth import ProxyPool
 
-logger: logging.Logger = logging.getLogger("formula_screening.irbank_common")
-
 _IRBANK_URL_TEMPLATE: str = "https://irbank.net/{ticker}/{path}"
-_MAX_RETRIES: int = MAGIC["scrape"]["max_retries"]
-_PROXY_REMOVE_ON_ERROR: bool = MAGIC["scrape"]["proxy_remove_on_error"]
-_RETRY_DELAY: float = MAGIC["scrape"]["retry_delay"]
 
 
 def fetch_irbank_html(
@@ -34,82 +24,13 @@ def fetch_irbank_html(
     browser: BrowserService,
     timeout: int = MAGIC["browser"]["page_timeout"],
 ) -> str | None:
-    """Fetch an IR BANK page via the browser service and return HTML if *validate_fn* passes.
-
-    Args:
-        ticker: Stock ticker code.
-        path: URL path segment (e.g. ``"bs"``, ``"results"``).
-        pool: A ``ProxyPool`` instance.
-        validate_fn: Callable that returns True when the HTML is usable.
-        browser: A running ``BrowserService`` instance.
-        timeout: Page navigation timeout in milliseconds.
-
-    Returns:
-        HTML string if successful, None on failure.
-    """
-    from formula_screening.browser import BrowserResponse, BrowserServiceError
-    from formula_screening.stealth import ProxyUnavailableError, random_delay
-
-    direct_mode: bool = pool.direct
-
-    def _handle_proxy_error() -> None:
-        if direct_mode:
-            return
-        if _PROXY_REMOVE_ON_ERROR:
-            pool.report_failure()
-        else:
-            pool.rotate()
-
+    """Fetch an IR BANK page (e.g. ``/bs``, ``/results``) via the shared retry loop."""
     url: str = _IRBANK_URL_TEMPLATE.format(ticker=ticker, path=path)
-
-    for attempt in range(_MAX_RETRIES):
-        if attempt > 0:
-            time.sleep(_RETRY_DELAY)
-        if direct_mode:
-            proxy_url: str | None = None
-        else:
-            proxy_url = pool.get()
-            if proxy_url is None:
-                raise ProxyUnavailableError("Proxy pool exhausted during request execution")
-
-        try:
-            resp: BrowserResponse = browser.fetch(url, proxy=proxy_url, timeout=timeout)
-        except BrowserServiceError as exc:
-            logger.warning(
-                "Browser service error for %s (attempt %d): %s",
-                ticker, attempt + 1, exc,
-            )
-            _handle_proxy_error()
-            continue
-
-        if resp.status == 200 and resp.html is not None and validate_fn(resp.html):
-            return resp.html
-
-        if resp.error is not None:
-            logger.warning(
-                "Fetch error for %s (attempt %d): %s",
-                ticker, attempt + 1, resp.error,
-            )
-            _handle_proxy_error()
-            continue
-
-        if resp.html is not None and not validate_fn(resp.html):
-            snippet: str = resp.html[:500].replace("\n", " ")
-            logger.warning(
-                "Blocked for %s (status=%d, attempt %d): %s",
-                ticker, resp.status, attempt + 1, snippet,
-            )
-            _handle_proxy_error()
-            random_delay(
-                MAGIC["scrape"]["rate_limit_delay_min"],
-                MAGIC["scrape"]["rate_limit_delay_max"],
-            )
-            continue
-
-        logger.warning(
-            "Unexpected status %d for %s (attempt %d)",
-            resp.status, ticker, attempt + 1,
-        )
-        return None
-
-    return None
+    return fetch_html(
+        url,
+        pool,
+        validate_fn=validate_fn,
+        browser=browser,
+        timeout=timeout,
+        label=f"{ticker}/{path}",
+    )

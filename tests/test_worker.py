@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
@@ -10,6 +11,7 @@ import pytest
 
 from formula_screening.db.repository import upsert_stock
 from formula_screening.db.schema import _SCHEMA_SQL
+from formula_screening.stealth import ProxyPool
 
 if TYPE_CHECKING:
     pass
@@ -173,3 +175,75 @@ class TestFetchPricesStooqLazyBrowser:
         # Assert
         assert browser_calls["count"] == 1
         assert stats["ok"] == 1
+
+
+class TestScrapeSharesWorker:
+    def test_waits_between_every_ticker_even_on_failures(
+        self,
+        db_path: Path,
+        verify_conn: sqlite3.Connection,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Arrange
+        _seed_stock(db_path, "1111", "銘柄A")
+        _seed_stock(db_path, "2222", "銘柄B")
+        _seed_stock(db_path, "3333", "銘柄C")
+
+        html_by_ticker: dict[str, str | None] = {
+            "1111": None,
+            "2222": "<html><body>no shares</body></html>",
+            "3333": "<html><body>shares</body></html>",
+        }
+        row_by_ticker: dict[str, dict[str, int] | None] = {
+            "2222": None,
+            "3333": {"ticker": "3333", "shares_outstanding": 123_456},
+        }
+        delay_calls: list[tuple[float, float]] = []
+
+        from formula_screening.scrape import kabutan_shares as shares_mod
+        from formula_screening import stealth as stealth_mod
+        from formula_screening.worker import scrape_shares_worker
+
+        def _fake_fetch_kabutan_html(ticker: str, pool: ProxyPool) -> str | None:
+            del pool
+            return html_by_ticker[ticker]
+
+        def _fake_build_shares_row(
+            ticker: str,
+            html: str,
+        ) -> dict[str, int] | None:
+            del html
+            return row_by_ticker.get(ticker)
+
+        def _fake_random_delay(min_s: float, max_s: float) -> None:
+            delay_calls.append((min_s, max_s))
+
+        monkeypatch.setattr(shares_mod, "fetch_kabutan_html", _fake_fetch_kabutan_html)
+        monkeypatch.setattr(shares_mod, "build_shares_row", _fake_build_shares_row)
+        monkeypatch.setattr(stealth_mod, "random_delay", _fake_random_delay)
+
+        stats: dict[str, int] = {"ok": 0, "skip": 0, "fail": 0}
+        stats_lock = threading.Lock()
+        counter = [0]
+
+        # Act
+        scrape_shares_worker(
+            ["1111", "2222", "3333"],
+            ProxyPool([], direct=True),
+            interval=1.0,
+            force=False,
+            stats=stats,
+            stats_lock=stats_lock,
+            total=3,
+            counter=counter,
+        )
+
+        # Assert
+        assert stats == {"ok": 1, "skip": 0, "fail": 2}
+        assert delay_calls == [(1.0, 1.0), (1.0, 1.0), (1.0, 1.0)]
+        row = verify_conn.execute(
+            "SELECT shares_outstanding FROM stocks WHERE ticker = ?",
+            ("3333",),
+        ).fetchone()
+        assert row is not None
+        assert row["shares_outstanding"] == 123_456

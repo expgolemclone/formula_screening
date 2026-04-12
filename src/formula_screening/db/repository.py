@@ -237,21 +237,51 @@ def upsert_price(
     date: str,
     close: float | None,
     volume: int | None,
-    *,
-    shares_outstanding: int | None = None,
 ) -> None:
     conn.execute(
         """
-        INSERT INTO prices (ticker, date, close, volume, shares_outstanding, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO prices (ticker, date, close, volume, updated_at)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(ticker, date) DO UPDATE SET
             close=excluded.close,
             volume=excluded.volume,
-            shares_outstanding=excluded.shares_outstanding,
             updated_at=excluded.updated_at
         """,
-        (ticker, date, close, volume, shares_outstanding, _now()),
+        (ticker, date, close, volume, _now()),
     )
+
+
+def upsert_shares_outstanding(
+    conn: sqlite3.Connection,
+    ticker: str,
+    shares: int,
+) -> None:
+    """Update ``stocks.shares_outstanding`` for an existing ticker.
+
+    Inserts a bare stocks row if the ticker is not yet registered so that
+    shares can be cached before the next full ``import-irbank`` populates
+    the rest of the metadata.
+    """
+    now = _now()
+    conn.execute(
+        """
+        INSERT INTO stocks (ticker, name, sector, market, shares_outstanding, shares_updated_at, updated_at)
+        VALUES (?, '', '', '', ?, ?, ?)
+        ON CONFLICT(ticker) DO UPDATE SET
+            shares_outstanding = excluded.shares_outstanding,
+            shares_updated_at  = excluded.shares_updated_at,
+            updated_at         = excluded.updated_at
+        """,
+        (ticker, shares, now, now),
+    )
+
+
+def get_tickers_with_shares(conn: sqlite3.Connection) -> set[str]:
+    """Return tickers whose ``stocks.shares_outstanding`` is already populated."""
+    rows = conn.execute(
+        "SELECT ticker FROM stocks WHERE shares_outstanding IS NOT NULL"
+    ).fetchall()
+    return {r["ticker"] for r in rows}
 
 
 def get_latest_price(
@@ -269,21 +299,24 @@ def get_latest_price_with_shares(
     conn: sqlite3.Connection,
     ticker: str,
 ) -> dict[str, float | int | str | None]:
-    """Return latest cached price, shares_outstanding, and updated_at."""
-    row = conn.execute(
-        """
-        SELECT close, shares_outstanding, updated_at
-        FROM prices WHERE ticker = ?
-        ORDER BY date DESC LIMIT 1
-        """,
+    """Return latest cached price (from ``prices``) joined with ``stocks.shares_outstanding``.
+
+    Price and shares live in different tables because ``shares_outstanding`` is
+    a per-ticker property (kabutan refresh cadence), while ``prices`` rows are
+    keyed by ``(ticker, date)`` and would lose shares on every new day.
+    """
+    price_row = conn.execute(
+        "SELECT close, updated_at FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
         (ticker,),
     ).fetchone()
-    if row is None:
-        return {"price": None, "shares_outstanding": None, "updated_at": None}
+    shares_row = conn.execute(
+        "SELECT shares_outstanding FROM stocks WHERE ticker = ?",
+        (ticker,),
+    ).fetchone()
     return {
-        "price": row["close"],
-        "shares_outstanding": row["shares_outstanding"],
-        "updated_at": row["updated_at"],
+        "price": price_row["close"] if price_row else None,
+        "shares_outstanding": shares_row["shares_outstanding"] if shares_row else None,
+        "updated_at": price_row["updated_at"] if price_row else None,
     }
 
 

@@ -195,6 +195,73 @@ def scrape_forecast_worker(
 
 
 # ---------------------------------------------------------------------------
+# Shares-outstanding worker (kabutan)
+# ---------------------------------------------------------------------------
+
+
+def scrape_shares_worker(
+    tickers: list[str],
+    pool: ProxyPool,
+    *,
+    interval: float = MAGIC["scrape"]["interval"],
+    force: bool = False,
+    stats: dict[str, int],
+    stats_lock: threading.Lock,
+    total: int,
+    counter: list[int],
+) -> None:
+    """Fetch ``発行済株式数`` from kabutan for a chunk of tickers.
+
+    Mirrors the structure of :func:`scrape_worker` but writes to
+    ``stocks.shares_outstanding`` via :func:`upsert_shares_outstanding`
+    instead of the ``financial_items`` EAV table — shares are a per-ticker
+    attribute, not a period-keyed statement item. kabutan serves usable HTML
+    to plain HTTPS clients, so no BrowserService is involved.
+    """
+    from formula_screening.db.repository import upsert_shares_outstanding
+    from formula_screening.db.schema import get_connection
+    from formula_screening.scrape.kabutan_shares import (
+        build_shares_row,
+        fetch_kabutan_html,
+    )
+    from formula_screening.stealth import random_delay
+
+    del force  # skip-filter already applied upstream in _run_scrape_workers
+
+    conn: sqlite3.Connection = get_connection()
+    try:
+        for ticker in tickers:
+            with stats_lock:
+                counter[0] += 1
+                seq: int = counter[0]
+
+            html: str | None = fetch_kabutan_html(ticker, pool)
+            if html is None:
+                with stats_lock:
+                    stats["fail"] += 1
+                    print(f"[{seq}/{total}] {ticker} FAILED", flush=True)
+            else:
+                row = build_shares_row(ticker, html)
+                if row is None:
+                    with stats_lock:
+                        stats["fail"] += 1
+                        print(f"[{seq}/{total}] {ticker} NO DATA", flush=True)
+                else:
+                    upsert_shares_outstanding(conn, ticker, row["shares_outstanding"])
+                    conn.commit()
+                    with stats_lock:
+                        stats["ok"] += 1
+                        print(
+                            f"[{seq}/{total}] {ticker} OK ({row['shares_outstanding']:,})",
+                            flush=True,
+                        )
+
+            random_delay(interval, interval + MAGIC["scrape"]["interval_jitter"])
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Price worker
 # ---------------------------------------------------------------------------
 
@@ -275,5 +342,4 @@ def fetch_prices_stooq(
         conn.close()
 
     return stats
-
 

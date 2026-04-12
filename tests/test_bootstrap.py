@@ -12,6 +12,7 @@ import pytest
 from formula_screening.db.repository import (
     upsert_financial_item,
     upsert_price,
+    upsert_shares_outstanding,
     upsert_stock,
 )
 from formula_screening.db.schema import _SCHEMA_SQL
@@ -67,7 +68,8 @@ def _seed_full_stock(db_path: Path) -> None:
         upsert_stock(conn, "1301", "極洋", "水産", "プライム")
         upsert_financial_item(conn, "1301", "2024-03", "pl", "revenue", 1_000, "irbank")
         upsert_financial_item(conn, "1301", "2024-03", "bs", "total_assets", 2_000, "irbank_bs")
-        upsert_price(conn, "1301", "2024-06-01", 100.0, None, shares_outstanding=10_000)
+        upsert_price(conn, "1301", "2024-06-01", 100.0, None)
+        upsert_shares_outstanding(conn, "1301", 10_000)
         conn.commit()
     finally:
         conn.close()

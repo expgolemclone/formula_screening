@@ -10,6 +10,7 @@ import pytest
 from formula_screening.db.repository import (
     upsert_financial_item,
     upsert_price,
+    upsert_shares_outstanding,
     upsert_stock,
 )
 from formula_screening.screener import load_strategy
@@ -266,9 +267,10 @@ def test_build_stock_dict(conn: sqlite3.Connection) -> None:
 
     upsert_stock(conn, "7203", "トヨタ", "輸送用機器", "プライム")
     upsert_financial_item(conn, "7203", "2024-03", "pl", "revenue", 48036704, "irbank")
-    upsert_financial_item(conn, "7203", "2024-03", "pl", "basic_eps", 359.56, "irbank")
+    upsert_financial_item(conn, "7203", "2024-03", "pl", "net_income", 4940000, "irbank")
     upsert_financial_item(conn, "7203", "2024-03", "bs", "total_equity", 36878914, "irbank")
-    upsert_price(conn, "7203", "2024-06-01", 2500.0, None, shares_outstanding=13048929774)
+    upsert_price(conn, "7203", "2024-06-01", 2500.0, None)
+    upsert_shares_outstanding(conn, "7203", 13048929774)
     conn.commit()
 
     stock: dict = build_stock_dict(conn, "7203", "トヨタ")
@@ -276,7 +278,8 @@ def test_build_stock_dict(conn: sqlite3.Connection) -> None:
     assert stock["ticker"] == "7203"
     assert stock["price"] == 2500.0
     assert stock["pl"]["revenue"] == 48036704.0
-    assert stock["metrics"]["per_actual"] == pytest.approx(2500.0 / 359.56, rel=0.01)
+    market_cap: float = 2500.0 * 13048929774
+    assert stock["metrics"]["per_actual"] == pytest.approx(market_cap / 4940000, rel=0.01)
 
 
 def test_build_stock_dict_cf_history(conn: sqlite3.Connection) -> None:

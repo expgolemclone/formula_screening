@@ -86,7 +86,7 @@ def _should_clear_transient_proxy_failures(args: argparse.Namespace) -> bool:
     command = getattr(args, "command", None)
     if command in {"refresh", "screen"}:
         return True
-    if command in {"fetch-prices", "scrape-bs", "scrape-forecast"}:
+    if command in {"fetch-prices", "fetch-shares", "scrape-bs", "scrape-forecast"}:
         return not bool(getattr(args, "ticker", None))
     return False
 
@@ -279,6 +279,18 @@ def _cmd_scrape_forecast(args: argparse.Namespace) -> None:
             extra_kwargs={"browser": browser},
             skip_filter_fn=lambda conn, tickers: get_existing_tickers(conn, "irbank_forecast"),
         )
+
+
+def _cmd_fetch_shares(args: argparse.Namespace) -> None:
+    from formula_screening.db.repository import get_tickers_with_shares
+    from formula_screening.worker import scrape_shares_worker
+
+    _run_scrape_workers(
+        args,
+        worker_fn=scrape_shares_worker,
+        label="shares",
+        skip_filter_fn=lambda conn, tickers: get_tickers_with_shares(conn),
+    )
 
 
 def _cmd_probe_proxies(args: argparse.Namespace) -> None:
@@ -529,6 +541,12 @@ def main() -> None:
     p_fc.add_argument("--force", action="store_true", help="Re-scrape even if data exists")
     p_fc.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel workers")
 
+    # fetch-shares
+    p_shares = sub.add_parser("fetch-shares", parents=[_proxy_args], help="Fetch 発行済株式数 from kabutan into stocks.shares_outstanding")
+    p_shares.add_argument("--ticker", nargs="+", help="Specific ticker(s) to fetch")
+    p_shares.add_argument("--force", action="store_true", help="Re-fetch even if shares already cached")
+    p_shares.add_argument("--workers", type=int, default=MAGIC["scrape"]["workers"], help="Number of parallel workers")
+
     # probe-proxies
     p_probe = sub.add_parser("probe-proxies", help="Probe public proxies without touching screening data")
     p_probe.add_argument("--proxy", help="Specific HTTP proxy URL to validate (e.g. http://host:port)")
@@ -559,6 +577,7 @@ def main() -> None:
     cmds = {
         "import-irbank": _cmd_import_irbank,
         "fetch-prices": _cmd_fetch_prices,
+        "fetch-shares": _cmd_fetch_shares,
         "scrape-bs": _cmd_scrape_bs,
         "scrape-forecast": _cmd_scrape_forecast,
         "probe-proxies": _cmd_probe_proxies,

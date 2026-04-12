@@ -48,8 +48,7 @@ def compute_metrics(
     operating_income = pl.get("operating_income")
     ordinary_income = pl.get("ordinary_income")
     net_income = pl.get("net_income")
-    actual_eps = pl.get("basic_eps")
-    forecast_eps = financials.get("forecast", {}).get("basic_eps")
+    forecast_net_income = financials.get("forecast", {}).get("net_income")
 
     total_assets = bs.get("total_assets")
     stockholders_equity = bs.get("stockholders_equity")
@@ -65,10 +64,13 @@ def compute_metrics(
 
     metrics: dict[str, float | None] = {}
 
-    # Price-dependent metrics (always computed from real-time data)
+    # Price-dependent metrics (always computed from real-time data).
+    # PER is market_cap / net_income rather than price / EPS: per-share
+    # values in the IR BANK JSON aren't adjusted for stock splits, so the
+    # total-value form is split-safe.
     metrics["market_cap"] = market_cap
-    metrics["per"] = _safe_div(price, forecast_eps)
-    metrics["per_actual"] = _safe_div(price, actual_eps)
+    metrics["per"] = _safe_div(market_cap, forecast_net_income)
+    metrics["per_actual"] = _safe_div(market_cap, net_income)
     metrics["pbr"] = _safe_div(market_cap, total_equity)
 
     dps = financials.get("dividend", {}).get("dps")

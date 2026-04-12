@@ -114,41 +114,41 @@ def test_build_forecast_rows_metadata() -> None:
 # --- metrics integration: forecast EPS preferred for PER ---------------------
 
 
-def test_per_uses_forecast_eps() -> None:
-    from formula_screening.metrics import compute_metrics
-
-    financials = {
-        "pl": {"basic_eps": 26.71},
-        "forecast": {"basic_eps": 55.82},
-        "bs": {},
-    }
-    m = compute_metrics(financials, price=1000.0, shares_outstanding=10)
-    # PER should use forecast EPS: 1000 / 55.82
-    assert m["per"] == pytest.approx(1000.0 / 55.82)
-
-
-def test_per_actual_from_pl_basic_eps() -> None:
+def test_per_uses_forecast_net_income() -> None:
     from formula_screening.metrics import compute_metrics
 
     financials: dict[str, dict[str, float]] = {
-        "pl": {"basic_eps": 26.71},
+        "pl": {"net_income": 267},
+        "forecast": {"net_income": 558},
+        "bs": {},
+    }
+    m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
+    # PER should use forecast net_income: 10000 / 558
+    assert m["per"] == pytest.approx(10000.0 / 558)
+
+
+def test_per_actual_from_pl_net_income() -> None:
+    from formula_screening.metrics import compute_metrics
+
+    financials: dict[str, dict[str, float]] = {
+        "pl": {"net_income": 267},
         "bs": {},
     }
     m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
 
     assert m["per"] is None
-    assert m["per_actual"] == pytest.approx(1000.0 / 26.71)
+    assert m["per_actual"] == pytest.approx(10000.0 / 267)
 
 
-def test_per_forecast_eps_zero() -> None:
+def test_per_forecast_net_income_zero() -> None:
     from formula_screening.metrics import compute_metrics
 
     financials: dict[str, dict[str, float]] = {
-        "pl": {"basic_eps": 50.0},
-        "forecast": {"basic_eps": 0.0},
+        "pl": {"net_income": 500},
+        "forecast": {"net_income": 0.0},
         "bs": {},
     }
     m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
 
     assert m["per"] is None
-    assert m["per_actual"] == pytest.approx(1000.0 / 50.0)
+    assert m["per_actual"] == pytest.approx(10000.0 / 500)
