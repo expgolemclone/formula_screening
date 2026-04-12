@@ -14,20 +14,12 @@ def _pct(a: float | None, b: float | None) -> float | None:
     return val * 100 if val is not None else None
 
 
-def _prefer(direct: float | None, fallback: float | None) -> float | None:
-    """Return *direct* when present (including 0.0), otherwise *fallback*."""
-    return direct if direct is not None else fallback
-
-
 def compute_metrics(
     financials: dict[str, dict[str, float | None]],
     price: float | None,
     shares_outstanding: int | None,
 ) -> dict[str, float | None]:
-    """Compute derived screening metrics.
-
-    Uses IR BANK values when available (ROE, operating_margin, etc.),
-    falling back to calculation from raw data.
+    """Compute derived screening metrics from raw financial data.
 
     Args:
         financials: Nested dict {statement: {item_name: value}} from DB.
@@ -37,9 +29,9 @@ def compute_metrics(
     Returns:
         Dict of metric_name -> value.
     """
-    pl = financials.get("pl", {})
-    bs = financials.get("bs", {})
-    cf = financials.get("cf", {})
+    pl = financials["pl"]
+    bs = financials["bs"]
+    cf = financials["cf"]
 
     shares = float(shares_outstanding) if shares_outstanding else None
     market_cap = (price * shares) if price and shares else None
@@ -48,7 +40,7 @@ def compute_metrics(
     operating_income = pl.get("operating_income")
     ordinary_income = pl.get("ordinary_income")
     net_income = pl.get("net_income")
-    forecast_net_income = financials.get("forecast", {}).get("net_income")
+    forecast_net_income = financials["forecast"].get("net_income")
 
     total_assets = bs.get("total_assets")
     stockholders_equity = bs.get("stockholders_equity")
@@ -60,7 +52,12 @@ def compute_metrics(
     if revenue is not None and cost_of_revenue is not None:
         gross_profit = revenue - cost_of_revenue
 
-    free_cf = cf.get("free_cf")
+    free_cf: float | None = cf.get("free_cf")
+    if free_cf is None:
+        operating_cf: float | None = cf.get("operating_cf")
+        investing_cf: float | None = cf.get("investing_cf")
+        if operating_cf is not None and investing_cf is not None:
+            free_cf = operating_cf + investing_cf
 
     metrics: dict[str, float | None] = {}
 
@@ -73,25 +70,22 @@ def compute_metrics(
     metrics["per_actual"] = _safe_div(market_cap, net_income)
     metrics["pbr"] = _safe_div(market_cap, total_equity)
 
-    dps = financials.get("dividend", {}).get("dps")
+    dps = financials["dividend"].get("dps")
     metrics["dividend_yield"] = _pct(dps, price)
 
-    # Margin metrics: prefer IR BANK direct values, compute as fallback
     metrics["gross_margin"] = _pct(gross_profit, revenue)
-    metrics["operating_margin"] = _prefer(pl.get("operating_margin"), _pct(operating_income, revenue))
-    metrics["ordinary_margin"] = _prefer(pl.get("ordinary_income_margin"), _pct(ordinary_income, revenue))
-    metrics["net_income_margin"] = _prefer(pl.get("net_income_margin"), _pct(net_income, revenue))
+    metrics["operating_margin"] = _pct(operating_income, revenue)
+    metrics["ordinary_margin"] = _pct(ordinary_income, revenue)
+    metrics["net_income_margin"] = _pct(net_income, revenue)
 
-    # Return metrics: prefer IR BANK direct values
-    metrics["roe"] = _prefer(pl.get("roe"), _pct(net_income, stockholders_equity))
-    metrics["roa"] = _prefer(pl.get("roa"), _pct(net_income, total_assets))
+    metrics["roe"] = _pct(net_income, stockholders_equity)
+    metrics["roa"] = _pct(net_income, total_assets)
 
-    # Balance sheet ratios
-    metrics["equity_ratio"] = _prefer(bs.get("equity_ratio"), _pct(stockholders_equity, total_assets))
-    metrics["debt_equity_ratio"] = _prefer(bs.get("debt_equity_ratio"), _pct(total_debt, stockholders_equity))
+    metrics["equity_ratio"] = _pct(stockholders_equity, total_assets)
+    metrics["debt_equity_ratio"] = _pct(total_debt, stockholders_equity)
 
-    # Cash flow ratios
-    metrics["operating_cf_margin"] = _prefer(cf.get("operating_cf_margin"), _pct(cf.get("operating_cf"), revenue))
+    metrics["operating_cf_margin"] = _pct(cf.get("operating_cf"), revenue)
+    metrics["free_cf"] = free_cf
     metrics["free_cf_ratio"] = _pct(free_cf, revenue)
 
     # Total liabilities
@@ -102,26 +96,30 @@ def compute_metrics(
 
     short_term_debt = bs.get("short_term_debt")
     long_term_debt = bs.get("long_term_debt")
-    interest_bearing_debt = None
-    if short_term_debt is not None or long_term_debt is not None:
-        interest_bearing_debt = (short_term_debt or 0) + (long_term_debt or 0)
+    interest_bearing_debt: float | None = None
+    if short_term_debt is not None and long_term_debt is not None:
+        interest_bearing_debt = short_term_debt + long_term_debt
     metrics["interest_bearing_debt"] = interest_bearing_debt
 
-    # Net cash (清原達郎)
-    # Full formula: 流動資産 − 棚卸資産 + 投資有価証券×70% − 負債
-    # Fallback:     現金同等物 − 負債 (when detailed BS unavailable)
+    # Net cash (清原達郎): 流動資産 − 棚卸資産 + 投資有価証券×70% − 負債
     current_assets = bs.get("current_assets")
     inventories = bs.get("inventories")
     investment_securities = bs.get("investment_securities")
     current_liabilities = bs.get("current_liabilities")
-    non_current_liabilities = bs.get("non_current_liabilities") or bs.get("non_current_liabilities_total")
+    non_current_liabilities = bs.get("non_current_liabilities")
 
-    net_cash = None
-    if current_assets is not None and (current_liabilities is not None or non_current_liabilities is not None):
-        liabilities = (current_liabilities or 0) + (non_current_liabilities or 0)
-        net_cash = current_assets - (inventories or 0) + (investment_securities or 0) * 0.7 - liabilities
-    elif cf.get("cash_equivalents") is not None and total_liabilities is not None:
-        net_cash = cf["cash_equivalents"] - total_liabilities
+    net_cash: float | None = None
+    if (
+        current_assets is not None
+        and current_liabilities is not None
+        and non_current_liabilities is not None
+    ):
+        liabilities: float = current_liabilities + non_current_liabilities
+        net_cash = current_assets - liabilities
+        if inventories is not None:
+            net_cash -= inventories
+        if investment_securities is not None:
+            net_cash += investment_securities * 0.7
     metrics["net_cash"] = net_cash
     metrics["net_cash_ratio"] = _safe_div(net_cash, market_cap)
 

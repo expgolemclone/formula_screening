@@ -156,7 +156,9 @@ def get_financial_dict(
         (ticker, period),
     ).fetchall()
 
-    result: dict[str, dict[str, float | None]] = {}
+    result: dict[str, dict[str, float | None]] = {
+        "pl": {}, "bs": {}, "cf": {}, "dividend": {}, "ss": {}, "forecast": {},
+    }
     for r in rows:
         stmt = r["statement"]
         result.setdefault(stmt, {})[r["item_name"]] = r["value"]
@@ -173,8 +175,8 @@ def get_financial_dict(
         """,
         (ticker, ticker),
     ).fetchall()
-    if forecast_rows:
-        result["forecast"] = {r["item_name"]: r["value"] for r in forecast_rows}
+    for r in forecast_rows:
+        result["forecast"][r["item_name"]] = r["value"]
 
     return result
 
@@ -324,11 +326,8 @@ def is_price_stale(updated_at: str | None, stale_days: int) -> bool:
     """Return True if the cached price is older than *stale_days* or missing."""
     if updated_at is None:
         return True
-    try:
-        ts: datetime = datetime.fromisoformat(updated_at)
-        return datetime.now(timezone.utc) - ts > timedelta(days=stale_days)
-    except ValueError:
-        return True
+    ts: datetime = datetime.fromisoformat(updated_at)
+    return datetime.now(timezone.utc) - ts > timedelta(days=stale_days)
 
 
 def get_fresh_price_tickers(conn: sqlite3.Connection, stale_days: int) -> set[str]:

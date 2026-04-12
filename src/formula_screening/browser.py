@@ -206,8 +206,8 @@ class BrowserService:
             )
             data: dict[str, str | int | None] = resp.json()
             return BrowserResponse(
-                html=str(data.get("html")) if data.get("html") is not None else None,
-                status=int(data.get("status", resp.status_code)),
+                html=str(data["html"]) if data.get("html") is not None else None,
+                status=int(data["status"]),
                 error=str(data["error"]) if data.get("error") is not None else None,
             )
         except requests.RequestException as exc:
@@ -253,9 +253,13 @@ class BrowserService:
                 timeout=timeout / 1000 + 10,
             )
             data: dict[str, str | int | None] = resp.json()
-            if resp.status_code != 200 or data.get("error"):
+            if data.get("error"):
                 raise BrowserServiceError(
-                    f"Download failed: {data.get('error', resp.status_code)}"
+                    f"Download failed: {data['error']}"
+                )
+            if resp.status_code != 200:
+                raise BrowserServiceError(
+                    f"Download failed: HTTP {resp.status_code}"
                 )
             return str(data["filePath"])
         except requests.RequestException as exc:

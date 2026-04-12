@@ -54,8 +54,8 @@ def _flatten(stock: dict, period: str) -> dict:
         "shares_outstanding": stock["shares_outstanding"],
     }
     for statement in ("bs", "pl", "cf", "dividend"):
-        row.update(stock.get(statement, {}))
-    row.update(stock.get("metrics", {}))
+        row.update(stock[statement])
+    row.update(stock["metrics"])
     return row
 
 

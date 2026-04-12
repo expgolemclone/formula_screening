@@ -157,7 +157,7 @@ def _fetch_single_source(url: str) -> list[str]:
             if _HOST_PORT_RE.match(addr):
                 proxies.append(addr)
     except requests.RequestException:
-        pass
+        logger.warning("Failed to fetch proxy source: %s", url, exc_info=True)
     return proxies
 
 
@@ -277,9 +277,12 @@ def _hit_anon_detailed(
     if resp is None or resp.status_code != 200:
         return "anon_unreachable"
     try:
-        echoed: dict[str, str] = resp.json().get("headers", {})
+        payload = resp.json()
     except ValueError:
         return "anon_unreachable"
+    if "headers" not in payload:
+        return "anon_unreachable"
+    echoed: dict[str, str] = payload["headers"]
     if any(echoed.get(h) for h in _PROXY_LEAK_HEADERS):
         return "anon_leak"
     return "ok"
@@ -484,8 +487,7 @@ def _build_proxy_failure_summary(
 
 def _failure_ttl_seconds(reason: str) -> float:
     """Return the TTL for a cached failure reason."""
-    hours = _FAILURE_TTL_HOURS.get(reason, float(MAGIC["proxy"]["failure_cache_ttl_hours"]))
-    return hours * 3600
+    return _FAILURE_TTL_HOURS[reason] * 3600
 
 
 def _normalize_failure_cache_entry(value: object) -> dict[str, float | str] | None:
@@ -495,7 +497,7 @@ def _normalize_failure_cache_entry(value: object) -> dict[str, float | str] | No
     if not isinstance(value, dict):
         return None
     ts = value.get("ts")
-    reason = value.get("reason", "legacy")
+    reason = value.get("reason")
     if not isinstance(ts, (int, float)) or not isinstance(reason, str):
         return None
     return {"reason": reason, "ts": float(ts)}
@@ -513,6 +515,7 @@ def _load_failure_cache() -> dict[str, dict[str, float | str]]:
     try:
         raw = json.loads(PROXY_FAILURE_CACHE.read_text())
     except (json.JSONDecodeError, OSError):
+        logger.warning("Corrupt or unreadable failure cache: %s", PROXY_FAILURE_CACHE, exc_info=True)
         return {}
     if not isinstance(raw, dict):
         return {}
@@ -647,7 +650,7 @@ def fetch_live_proxies(
     }
 
     def bump_source(addr: str, key: str) -> None:
-        source = source_by_addr.get(addr, "unknown")
+        source = source_by_addr[addr]
         source_stats.setdefault(source, Counter())
         source_stats[source][key] += 1
 
@@ -679,7 +682,7 @@ def fetch_live_proxies(
     prefilter_workers: int = MAGIC["proxy"]["tcp_workers"]
     with concurrent.futures.ThreadPoolExecutor(max_workers=prefilter_workers) as prefilter_ex:
         prefilter_results: list[str] = list(prefilter_ex.map(
-            lambda addr: _prefilter_proxy(addr, proto=proto_by_addr.get(addr, "http")),
+            lambda addr: _prefilter_proxy(addr, proto=proto_by_addr[addr]),
             candidates,
         ))
     prefilter_passed: list[str] = []
@@ -726,7 +729,7 @@ def fetch_live_proxies(
     while idx < len(candidates) and len(pending) < check_workers:
         f: concurrent.futures.Future[str] = executor.submit(
             _check_proxy, candidates[idx],
-            proto=proto_by_addr.get(candidates[idx], "http"),
+            proto=proto_by_addr[candidates[idx]],
             quality_check_count=quality_check_count,
         )
         future_to_addr[f] = candidates[idx]
@@ -743,7 +746,7 @@ def fetch_live_proxies(
                 addr: str = future_to_addr.pop(future)
                 checked += 1
                 if result == "ok":
-                    alive.append((addr, proto_by_addr.get(addr, "http")))
+                    alive.append((addr, proto_by_addr[addr]))
                     bump_source(addr, "validated_ok")
                     if len(alive) % 10 == 0:
                         elapsed: float = time.monotonic() - validate_t0
@@ -782,7 +785,7 @@ def fetch_live_proxies(
                 if idx < len(candidates) and len(alive) < target_count:
                     f = executor.submit(
                         _check_proxy, candidates[idx],
-                        proto=proto_by_addr.get(candidates[idx], "http"),
+                        proto=proto_by_addr[candidates[idx]],
                         quality_check_count=quality_check_count,
                     )
                     future_to_addr[f] = candidates[idx]

@@ -37,7 +37,7 @@ def _resolve_value(
 ) -> float | None:
     if callable(source):
         return source(stock)
-    return stock.get("metrics", {}).get(source)
+    return stock["metrics"].get(source)
 
 
 def _build_screen_fn(
@@ -143,12 +143,12 @@ def build_stock_dict(
         "name": name,
         "price": price,
         "shares_outstanding": shares,
-        "pl": financials.get("pl", {}),
-        "bs": financials.get("bs", {}),
-        "cf": financials.get("cf", {}),
-        "dividend": financials.get("dividend", {}),
-        "ss": financials.get("ss", {}),
-        "forecast": financials.get("forecast", {}),
+        "pl": financials["pl"],
+        "bs": financials["bs"],
+        "cf": financials["cf"],
+        "dividend": financials["dividend"],
+        "ss": financials["ss"],
+        "forecast": financials["forecast"],
         "metrics": metrics,
         "cf_history": cf_history,
     }

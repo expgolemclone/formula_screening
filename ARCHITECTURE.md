@@ -160,10 +160,10 @@ fallback パターン検出は `~/.claude/hooks/scan_fallbacks_core.py` (汎用 
 | モジュール              | 依存先                                        | 役割                                                         |
 | :---------------------- | :-------------------------------------------- | :----------------------------------------------------------- |
 | `screener.py`           | `config`, `repository`, `metrics`, `db.schema` | 戦略ファイルの動的ロード・宣言的フォーマット解釈・全銘柄並列適用 |
-| `metrics.py`            | (なし)                                        | 財務データ + 株価 -> 派生指標の事前計算。PER は `market_cap / net_income` で計算し、per-share 値 (EPS) に依存しない (株式分割安全) |
-| `indicators/`           | `config`                                      | 戦略から呼ぶオンデマンド指標 (FCFイールド, CROIC 等)         |
+| `metrics.py`            | (なし)                                        | 財務データ + 株価 -> 派生指標の事前計算。PER は `market_cap / net_income` で計算し、per-share 値 (EPS) に依存しない (株式分割安全)。`free_cf` は CF データに無ければ `operating_cf + investing_cf` から導出し `metrics["free_cf"]` に格納。全指標は raw データから計算し、IR BANK の事前計算値は使わない |
+| `indicators/`           | `config`                                      | 戦略から呼ぶオンデマンド指標。`metrics` dict の事前計算値 (`free_cf`, `interest_bearing_debt` 等) を参照 |
 | `worker.py`             | `config`, `scrape.*`, `repository`, `db.schema`, `stealth`, `browser` | スクレイピング・株価取得のワーカー制御。`fetch_prices_stooq` は `get_browser` callable を受け取り、ローカル Stooq txt が無い時だけ lazy に browser を起動 |
-| `bootstrap.py`          | `config`, `repository`, `db.schema`, `cli`, `worker`, `scrape.*` | empty DB 検出時の auto-import/scrape/fetch。`required_sources` で対象を絞り、scrape が必要なときだけ proxy / browser を lazy に取得 |
+| `bootstrap.py`          | `config`, `repository`, `db.schema`, `cli`, `worker`, `scrape.*` | empty DB 検出時の auto-import/scrape/fetch。`required_sources` (必須引数) で対象を絞り、scrape が必要なときだけ proxy / browser を lazy に取得 |
 
 ### インフラ層
 
@@ -171,7 +171,7 @@ fallback パターン検出は `~/.claude/hooks/scan_fallbacks_core.py` (汎用 
 | :----------------- | :--------- | :-------------------------------------------------------- |
 | `config.py`        | (なし)     | TOML 読み込み、パス定数                                   |
 | `db/schema.py`     | `config`   | DDL、マイグレーション、接続生成                           |
-| `db/repository.py` | (なし)     | CRUD 操作 (stocks, financial_items, prices)               |
+| `db/repository.py` | (なし)     | CRUD 操作 (stocks, financial_items, prices)。`get_financial_dict` は全 statement キー (`pl`, `bs`, `cf`, `dividend`, `ss`, `forecast`) を初期化済みで返す |
 | `browser.py`       | `config`   | Node.js puppeteer-real-browser サービスの起動・終了・fetch/download (プロキシはオプショナル) |
 | `stealth.py`       | `config`   | プロキシプール、reason 付き失敗キャッシュ、分散サイト検証 |
 | `log.py`           | `config`   | ロギング設定                                              |
@@ -357,7 +357,7 @@ COLUMNS = [                              # 追加表示カラム
     "cf": {"operating_cf": float, "free_cf": float, ...},
     "dividend": {"dps": float, ...},
     "forecast": {"net_income": float, "basic_eps": float, ...},
-    "metrics": {"per": float, "per_actual": float, "net_cash_ratio": float, ...},
+    "metrics": {"per": float, "per_actual": float, "net_cash_ratio": float, "free_cf": float, "interest_bearing_debt": float, ...},
     "cf_history": [("2025-03", {"operating_cf": float, ...}), ...],
 }
 ```
@@ -391,12 +391,12 @@ COLUMNS = [                              # 追加表示カラム
 
 ### 失敗キャッシュ
 
-検証に失敗したプロキシは `data/.proxy_failures.json` に `{addr: {"reason": "...", "ts": unix_timestamp}}` 形式で記録される。旧形式 `{addr: unix_timestamp}` も読み込み時に受理され、`legacy` reason として短い TTL で扱う。
+検証に失敗したプロキシは `data/.proxy_failures.json` に `{addr: {"reason": "...", "ts": unix_timestamp}}` 形式で記録される。`reason` フィールドが欠損したエントリは無視される。
 
 reason ごとの TTL は次の通り:
 
 - `not_a_proxy`, `anon_leak`: `proxy.failure_cache_ttl_hours` (デフォルト24時間)
-- `tcp_unreachable`, `anon_unreachable`, `quality_failed`, `legacy`: 1時間
+- `tcp_unreachable`, `anon_unreachable`, `quality_failed`: 1時間
 
 これにより、「そもそも proxy ではない候補」は長く避けつつ、「一時的に不調だった候補」は短時間で再試行できる。成功したプロキシはキャッシュしない (時間経過で劣化する可能性があるため)。
 

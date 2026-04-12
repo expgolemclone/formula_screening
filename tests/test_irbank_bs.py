@@ -218,7 +218,7 @@ def test_parse_data_rows_cell_formats(row_str, expected):
 # --- net_cash metrics tests ---------------------------------------------------
 
 
-def test_net_cash_full_formula():
+def test_net_cash_full_formula() -> None:
     """When detailed BS is available, use 清原式: current_assets - inventories + investment_securities*0.7 - liabilities."""
     from formula_screening.metrics import compute_metrics
 
@@ -234,21 +234,21 @@ def test_net_cash_full_formula():
             "total_equity": 600,
         },
         "cf": {"cash_equivalents": 50},
+        "dividend": {}, "ss": {}, "forecast": {},
     }
     m = compute_metrics(financials, price=None, shares_outstanding=None)
     # 500 - 80 + 200*0.7 - (300+100) = 420 + 140 - 400 = 160
     assert m["net_cash"] == 160.0
 
 
-def test_net_cash_fallback():
-    """Without detailed BS, fall back to cash_equivalents - total_liabilities."""
+def test_net_cash_none_without_detailed_bs() -> None:
+    """Without detailed BS components, net_cash is None."""
     from formula_screening.metrics import compute_metrics
 
     financials = {
-        "pl": {},
-        "bs": {"total_assets": 1000, "total_equity": 600},
+        "pl": {}, "bs": {"total_assets": 1000, "total_equity": 600},
         "cf": {"cash_equivalents": 50},
+        "dividend": {}, "ss": {}, "forecast": {},
     }
     m = compute_metrics(financials, price=None, shares_outstanding=None)
-    # 50 - (1000 - 600) = 50 - 400 = -350
-    assert m["net_cash"] == -350.0
+    assert m["net_cash"] is None

@@ -55,10 +55,9 @@ def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
     """
     from formula_screening.stealth import ProxyPool, clear_failure_cache
 
-    proxy_file: str | None = getattr(args, "proxy_file", None)
-    if proxy_file:
-        return ProxyPool.from_file(Path(proxy_file))
-    proxy_value: str = getattr(args, "proxy", None) or "direct"
+    if args.proxy_file:
+        return ProxyPool.from_file(Path(args.proxy_file))
+    proxy_value: str = args.proxy
     if proxy_value == "direct":
         return ProxyPool([], direct=True)
     if proxy_value != "auto":
@@ -70,8 +69,8 @@ def _resolve_proxy_pool(args: argparse.Namespace) -> ProxyPool:
             removed,
             remaining,
         )
-    target: int = getattr(args, "target_proxies", MAGIC["proxy"]["target_count"])
-    check_sites: int = getattr(args, "check_sites", MAGIC["proxy"]["quality_check_count"])
+    target: int = args.target_proxies
+    check_sites: int = args.check_sites
     return ProxyPool.from_auto(target_count=target, quality_check_count=check_sites)
 
 
@@ -81,13 +80,12 @@ def _should_clear_transient_proxy_failures(args: argparse.Namespace) -> bool:
     Only applies to the ``--proxy auto`` path; direct-mode and user-specified
     proxies never touch the failure cache.
     """
-    if getattr(args, "proxy", None) != "auto":
+    if args.proxy != "auto":
         return False
-    command = getattr(args, "command", None)
-    if command in {"refresh", "screen"}:
+    if args.command in {"refresh", "screen"}:
         return True
-    if command in {"fetch-prices", "fetch-shares", "scrape-bs", "scrape-forecast"}:
-        return not bool(getattr(args, "ticker", None))
+    if args.command in {"fetch-prices", "fetch-shares", "scrape-bs", "scrape-forecast"}:
+        return not bool(args.ticker)
     return False
 
 
@@ -181,8 +179,9 @@ def dispatch_workers(
         "stats_lock": stats_lock,
         "total": total,
         "counter": counter,
-        **(extra_kwargs or {}),
     }
+    if extra_kwargs is not None:
+        kwargs.update(extra_kwargs)
 
     proxy_error: Exception | None = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
@@ -336,7 +335,7 @@ def _cmd_clear_failure_cache(args: argparse.Namespace) -> None:
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
-    from formula_screening.bootstrap import ensure_data_available
+    from formula_screening.bootstrap import DATA_SOURCES, ensure_data_available
     from formula_screening.screener import load_strategy, run_screening
 
     strategy_path = Path(args.strategy)
@@ -357,7 +356,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
 
     try:
         ensure_data_available(
-            required_sources=required_sources,
+            required_sources=required_sources if required_sources is not None else DATA_SOURCES,
             get_proxy_pool=lambda: _resolve_proxy_pool(args),
             get_browser=_get_screen_browser,
         )
@@ -381,7 +380,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         if sort_key_fn is not None:
             hits.sort(key=sort_key_fn, reverse=True)
         else:
-            hits.sort(key=lambda s: s.get("metrics", {}).get("net_cash_ratio") or 0, reverse=True)
+            hits.sort(key=lambda s: s["metrics"].get("net_cash_ratio") or 0, reverse=True)
 
         # Display results as a table
         _print_table(hits, extra_cols_fn=extra_cols_fn)
@@ -428,7 +427,7 @@ def _print_table(
     rows: list[list[str]] = []
 
     for s in hits:
-        m = s.get("metrics", {})
+        m = s["metrics"]
         row = [
             s["ticker"],
             truncate(s["name"] or "", 20),
@@ -475,7 +474,7 @@ def _write_csv(
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for s in hits:
-            m = s.get("metrics", {})
+            m = s["metrics"]
             row: dict[str, object] = {
                 "ticker": s["ticker"],
                 "name": s["name"],

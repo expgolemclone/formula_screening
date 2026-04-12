@@ -18,8 +18,22 @@ def _make_stock(
     short_term_debt: float | None = None,
     long_term_debt: float | None = None,
 ) -> dict:
+    # Derive free_cf the same way compute_metrics does
+    resolved_free_cf: float | None = free_cf
+    if resolved_free_cf is None and operating_cf is not None and investing_cf is not None:
+        resolved_free_cf = operating_cf + investing_cf
+
+    # interest_bearing_debt requires both components
+    interest_bearing_debt: float | None = None
+    if short_term_debt is not None and long_term_debt is not None:
+        interest_bearing_debt = short_term_debt + long_term_debt
+
     return {
-        "metrics": {"market_cap": market_cap},
+        "metrics": {
+            "market_cap": market_cap,
+            "free_cf": resolved_free_cf,
+            "interest_bearing_debt": interest_bearing_debt,
+        },
         "cf": {
             "operating_cf": operating_cf,
             "investing_cf": investing_cf,
@@ -151,6 +165,8 @@ class TestCroic:
             investing_cf=-50.0,
             free_cf=None,
             stockholders_equity=1000.0,
+            short_term_debt=0.0,
+            long_term_debt=0.0,
         )
 
         # Act
@@ -185,7 +201,7 @@ class TestCroic:
         # Act & Assert
         assert croic(stock) is None
 
-    def test_treats_missing_debt_as_zero(self) -> None:
+    def test_returns_none_when_debt_data_missing(self) -> None:
         # Arrange
         stock: dict = _make_stock(
             free_cf=100.0,
@@ -194,8 +210,20 @@ class TestCroic:
             long_term_debt=None,
         )
 
+        # Act & Assert — interest_bearing_debt is None → croic is None
+        assert croic(stock) is None
+
+    def test_zero_debt_produces_valid_croic(self) -> None:
+        # Arrange
+        stock: dict = _make_stock(
+            free_cf=100.0,
+            stockholders_equity=500.0,
+            short_term_debt=0.0,
+            long_term_debt=0.0,
+        )
+
         # Act
         result: float | None = croic(stock)
 
-        # Assert — 100 / 500 = 0.2
+        # Assert — 100 / (500 + 0) = 0.2
         assert result == pytest.approx(0.2)

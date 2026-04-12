@@ -78,6 +78,7 @@ class TestResolveProxyPool:
         args = Namespace(
             command="fetch-prices",
             proxy="auto",
+            proxy_file=None,
             ticker=None,
             target_proxies=1,
             check_sites=0,
@@ -101,6 +102,7 @@ class TestResolveProxyPool:
         args = Namespace(
             command="fetch-prices",
             proxy="auto",
+            proxy_file=None,
             ticker=["7203"],
             target_proxies=1,
             check_sites=0,
@@ -121,6 +123,7 @@ class TestResolveProxyPool:
         args = Namespace(
             command="refresh",
             proxy="http://9.9.9.9:8080",
+            proxy_file=None,
             ticker=None,
             target_proxies=1,
             check_sites=0,
@@ -141,6 +144,7 @@ class TestResolveProxyPool:
         args = Namespace(
             command="scrape-forecast",
             proxy="direct",
+            proxy_file=None,
             ticker=None,
             target_proxies=1,
             check_sites=0,
@@ -159,10 +163,11 @@ class TestResolveProxyPool:
         auto_mock.assert_not_called()
         from_url_mock.assert_not_called()
 
-    def test_unspecified_proxy_falls_back_to_direct_pool(self) -> None:
+    def test_unspecified_proxy_defaults_to_direct_pool(self) -> None:
         args = Namespace(
             command="scrape-forecast",
-            proxy=None,
+            proxy="direct",
+            proxy_file=None,
             ticker=None,
             target_proxies=1,
             check_sites=0,
@@ -310,8 +315,10 @@ class TestCmdScreenRequiredSources:
         # Assert
         assert captured.get("required_sources") == ["irbank", "prices"]
 
-    def test_passes_none_when_strategy_omits_required_sources(self, tmp_path: Path) -> None:
+    def test_passes_all_sources_when_strategy_omits_required_sources(self, tmp_path: Path) -> None:
         # Arrange
+        from formula_screening.bootstrap import DATA_SOURCES
+
         strategy: Path = tmp_path / "no_req.py"
         strategy.write_text('FILTERS = [("per", ">", 0)]\n')
         args = Namespace(
@@ -319,7 +326,7 @@ class TestCmdScreenRequiredSources:
             output=None,
             open=None,
             workers=1,
-            proxy=None,
+            proxy="direct",
             proxy_file=None,
             target_proxies=0,
             check_sites=0,
@@ -340,4 +347,4 @@ class TestCmdScreenRequiredSources:
             _cmd_screen(args)
 
         # Assert
-        assert captured.get("required_sources") is None
+        assert captured["required_sources"] == DATA_SOURCES

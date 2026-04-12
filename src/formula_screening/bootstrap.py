@@ -24,15 +24,11 @@ _SCRAPE_SOURCES: frozenset[str] = frozenset({"irbank_bs", "irbank_forecast"})
 
 def ensure_data_available(
     *,
-    required_sources: Iterable[str] | None = None,
+    required_sources: Iterable[str],
     get_proxy_pool: Callable[[], ProxyPool],
     get_browser: Callable[[], BrowserService],
 ) -> None:
     """Check DB for missing data sources and auto-fetch only what's needed.
-
-    ``required_sources`` narrows the scope of what counts as "missing". A
-    strategy that only reads ``irbank`` + ``prices`` need not trigger forecast
-    scraping just because that table happens to be empty.
 
     ``get_proxy_pool`` and ``get_browser`` are invoked lazily. Neither is
     called when all required data is already present; furthermore, proxy
@@ -43,9 +39,7 @@ def ensure_data_available(
     from formula_screening.db.repository import get_all_tickers
     from formula_screening.db.schema import get_connection
 
-    required: frozenset[str] = (
-        frozenset(required_sources) if required_sources is not None else DATA_SOURCES
-    )
+    required: frozenset[str] = frozenset(required_sources)
     unknown: set[str] = set(required) - DATA_SOURCES
     if unknown:
         logger.warning("Unknown REQUIRED_SOURCES entries ignored: %s", sorted(unknown))

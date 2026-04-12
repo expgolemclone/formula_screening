@@ -118,9 +118,8 @@ def test_per_uses_forecast_net_income() -> None:
     from formula_screening.metrics import compute_metrics
 
     financials: dict[str, dict[str, float]] = {
-        "pl": {"net_income": 267},
-        "forecast": {"net_income": 558},
-        "bs": {},
+        "pl": {"net_income": 267}, "bs": {}, "cf": {},
+        "dividend": {}, "ss": {}, "forecast": {"net_income": 558},
     }
     m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
     # PER should use forecast net_income: 10000 / 558
@@ -131,8 +130,8 @@ def test_per_actual_from_pl_net_income() -> None:
     from formula_screening.metrics import compute_metrics
 
     financials: dict[str, dict[str, float]] = {
-        "pl": {"net_income": 267},
-        "bs": {},
+        "pl": {"net_income": 267}, "bs": {}, "cf": {},
+        "dividend": {}, "ss": {}, "forecast": {},
     }
     m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
 
@@ -144,9 +143,8 @@ def test_per_forecast_net_income_zero() -> None:
     from formula_screening.metrics import compute_metrics
 
     financials: dict[str, dict[str, float]] = {
-        "pl": {"net_income": 500},
-        "forecast": {"net_income": 0.0},
-        "bs": {},
+        "pl": {"net_income": 500}, "bs": {}, "cf": {},
+        "dividend": {}, "ss": {}, "forecast": {"net_income": 0.0},
     }
     m: dict[str, float | None] = compute_metrics(financials, price=1000.0, shares_outstanding=10)
 

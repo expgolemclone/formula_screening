@@ -64,7 +64,7 @@ _PERCENTAGE_COLUMN_MAP: dict[str, str] = {
     "固定資産": "fixed_assets",
     "流動資産": "current_assets",
     "純資産": "net_assets",
-    "固定負債": "non_current_liabilities_total",
+    "固定負債": "non_current_liabilities",
     "流動負債": "current_liabilities",
 }
 
