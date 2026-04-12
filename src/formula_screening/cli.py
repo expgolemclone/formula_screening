@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -16,12 +17,15 @@ from collections.abc import Callable
 
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.db.schema import get_connection, init_db
+from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
 from formula_screening.screen_output import (
     LinkCell,
     ScreenColumn,
     ScreenColumnValue,
+    build_osc8_hyperlink,
     build_sikiho_url,
+    supports_osc8_hyperlinks,
 )
 
 if TYPE_CHECKING:
@@ -403,6 +407,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     finally:
         conn.close()
 
+
 def _open_shikiho(hits: list[dict]) -> None:
     """Open all hit tickers on Shikiho Online via qutebrowser (fallback: default browser)."""
     urls: list[str] = [build_sikiho_url(str(s["ticker"])) for s in hits]
@@ -422,42 +427,57 @@ def _print_table(
     *,
     extra_cols_fn: _ExtraColsFn | None = None,
 ) -> None:
-    """Print screening results as a Markdown table via glow when available."""
-    markdown = _build_markdown_table(hits, extra_cols_fn=extra_cols_fn)
-    if not _render_markdown_with_glow(markdown):
-        print(markdown)
+    """Print screening results as a formatted table to stdout."""
+    hyperlinks_enabled = supports_osc8_hyperlinks(os.environ, sys.stdout.isatty())
+    lines = _build_table_lines(
+        hits,
+        extra_cols_fn=extra_cols_fn,
+        hyperlinks_enabled=hyperlinks_enabled,
+    )
+    print("\n".join(lines))
 
 
-def _escape_markdown_cell(value: str) -> str:
-    """Escape text for a GitHub-flavored Markdown table cell."""
-
-    return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
-
-
-def _format_markdown_cell(value: ScreenColumnValue) -> str:
-    """Render a screen cell as Markdown."""
+def _display_cell_text(value: ScreenColumnValue) -> str:
+    """Return the visible label for a screen-output cell."""
 
     if isinstance(value, LinkCell):
-        label = _escape_markdown_cell(value.label)
-        return f"[{label}]({value.url})"
-    return _escape_markdown_cell(value)
+        return value.label
+    return value
 
 
-def _build_markdown_table(
+def _render_table_cell(
+    value: ScreenColumnValue,
+    width: int,
+    *,
+    hyperlinks_enabled: bool,
+) -> str:
+    """Render a padded table cell, optionally wrapped in OSC 8."""
+
+    label = _display_cell_text(value)
+    padding = " " * max(width - display_width(label), 0)
+    if not hyperlinks_enabled:
+        return label + padding
+    if isinstance(value, LinkCell):
+        return build_osc8_hyperlink(label, value.url) + padding
+    return label + padding
+
+
+def _build_table_lines(
     hits: list[dict],
     *,
     extra_cols_fn: _ExtraColsFn | None = None,
-) -> str:
-    """Build a Markdown table for screen results."""
+    hyperlinks_enabled: bool,
+) -> list[str]:
+    """Build display lines for the screen-results table."""
 
     headers = ["Ticker", "Name", "Price", "NC_Ratio", "PER", "PBR", "Div%"]
-    rows: list[list[str]] = []
+    rows: list[list[ScreenColumnValue]] = []
 
     for stock in hits:
         metrics = stock["metrics"]
         row = [
-            _escape_markdown_cell(str(stock["ticker"])),
-            _escape_markdown_cell(str(stock["name"] or "")),
+            str(stock["ticker"]),
+            truncate(str(stock["name"] or ""), 20),
             f'{stock["price"]:.0f}' if stock["price"] else "-",
             f'{metrics["net_cash_ratio"]:.2f}' if metrics.get("net_cash_ratio") else "-",
             f'{metrics["per"]:.1f}' if metrics.get("per") else "-",
@@ -468,27 +488,28 @@ def _build_markdown_table(
             extra = extra_cols_fn(stock)
             if not rows:
                 headers.extend(header for header, _ in extra)
-            row.extend(_format_markdown_cell(value) for _, value in extra)
+            row.extend(value for _, value in extra)
         rows.append(row)
 
-    header_row = "| " + " | ".join(headers) + " |"
-    separator_row = "| " + " | ".join("---" for _ in headers) + " |"
-    body_rows = ["| " + " | ".join(row) + " |" for row in rows]
-    return "\n".join([header_row, separator_row, *body_rows])
+    widths = [
+        max(
+            display_width(header),
+            max((display_width(_display_cell_text(row[i])) for row in rows), default=0),
+        )
+        for i, header in enumerate(headers)
+    ]
 
-
-def _render_markdown_with_glow(markdown: str) -> bool:
-    """Render Markdown through glow when it is available."""
-
-    glow = shutil.which("glow")
-    if glow is None:
-        return False
-    try:
-        subprocess.run([glow, "-"], check=True, input=markdown, text=True)
-    except (OSError, subprocess.CalledProcessError):
-        logger.warning("Failed to render markdown via glow", exc_info=True)
-        return False
-    return True
+    sep = "  "
+    lines = [sep.join(ljust(header, width) for header, width in zip(headers, widths))]
+    lines.append(sep.join("-" * width for width in widths))
+    for row in rows:
+        lines.append(
+            sep.join(
+                _render_table_cell(cell, width, hyperlinks_enabled=hyperlinks_enabled)
+                for cell, width in zip(row, widths)
+            )
+        )
+    return lines
 
 
 def _format_csv_cell(value: ScreenColumnValue) -> str:

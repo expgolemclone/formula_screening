@@ -10,16 +10,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from formula_screening.cli import (
-    _build_markdown_table,
+    _build_table_lines,
     _cmd_clear_failure_cache,
     _cmd_probe_proxies,
     _cmd_screen,
-    _render_markdown_with_glow,
     _resolve_proxy_pool,
     _write_csv,
     dispatch_workers,
 )
-from formula_screening.screen_output import LinkCell
+from formula_screening.fmt import display_width
+from formula_screening.screen_output import (
+    LinkCell,
+    build_osc8_hyperlink,
+    supports_osc8_hyperlinks,
+)
 from formula_screening.stealth import ProxyUnavailableError
 
 
@@ -354,10 +358,30 @@ class TestCmdScreenRequiredSources:
         assert captured["required_sources"] == DATA_SOURCES
 
 
-class TestMarkdownOutput:
-    """Tests for Markdown + glow based screen output."""
+class TestTerminalLinks:
+    """Tests for OSC 8 based screen output."""
 
-    def test_build_markdown_table_renders_markdown_links(self) -> None:
+    def test_supports_osc8_for_kitty_tty(self) -> None:
+        # Arrange
+        env = {"TERM": "xterm-kitty"}
+
+        # Act
+        supported = supports_osc8_hyperlinks(env, True)
+
+        # Assert
+        assert supported is True
+
+    def test_does_not_support_osc8_for_non_tty(self) -> None:
+        # Arrange
+        env = {"TERM": "xterm-kitty"}
+
+        # Act
+        supported = supports_osc8_hyperlinks(env, False)
+
+        # Assert
+        assert supported is False
+
+    def test_build_table_lines_renders_osc8_links_when_enabled(self) -> None:
         # Arrange
         hits = [
             {
@@ -392,33 +416,102 @@ class TestMarkdownOutput:
             ]
 
         # Act
-        markdown = _build_markdown_table(hits, extra_cols_fn=_extra_cols)
+        lines = _build_table_lines(hits, extra_cols_fn=_extra_cols, hyperlinks_enabled=True)
 
         # Assert
-        assert "[monex](https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0)" in markdown
-        assert "[sikiho](https://shikiho.toyokeizai.net/stocks/7203/shikiho)" in markdown
-        assert "| Ticker | Name | Price | NC_Ratio | PER | PBR | Div% | monex | sikiho |" in markdown
+        joined = "\n".join(lines)
+        assert build_osc8_hyperlink(
+            "monex",
+            "https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0",
+        ) in joined
+        assert build_osc8_hyperlink(
+            "sikiho",
+            "https://shikiho.toyokeizai.net/stocks/7203/shikiho",
+        ) in joined
 
-    def test_render_markdown_with_glow_uses_glow_when_available(self) -> None:
+    def test_build_table_lines_uses_plain_labels_when_hyperlinks_disabled(self) -> None:
         # Arrange
-        markdown = "| A |\n| - |\n| x |\n"
+        hits = [
+            {
+                "ticker": "7203",
+                "name": "トヨタ自動車",
+                "price": 2500.0,
+                "metrics": {
+                    "net_cash_ratio": 1.23,
+                    "per": 8.5,
+                    "pbr": 1.01,
+                    "dividend_yield": 2.34,
+                },
+            }
+        ]
 
-        with (
-            patch("formula_screening.cli.shutil.which", return_value="/usr/bin/glow") as which_mock,
-            patch("formula_screening.cli.subprocess.run") as run_mock,
-        ):
-            # Act
-            rendered = _render_markdown_with_glow(markdown)
+        def _extra_cols(_: dict) -> list[tuple[str, str | LinkCell]]:
+            return [
+                (
+                    "monex",
+                    LinkCell(
+                        label="monex",
+                        url="https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0",
+                    ),
+                ),
+                (
+                    "sikiho",
+                    LinkCell(
+                        label="sikiho",
+                        url="https://shikiho.toyokeizai.net/stocks/7203/shikiho",
+                    ),
+                ),
+            ]
+
+        # Act
+        lines = _build_table_lines(hits, extra_cols_fn=_extra_cols, hyperlinks_enabled=False)
 
         # Assert
-        assert rendered is True
-        which_mock.assert_called_once_with("glow")
-        run_mock.assert_called_once_with(
-            ["/usr/bin/glow", "-"],
-            check=True,
-            input=markdown,
-            text=True,
-        )
+        joined = "\n".join(lines)
+        assert "\033]8;;" not in joined
+        assert "monex" in joined
+        assert "sikiho" in joined
+
+    def test_build_table_lines_keep_columns_aligned_with_cjk(self) -> None:
+        # Arrange
+        hits = [
+            {
+                "ticker": "7203",
+                "name": "トヨタ自動車",
+                "price": 2500.0,
+                "metrics": {
+                    "net_cash_ratio": 1.23,
+                    "per": 8.5,
+                    "pbr": 1.01,
+                    "dividend_yield": 2.34,
+                },
+            }
+        ]
+
+        def _extra_cols(_: dict) -> list[tuple[str, str | LinkCell]]:
+            return [
+                (
+                    "monex",
+                    LinkCell(
+                        label="monex",
+                        url="https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd=7203&x=0&y=0",
+                    ),
+                ),
+                (
+                    "sikiho",
+                    LinkCell(
+                        label="sikiho",
+                        url="https://shikiho.toyokeizai.net/stocks/7203/shikiho",
+                    ),
+                ),
+            ]
+
+        # Act
+        lines = _build_table_lines(hits, extra_cols_fn=_extra_cols, hyperlinks_enabled=False)
+
+        # Assert
+        widths = [display_width(line) for line in lines]
+        assert widths[0] == widths[1] == widths[2]
 
     def test_write_csv_writes_raw_urls_for_link_cells(self, tmp_path: Path) -> None:
         # Arrange
