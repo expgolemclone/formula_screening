@@ -53,6 +53,7 @@ formula_screening/
 │   └── .proxy_failures.json    # 検証失敗プロキシの reason 付きキャッシュ (TTL付き)
 └── tests/
     ├── conftest.py
+    ├── scan_fallbacks.py           # fallback パターン検出スクリプト (pytest 非収集)
     ├── test_bootstrap.py
     ├── test_browser.py
     ├── test_cli.py
@@ -64,11 +65,14 @@ formula_screening/
     ├── test_metrics.py
     ├── test_proxy_runtime.py
     ├── test_repository.py
+    ├── test_scan_fallbacks.py      # scan_fallbacks.py の単体テスト
     ├── test_screener.py
     ├── test_stealth.py
     ├── test_stooq_price.py
     └── test_worker.py
 ```
+
+`tests/scan_fallbacks.py` は `src/` / `strategies/` / `scripts/` 配下の Python ファイルを AST + tokenize で走査し、fallback パターン (`or default`, `.get(key, default)`, `getattr(obj, attr, default)`, `try/except: pass`, `x if x is not None else y`, `if x is None: x = default`, `_prefer` / `_safe_*` 呼び出し、`# fallback` コメント、`import` fallback) を種別ごとにレポートする。本プロジェクトは fallback を許容しない方針のため、検出があると exit 1 を返し CI ゲートとして利用できる。`--allow-findings` でインベントリモード (exit 0) に切り替え可能。
 
 ## データフロー
 
