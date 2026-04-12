@@ -1,0 +1,7 @@
+[scan_fallbacks]
+scan_roots = ["src", "strategies", "scripts"]
+exclude_dirs = ["__pycache__", ".venv", "browser_service", "tests", "data"]
+
+[scan_fallbacks.functions]
+names = ["_prefer", "fallback", "coalesce", "_default"]
+prefixes = ["safe_", "_safe_"]

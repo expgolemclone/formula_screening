@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import ast
 import inspect
+import sys
 from pathlib import Path
 
-from .scan_fallbacks import (
+sys.path.insert(0, str(Path.home() / ".claude" / "hooks"))
+
+from scan_fallbacks_core import (
     FallbackVisitor,
     Finding,
     collect_fallback_comments,
+    config_to_params,
     format_text_report,
     handler_is_importerror,
     handler_is_swallow,
@@ -22,6 +26,7 @@ from .scan_fallbacks import (
     is_none_check,
     is_none_constant,
     iter_python_files,
+    load_toml_config,
     scan_file,
 )
 
@@ -277,8 +282,18 @@ def test_scan_file_handles_syntax_error(tmp_path: Path) -> None:
     assert scan_file(target) == []
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_scan_params() -> tuple[tuple[str, ...], frozenset[str]]:
+    cfg = load_toml_config(_PROJECT_ROOT)
+    scan_roots, exclude_dirs, _fn_names, _fn_prefixes = config_to_params(cfg)
+    return scan_roots, exclude_dirs
+
+
 def test_iter_python_files_excludes_venv_and_tests() -> None:
-    files = iter_python_files()
+    scan_roots, exclude_dirs = _load_scan_params()
+    files = iter_python_files(_PROJECT_ROOT, scan_roots, exclude_dirs)
     for path in files:
         parts = set(path.parts)
         assert ".venv" not in parts
@@ -288,7 +303,8 @@ def test_iter_python_files_excludes_venv_and_tests() -> None:
 
 
 def test_iter_python_files_includes_src_strategies_scripts() -> None:
-    files = iter_python_files()
+    scan_roots, exclude_dirs = _load_scan_params()
+    files = iter_python_files(_PROJECT_ROOT, scan_roots, exclude_dirs)
     joined: str = "|".join(str(p) for p in files)
     assert "src/formula_screening/metrics.py" in joined
     assert "strategies/net_cash.py" in joined
@@ -301,7 +317,7 @@ def test_format_text_report_groups_by_pattern() -> None:
         Finding(file="b.py", line=5, col=4, pattern="or_default", snippet="y = b or []"),
         Finding(file="c.py", line=2, col=0, pattern="fallback_call", snippet="_prefer(a, b)"),
     ]
-    report = format_text_report(findings, file_count=3)
+    report = format_text_report(findings, file_count=3, scan_roots=("src",))
     assert "## or_default (2)" in report
     assert "## fallback_call (1)" in report
     assert "Total: 3 findings" in report
