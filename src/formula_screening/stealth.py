@@ -70,9 +70,9 @@ _FAILURE_TTL_HOURS: dict[str, float] = {
 _LAST_PROXY_FAILURE_SUMMARY: str = "no diagnostics recorded"
 
 
-from stock_db.stealth import ProxyPool as _BaseProxyPool
-from stock_db.stealth import ProxyUnavailableError  # noqa: F401
-from stock_db.stealth import random_delay  # noqa: F401 — re-export; overrides local def below
+from stock_db.browser.proxy_pool import ProxyPool as _BaseProxyPool
+from stock_db.browser.proxy_pool import ProxyUnavailableError  # noqa: F401
+from stock_db.browser.proxy_pool import random_delay  # noqa: F401 — re-export; overrides local def below
 
 # --- Quality check sites (loaded from config/validation_sites.txt) ---------------
 

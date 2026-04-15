@@ -7,15 +7,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True, slots=True)
 class LinkCell:
     """A screen-result cell that should render as a hyperlink."""
 
     label: str
     url: str
-
-
-logger = logging.getLogger(__name__)
 
     def __str__(self) -> str:
         return self.label

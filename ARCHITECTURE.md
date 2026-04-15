@@ -1,6 +1,6 @@
 # Architecture
 
-日本株スクリーニングツール。IR BANK の財務データと Stooq の株価を SQLite に集約し、ユーザ定義の Python 戦略ファイルでフィルタリングする。IR BANK へのスクレイピングは Node.js puppeteer-real-browser サービス経由で行う。Stooq の日次テキストファイルはローカル配置済みファイルを優先し、なければブラウザ経由で自動ダウンロードする。
+日本株スクリーニングツール。IR BANK の財務データと Stooq の株価を SQLite に集約し、ユーザ定義の Python 戦略ファイルでフィルタリングする。IR BANK へのスクレイピングは Node.js puppeteer-real-browser サービス経由で行う。Stooq の日次テキストファイルはローカル配置済みファイルを優先し、なければブラウザ経由で自動ダウンロードする。DB・IR BANK データは隣接プロジェクト `../stock_db` (`stock_db.paths`) から取得する。
 
 ## ディレクトリ構成
 
@@ -23,8 +23,8 @@ formula_screening/
 │   │   ├── fcf.py              # 平均FCFイールド (fcf_yield_avg)
 │   │   └── croic.py            # CROIC (Cash Return on Invested Capital)
 │   ├── db/
-│   │   ├── schema.py           # SQLite スキーマ定義・マイグレーション・接続管理
-│   │   └── repository.py       # データアクセス層 (stocks, financial_items, prices)
+│   │   ├── schema.py           # SQLite 接続管理 (stock_db.storage に委譲)
+│   │   └── repository.py       # データアクセス層 (stock_db.storage に委譲)
 │   └── scrape/
 │       ├── http_fetch.py       # ブラウザ経由HTML取得の共通リトライ・プロキシローテーション
 │       ├── irbank.py           # IR BANK JSON ファイルのインポート (PL/BS/CF/配当/四半期)
@@ -50,9 +50,7 @@ formula_screening/
 │   ├── scan_fallbacks.toml     # fallback スキャナのプロジェクト固有設定
 │   └── validation_sites.txt    # プロキシ品質検証用ドメインリスト (Tranco由来)
 ├── data/
-│   ├── irbank/                 # IR BANK JSON ファイル (年度コード別サブディレクトリ)
 │   ├── stooq/                  # Stooq 日次テキストファイル (YYYYMMDD_d.txt)
-│   ├── screening.db            # SQLite データベース
 │   ├── logs/                   # ローテーションログ
 │   └── .proxy_failures.json    # 検証失敗プロキシの reason 付きキャッシュ (TTL付き)
 └── tests/
@@ -94,7 +92,7 @@ fallback パターン検出は `~/.claude/hooks/scan_fallbacks_core.py` (汎用 
    (JSON ダウンロード)    (/bs パース)          (/results パース)
               │                    │                    │
               v                    │                    │  kabutan_shares.py
-   data/irbank/*.json              │                    │  (発行済株式数取得)
+   stock_db/var/raw/irbank         │                    │  (発行済株式数取得)
               │                    │                    │       │
               v                    v                    v       │
          irbank.py          irbank_common.py ◄─────────┘       │
@@ -110,7 +108,7 @@ fallback パターン検出は `~/.claude/hooks/scan_fallbacks_core.py` (汎用 
               │                    │
               v                    v
         ┌─────────────────────────────────────┐
-        │         screening.db (SQLite)       │
+        │    stock_db/var/db/stocks.db        │
         │  ┌─────────┬────────────┬────────┐  │
         │  │ stocks  │ financial  │ prices │  │
         │  │ (shares)│  _items    │        │  │
@@ -169,11 +167,11 @@ fallback パターン検出は `~/.claude/hooks/scan_fallbacks_core.py` (汎用 
 
 | モジュール         | 依存先     | 役割                                                      |
 | :----------------- | :--------- | :-------------------------------------------------------- |
-| `config.py`        | (なし)     | TOML 読み込み、パス定数                                   |
-| `db/schema.py`     | `config`   | DDL、マイグレーション、接続生成                           |
-| `db/repository.py` | (なし)     | CRUD 操作 (stocks, financial_items, prices)。`get_financial_dict` は全 statement キー (`pl`, `bs`, `cf`, `dividend`, `ss`, `forecast`) を初期化済みで返す |
-| `browser.py`       | `config`   | Node.js puppeteer-real-browser サービスの起動・終了・fetch/download (プロキシはオプショナル) |
-| `stealth.py`       | `config`   | プロキシプール、reason 付き失敗キャッシュ、分散サイト検証 |
+| `config.py`        | `stock_db.paths` | TOML 読み込み、パス定数 (`DB_PATH`・`IRBANK_DIR` は `stock_db.paths` から取得) |
+| `db/schema.py`     | `stock_db.storage`, `stock_db.paths` | 接続生成 (stock_db.storage に委譲)            |
+| `db/repository.py` | `stock_db.storage.*` | CRUD 操作 (stocks, financial_items, prices) を stock_db.storage に委譲。`get_financial_dict` は全 statement キー (`pl`, `bs`, `cf`, `dividend`, `ss`, `forecast`) を初期化済みで返す |
+| `browser.py`       | `stock_db.browser.client`, `config` | Node.js puppeteer-real-browser サービスの起動・終了・fetch/download (プロキシはオプショナル) |
+| `stealth.py`       | `stock_db.browser.proxy_pool`, `config` | プロキシプール、reason 付き失敗キャッシュ、分散サイト検証 |
 | `log.py`           | `config`   | ロギング設定                                              |
 | `fmt.py`           | (なし)     | 全角対応の文字列整形                                      |
 
@@ -241,7 +239,7 @@ PK: `(ticker, date)`
 
 | ファイル               | 内容                                                     |
 | :--------------------- | :------------------------------------------------------- |
-| `config/path.toml`     | データディレクトリ、DB パス、ログディレクトリ等の相対パス |
+| `config/path.toml`     | データディレクトリ、ログディレクトリ等の相対パス (DB・IR BANK パスは `stock_db.paths` で管理) |
 | `config/magic_numbers.toml` | スクレイピング間隔・ワーカー数・バッチサイズ等の定数 |
 | `config/cli_defaults.toml`  | CLI オプションのデフォルト値 (ダウンロード年数、`probe-proxies` のデフォルト等) |
 | `config/scan_fallbacks.toml`  | fallback スキャナの scan_roots / exclude_dirs / 関数名設定 |
@@ -255,7 +253,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 
 | コマンド              | 処理内容                                                                                                      |
 | :-------------------- | :------------------------------------------------------------------------------------------------------------ |
-| `import-irbank`       | `data/irbank/` の JSON を DB にインポート                                                                     |
+| `import-irbank`       | `stock_db/var/raw/irbank/` の JSON を DB にインポート                                                            |
 | `fetch-prices`        | 全銘柄の株価を Stooq 日次テキストファイルから一括取得                                                         |
 | `fetch-shares`        | kabutan から発行済株式数を取得し `stocks.shares_outstanding` に保存。BrowserService 不要 (plain HTTPS)         |
 | `scrape-bs`           | IR BANK /bs ページから詳細 BS データをスクレイピング                                                          |

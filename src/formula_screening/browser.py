@@ -9,13 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
-from stock_db.browser import (  # noqa: F401
+from stock_db.browser.client import (  # noqa: F401
     BrowserConfig,
     BrowserResponse,
+    BrowserServiceClient as _BrowserService,
     BrowserServiceError,
+    build_proxy_fields as _build_proxy_fields,
 )
-from stock_db.browser import BrowserService as _BrowserService
-from stock_db.browser import build_proxy_fields as _build_proxy_fields
 
 from formula_screening.config import MAGIC
 
