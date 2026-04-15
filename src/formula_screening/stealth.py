@@ -180,14 +180,14 @@ def _source_label(url: str) -> str:
     try:
         return parts[parts.index("raw.githubusercontent.com") + 1]
     except (ValueError, IndexError):
-        pass
+        logger.debug("githubusercontent pattern not matched: %s", url)
     # cdn.jsdelivr.net/gh/{user}/... → user
     try:
         gh_idx: int = parts.index("gh")
         if "cdn.jsdelivr.net" in parts:
             return parts[gh_idx + 1]
     except (ValueError, IndexError):
-        pass
+        logger.debug("jsdelivr pattern not matched: %s", url)
     # {user}.github.io/... → user
     for part in parts:
         if part.endswith(".github.io"):
@@ -279,6 +279,7 @@ def _hit_anon_detailed(
     try:
         payload = resp.json()
     except ValueError:
+        logger.debug("Invalid JSON in proxy check response")
         return "anon_unreachable"
     if "headers" not in payload:
         return "anon_unreachable"
@@ -431,7 +432,8 @@ def _tcp_reachable(addr: str, timeout: float = MAGIC["proxy"]["tcp_timeout"]) ->
         host, port_str = addr.rsplit(":", 1)
         with socket.create_connection((host, int(port_str)), timeout=timeout):
             return True
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        logger.debug("TCP check failed for %s: %s", addr, exc)
         return False
 
 

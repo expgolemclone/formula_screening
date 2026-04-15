@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -12,6 +13,9 @@ class LinkCell:
 
     label: str
     url: str
+
+
+logger = logging.getLogger(__name__)
 
     def __str__(self) -> str:
         return self.label
@@ -67,7 +71,7 @@ def supports_osc8_hyperlinks(env: Mapping[str, str], is_tty: bool) -> bool:
             if int(vte_version) >= 5000:
                 return True
         except ValueError:
-            pass
+            logger.debug("Non-numeric VTE_VERSION: %s", vte_version)
 
     term_program = env.get("TERM_PROGRAM", "").casefold()
     return term_program in {"iterm.app", "wezterm", "vscode"}

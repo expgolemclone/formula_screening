@@ -78,6 +78,7 @@ def _parse_value(raw: object) -> float | None:
     try:
         return float(raw)
     except (ValueError, TypeError):
+        logger.debug("Cannot convert %r to float", raw)
         return None
 
 

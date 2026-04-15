@@ -210,9 +210,9 @@ def _screen_chunk(
                 stock: dict = build_stock_dict(conn, ticker, names.get(ticker, ""))
                 if screen_fn(stock):
                     hits.append(stock)
-            except Exception:
+            except (sqlite3.Error, ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
                 errors += 1
-                logger.debug("Error screening %s", ticker, exc_info=True)
+                logger.debug("Error screening %s: %s", ticker, exc, exc_info=True)
     finally:
         conn.close()
     return hits, errors

@@ -24,6 +24,8 @@ import requests
 
 from formula_screening.config import MAGIC
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from formula_screening.stealth import ProxyPool
 
@@ -70,6 +72,7 @@ def parse_shares_outstanding(html: str) -> int | None:
     try:
         return int(digits)
     except ValueError:
+        logger.debug("Cannot parse shares int from %r", digits)
         return None
 
 

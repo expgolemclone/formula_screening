@@ -209,10 +209,8 @@ def dispatch_workers(
                     if pending is not f:
                         pending.cancel()
                 break
-            except Exception:
-                logger.warning(
-                    "Worker raised an exception", exc_info=True,
-                )
+            except (OSError, sqlite3.Error, ValueError, KeyError, TypeError) as exc:
+                logger.warning("Worker raised %s", exc, exc_info=True)
 
     if proxy_error is not None:
         raise proxy_error
