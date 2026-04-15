@@ -169,7 +169,7 @@ fallback パターン検出は `~/.claude/hooks/scan_fallbacks_core.py` (汎用 
 | :----------------- | :--------- | :-------------------------------------------------------- |
 | `config.py`        | `stock_db.paths` | TOML 読み込み、パス定数 (`DB_PATH`・`IRBANK_DIR` は `stock_db.paths` から取得) |
 | `db/schema.py`     | `stock_db.storage`, `stock_db.paths` | 接続生成 (stock_db.storage に委譲)            |
-| `db/repository.py` | `stock_db.storage.*` | CRUD 操作 (stocks, financial_items, prices) を stock_db.storage に委譲。`get_financial_dict` は全 statement キー (`pl`, `bs`, `cf`, `dividend`, `ss`, `forecast`) を初期化済みで返す |
+| `db/repository.py` | `stock_db.storage.*` | CRUD 操作 (stocks, financial_items, prices) を stock_db.storage に委譲。`get_financial_dict` は DB に存在する statement キーのみを返す (`pl`, `bs`, `cf`, `dividend`, `forecast`)。欠損キーは `screener.py` と `metrics.py` で `.get(key, {})` で安全に処理する |
 | `browser.py`       | `stock_db.browser.client`, `config` | Node.js puppeteer-real-browser サービスの起動・終了・fetch/download (プロキシはオプショナル) |
 | `stealth.py`       | `stock_db.browser.proxy_pool`, `config` | プロキシプール、reason 付き失敗キャッシュ、分散サイト検証 |
 | `log.py`           | `config`   | ロギング設定                                              |
@@ -355,8 +355,8 @@ COLUMNS = [                              # 追加表示カラム
     "pl": {"revenue": float, "net_income": float, ...},
     "bs": {"total_assets": float, "current_assets": float, ...},
     "cf": {"operating_cf": float, "free_cf": float, ...},
-    "dividend": {"dps": float, ...},
-    "forecast": {"net_income": float, "basic_eps": float, ...},
+    "dividend": {"dps": float, ...} | {},       # DB にない銘柄は空 dict
+    "forecast": {"net_income": float, ...} | {},  # DB にない銘柄は空 dict
     "metrics": {"per": float, "per_actual": float, "net_cash_ratio": float, "free_cf": float, "interest_bearing_debt": float, ...},
     "cf_history": [("2025-03", {"operating_cf": float, ...}), ...],
 }
