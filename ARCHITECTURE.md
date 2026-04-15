@@ -161,7 +161,7 @@ fallback パターン検出は `~/.claude/hooks/scan_fallbacks_core.py` (汎用 
 | `metrics.py`            | (なし)                                        | 財務データ + 株価 -> 派生指標の事前計算。PER は `market_cap / net_income` で計算し、per-share 値 (EPS) に依存しない (株式分割安全)。`free_cf` は CF データに無ければ `operating_cf + investing_cf` から導出し `metrics["free_cf"]` に格納。全指標は raw データから計算し、IR BANK の事前計算値は使わない |
 | `indicators/`           | `config`                                      | 戦略から呼ぶオンデマンド指標。`metrics` dict の事前計算値 (`free_cf`, `interest_bearing_debt` 等) を参照 |
 | `worker.py`             | `config`, `scrape.*`, `repository`, `db.schema`, `stealth`, `browser` | スクレイピング・株価取得のワーカー制御。`fetch_prices_stooq` は `get_browser` callable を受け取り、ローカル Stooq txt が無い時だけ lazy に browser を起動 |
-| `bootstrap.py`          | `config`, `repository`, `db.schema`, `cli`, `worker`, `scrape.*` | empty DB 検出時の auto-import/scrape/fetch。`required_sources` (必須引数) で対象を絞り、scrape が必要なときだけ proxy / browser を lazy に取得 |
+| `bootstrap.py`          | `config`, `repository`, `db.schema`, `cli`, `worker`, `scrape.*`, `stock_db.storage.prices`, `stock_db.storage.stocks` | データ欠損・stale 検出時の auto-import/scrape/fetch。`required_sources` (必須引数) で対象を絞り、scrape が必要なときだけ proxy / browser を lazy に取得。prices は `stale_days` ベースで判定 |
 
 ### インフラ層
 
@@ -262,7 +262,7 @@ TOML ファイルは `config.py` が起動時に読み込み、`MAGIC`, `PATHS`,
 | `clear-failure-cache` | reason を指定して proxy failure cache を削除し、削除前後の分布を表示                                          |
 | `screen`              | 戦略ファイルを適用してスクリーニング実行 (`--workers` で並列化、結果は固定幅テーブルを表示し OSC 8 対応端末ではリンク列を直接クリック可能、`--open [N]` で上位N件を四季報オンラインで開く) |
 
-`screen` 実行時には `cli._cmd_screen` が先に `load_strategy()` で戦略モジュールを読み込み、`REQUIRED_SOURCES` を取り出してから `bootstrap.ensure_data_available(required_sources=...)` を呼ぶ。bootstrap は `required_sources` に列挙された `financial_items` の source と `prices` だけをチェック対象にし、空のものがあれば対応する import/scrape/fetch を auto 実行する。戦略が必要としないソース (例: `irbank_forecast`) は空でもスキップされる。すべての required データが揃っている場合はそのまま screening に進む。データの再取得は各サブコマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) を明示的に実行することでのみ行う。
+`screen` 実行時には `cli._cmd_screen` が先に `load_strategy()` で戦略モジュールを読み込み、`REQUIRED_SOURCES` を取り出してから `bootstrap.ensure_data_available(required_sources=...)` を呼ぶ。bootstrap は `required_sources` に列挙された `financial_items` の source と `prices` だけをチェック対象にし、`financial_items` は空であれば、`prices` は `stale_days` を超えていれば対応する import/scrape/fetch を auto 実行する。戦略が必要としないソース (例: `irbank_forecast`) は空でもスキップされる。すべての required データが揃っている場合はそのまま screening に進む。データの再取得は各サブコマンド (`scrape-bs`, `scrape-forecast`, `fetch-prices`) を明示的に実行することでも行える。
 
 `ensure_data_available()` は `get_proxy_pool` / `get_browser` を lazy callable として受け取り、**scrape (`irbank_bs` / `irbank_forecast`) が実際に必要なときだけ** プロキシ取得を発動する。`prices` のみ不足していてローカル Stooq 日次 txt がある場合はプロキシもブラウザも起動せず、`fetch_prices_stooq` が get_browser callable を内部で参照して "ローカルファイル無し" のときだけ lazy に browser を起動する。
 

@@ -54,7 +54,7 @@ def ensure_data_available(
         ]
 
         missing_prices: bool = (
-            "prices" in required and _is_prices_empty(conn)
+            "prices" in required and _is_prices_stale(conn)
         )
 
         if not missing_sources and not missing_prices:
@@ -100,9 +100,15 @@ def _is_source_empty(conn: sqlite3.Connection, source: str) -> bool:
     return bool(row["cnt"] == 0)
 
 
-def _is_prices_empty(conn: sqlite3.Connection) -> bool:
-    row = conn.execute("SELECT COUNT(*) AS cnt FROM prices").fetchone()
-    return bool(row["cnt"] == 0)
+def _is_prices_stale(conn: sqlite3.Connection) -> bool:
+    from stock_db.storage.prices import get_fresh_price_tickers
+    from stock_db.storage.stocks import get_all_tickers
+
+    tickers: set[str] = get_all_tickers(conn)
+    if not tickers:
+        return False
+    fresh: set[str] = get_fresh_price_tickers(conn, MAGIC["price"]["stale_days"])
+    return bool(set(tickers) - fresh)
 
 
 def _import_irbank(conn: sqlite3.Connection) -> None:
