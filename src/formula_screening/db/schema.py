@@ -2,15 +2,9 @@
 
 import sqlite3
 
-try:
-    from stock_db.paths import STOCKS_DB_PATH
+from stock_db.paths import STOCKS_DB_PATH
 
-    DB_PATH = STOCKS_DB_PATH
-except ImportError:
-    # Fallback to local DB if stock_db is not available
-    from pathlib import Path
-
-    DB_PATH = Path.cwd() / "data" / "stocks.db"
+DB_PATH = STOCKS_DB_PATH
 
 
 def get_connection() -> sqlite3.Connection:
