@@ -13,7 +13,7 @@ formula_screening/
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── fmt.py                  # 全角文字対応のテーブル整形ユーティリティ
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行
-│   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率 等)
+│   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
 │   ├── screen_output.py        # スクリーニング結果の出力フォーマット
 │   ├── indicators/
 │   │   ├── __init__.py         # 共有指標関数の re-export

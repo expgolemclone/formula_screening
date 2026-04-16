@@ -40,7 +40,7 @@ def compute_metrics(
     operating_income = pl.get("operating_income")
     ordinary_income = pl.get("ordinary_income")
     net_income = pl.get("net_income")
-    forecast_net_income = financials["forecast"].get("net_income")
+    forecast_net_income = financials.get("forecast", {}).get("net_income")
 
     total_assets = bs.get("total_assets")
     stockholders_equity = bs.get("stockholders_equity")
@@ -70,7 +70,7 @@ def compute_metrics(
     metrics["per_actual"] = _safe_div(market_cap, net_income)
     metrics["pbr"] = _safe_div(market_cap, total_equity)
 
-    dps = financials["dividend"].get("dps")
+    dps = financials.get("dividend", {}).get("dps")
     metrics["dividend_yield"] = _pct(dps, price)
 
     metrics["gross_margin"] = _pct(gross_profit, revenue)
