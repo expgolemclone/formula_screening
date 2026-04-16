@@ -151,7 +151,7 @@ fallback パターン検出は `~/.claude/hooks/scan_fallbacks_core.py` (汎用 
 | `irbank_forecast.py` | `config`                         | /results ページのパース・行生成                  |
 | `irbank_common.py`   | `http_fetch`                     | IR BANK URL ビルダー (http_fetch に委譲)         |
 | `kabutan_shares.py`  | `config`, `stealth`              | kabutan 発行済株式数の取得・パース (plain HTTPS)  |
-| `stooq_price.py`     | `browser`                        | Stooq 日次テキストファイルによる株価一括取得      |
+| `stooq_price.py`     | `browser`                        | Stooq 日次テキストファイルによる株価一括取得。`find_latest_daily_txt` は `max_age_days` でファイル鮮度をチェックし、古いファイルは無視してブラウザダウンロードを促す |
 
 ### コア層
 

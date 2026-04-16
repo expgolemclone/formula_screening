@@ -309,7 +309,7 @@ def fetch_prices_stooq(
 
         stooq_dir = DATA_DIR / "stooq"
         stooq_dir.mkdir(parents=True, exist_ok=True)
-        txt_path = find_latest_daily_txt(stooq_dir)
+        txt_path = find_latest_daily_txt(stooq_dir, max_age_days=MAGIC["price"]["stale_days"])
 
         if txt_path is None:
             if get_browser is None:

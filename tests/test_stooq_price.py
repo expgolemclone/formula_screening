@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from formula_screening.scrape.stooq_price import (
@@ -99,20 +100,28 @@ class TestParseDailyTxt:
         assert result == {}
 
 
+def _today_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d")
+
+
+def _days_ago_str(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y%m%d")
+
+
 class TestFindLatestDailyTxt:
 
-    def test_finds_latest_by_filename(self, tmp_path: Path) -> None:
+    def test_finds_latest_fresh_file(self, tmp_path: Path) -> None:
         # Arrange
-        (tmp_path / "20260408_d.txt").write_text("old")
-        (tmp_path / "20260410_d.txt").write_text("new")
-        (tmp_path / "20260409_d.txt").write_text("mid")
+        (tmp_path / f"{_days_ago_str(2)}_d.txt").write_text("old")
+        (tmp_path / f"{_today_str()}_d.txt").write_text("new")
+        (tmp_path / f"{_days_ago_str(1)}_d.txt").write_text("mid")
 
         # Act
-        result = find_latest_daily_txt(tmp_path)
+        result = find_latest_daily_txt(tmp_path, max_age_days=1)
 
         # Assert
         assert result is not None
-        assert result.name == "20260410_d.txt"
+        assert result.name == f"{_today_str()}_d.txt"
 
     def test_returns_none_when_no_files(self, tmp_path: Path) -> None:
         # Act
@@ -125,11 +134,34 @@ class TestFindLatestDailyTxt:
         # Arrange
         (tmp_path / "d_jp_ms.zip").write_text("zip")
         (tmp_path / "error.txt").write_text("err")
-        (tmp_path / "20260410_d.txt").write_text("data")
+        (tmp_path / f"{_today_str()}_d.txt").write_text("data")
 
         # Act
-        result = find_latest_daily_txt(tmp_path)
+        result = find_latest_daily_txt(tmp_path, max_age_days=1)
 
         # Assert
         assert result is not None
-        assert result.name == "20260410_d.txt"
+        assert result.name == f"{_today_str()}_d.txt"
+
+    def test_returns_none_when_all_files_stale(self, tmp_path: Path) -> None:
+        # Arrange — files older than max_age_days
+        (tmp_path / f"{_days_ago_str(5)}_d.txt").write_text("old")
+        (tmp_path / f"{_days_ago_str(3)}_d.txt").write_text("mid")
+
+        # Act
+        result = find_latest_daily_txt(tmp_path, max_age_days=1)
+
+        # Assert
+        assert result is None
+
+    def test_returns_file_within_threshold(self, tmp_path: Path) -> None:
+        # Arrange — file from yesterday, max_age_days=2 so it should be accepted
+        yesterday = _days_ago_str(1)
+        (tmp_path / f"{yesterday}_d.txt").write_text("yesterday")
+
+        # Act
+        result = find_latest_daily_txt(tmp_path, max_age_days=2)
+
+        # Assert
+        assert result is not None
+        assert result.name == f"{yesterday}_d.txt"

@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TypedDict
 
@@ -53,14 +53,24 @@ def download_daily_txt(browser: BrowserService, download_dir: str) -> Path:
     return Path(file_path)
 
 
-def find_latest_daily_txt(directory: Path) -> Path | None:
-    """Return the most recent ``YYYYMMDD_d.txt`` file in *directory*, or None."""
+def find_latest_daily_txt(directory: Path, *, max_age_days: int = 1) -> Path | None:
+    """Return the most recent daily txt whose file-date is within *max_age_days*."""
+    threshold = datetime.now(timezone.utc) - timedelta(days=max_age_days)
     candidates = sorted(
         (p for p in directory.iterdir() if _DAILY_TXT_RE.match(p.name)),
         key=lambda p: p.name,
         reverse=True,
     )
-    return candidates[0] if candidates else None
+    for cand in candidates:
+        m = _DATE_FMT.match(cand.name[:8])
+        if m:
+            file_date = datetime(
+                int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                tzinfo=timezone.utc,
+            )
+            if file_date >= threshold:
+                return cand
+    return None
 
 
 def parse_daily_txt(

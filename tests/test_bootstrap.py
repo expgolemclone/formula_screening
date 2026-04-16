@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TypedDict
 
@@ -140,9 +141,11 @@ class TestEnsureDataAvailableRequiredSources:
     ) -> None:
         # Arrange — only prices missing, local stooq txt available
         _seed_only_irbank(db_path)
+        today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        yesterday_str = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d")
         _write_stooq_txt(
-            stooq_dir / "20260410_d.txt",
-            ["1301.JP,D,20260409,000000,100,110,90,105,1000,0"],
+            stooq_dir / f"{today_str}_d.txt",
+            [f"1301.JP,D,{yesterday_str},000000,100,110,90,105,1000,0"],
         )
         from formula_screening.bootstrap import ensure_data_available
 
