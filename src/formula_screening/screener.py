@@ -157,6 +157,22 @@ def load_strategy(path: Path) -> ModuleType:
     return mod
 
 
+def screen_single(
+    conn: sqlite3.Connection,
+    strategy_path: Path,
+    ticker: str,
+) -> tuple[dict, bool]:
+    """Run a strategy against a single ticker.
+
+    Returns (stock_dict, passed).
+    """
+    mod: ModuleType = load_strategy(strategy_path)
+    names: dict[str, str] = get_stock_names(conn)
+    stock: dict = build_stock_dict(conn, ticker, names.get(ticker, ""))
+    passed: bool = mod.screen(stock)
+    return stock, passed
+
+
 def build_stock_dict(
     conn: sqlite3.Connection,
     ticker: str,

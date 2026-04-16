@@ -21,7 +21,32 @@ _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
 
 
+def _cmd_screen_single(args: argparse.Namespace) -> None:
+    from formula_screening.screener import load_strategy, screen_single
+
+    strategy_path = Path(args.strategy)
+    if not strategy_path.exists():
+        print(f"Strategy file not found: {strategy_path}", file=sys.stderr)
+        sys.exit(1)
+
+    strategy_mod = load_strategy(strategy_path)
+    extra_cols_fn: _ExtraColsFn | None = getattr(strategy_mod, "columns", None)
+
+    conn: sqlite3.Connection = get_connection()
+    try:
+        stock, passed = screen_single(conn, strategy_path, args.ticker)
+        _print_table([stock], extra_cols_fn=extra_cols_fn)
+        label: str = "PASS" if passed else "FAIL"
+        print(f"\n{args.ticker}: {label}")
+    finally:
+        conn.close()
+
+
 def _cmd_screen(args: argparse.Namespace) -> None:
+    if args.ticker:
+        _cmd_screen_single(args)
+        return
+
     from formula_screening.screener import load_strategy, run_screening
 
     strategy_path = Path(args.strategy)
@@ -33,11 +58,11 @@ def _cmd_screen(args: argparse.Namespace) -> None:
 
     extra_cols_fn: _ExtraColsFn | None = getattr(strategy_mod, "columns", None)
 
-    conn = get_connection()
+    conn: sqlite3.Connection = get_connection()
     try:
-        start = time.monotonic()
-        hits = run_screening(conn, strategy_path, workers=args.workers)
-        elapsed = time.monotonic() - start
+        start: float = time.monotonic()
+        hits: list[dict] = run_screening(conn, strategy_path, workers=args.workers)
+        elapsed: float = time.monotonic() - start
 
         if not hits:
             print("No stocks matched the screening criteria.")
@@ -49,7 +74,6 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         else:
             hits.sort(key=lambda s: s["metrics"].get("net_cash_ratio") or 0, reverse=True)
 
-        # Display results as a table
         _print_table(hits, extra_cols_fn=extra_cols_fn)
         print(f"\n{len(hits)} stocks matched ({elapsed:.1f}s)")
 
@@ -58,7 +82,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
             print(f"Results written to {args.output}")
 
         if args.open is not None:
-            to_open = hits[:args.open] if args.open > 0 else hits
+            to_open: list[dict] = hits[:args.open] if args.open > 0 else hits
             _open_shikiho(to_open)
     finally:
         conn.close()
@@ -174,6 +198,7 @@ def main() -> None:
     p_screen.add_argument("--output", "-o", help="Write results to CSV file")
     p_screen.add_argument("--open", nargs="?", type=int, const=0, default=None,
                            help="Open top N hits on Shikiho Online (omit N for all)")
+    p_screen.add_argument("--ticker", "-t", type=str, default=None, help="Screen a single ticker (e.g. 7203)")
     p_screen.add_argument("--workers", type=int, default=MAGIC["screening"]["workers"], help="Number of parallel screening workers")
 
     args = parser.parse_args()

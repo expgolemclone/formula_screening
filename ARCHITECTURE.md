@@ -14,7 +14,7 @@ formula_screening/
 │   ├── fmt.py                  # 全角文字対応のテーブル整形ユーティリティ
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
-│   ├── screen_output.py        # スクリーニング結果の出力フォーマット
+│   ├── screen_output.py        # 共有カラムヘルパー (LinkCell, 外部サイトURL生成, カラムマージ)
 │   ├── indicators/
 │   │   ├── __init__.py         # 共有指標関数の re-export
 │   │   ├── fcf.py              # 平均FCFイールド (fcf_yield_avg)
@@ -22,6 +22,8 @@ formula_screening/
 │   └── db/
 │       ├── schema.py           # SQLite 接続管理 (stock_db.STOCKS_DB_PATH を使用)
 │       └── repository.py       # データアクセス層 (stocks, financial_items, prices)
+├── data/
+│   └── logs/                   # RotatingFileHandler のログ出力先
 ├── strategies/                 # スクリーニング戦略ファイル
 │   ├── net_cash.py             # ネットキャッシュ比率 (net_cash / 時価総額) > 1.0 戦略
 │   └── net_cash_fcf.py         # ネットキャッシュ + 平均FCFイールド戦略
@@ -50,6 +52,7 @@ formula_screening/
                     │                 │
                     │ - load_strategy()│
                     │ - build_stock_dict()│
+                    │ - screen_single()│
                     │ - run_screening()│
                     └────────┬────────┘
                              │
@@ -90,7 +93,7 @@ FILTERS: list[tuple] = [
 ]
 
 # ソートキー（オプション）
-SORT: Callable[[dict], float] = fcf_yield_avg
+SORT: Callable[[dict], float | None] = fcf_yield_avg
 
 # 追加カラム（オプション）
 COLUMNS: list[tuple] = [
@@ -98,6 +101,8 @@ COLUMNS: list[tuple] = [
     ("CROIC%", croic, "{:.2%}"),
 ]
 ```
+
+すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。
 
 ### 関数ベース形式
 
@@ -113,7 +118,7 @@ def screen(stock: dict) -> bool:
 def sort_key(stock: dict) -> float:
     return stock["metrics"].get("net_cash_ratio") or 0
 
-def columns(stock: dict) -> list[tuple[str, str]]:
+def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
     return [("custom", "value")]
 ```
 
@@ -122,9 +127,9 @@ def columns(stock: dict) -> list[tuple[str, str]]:
 - **DBパス**: `stock_db.paths.STOCKS_DB_PATH` (デフォルト: `var/db/stocks.db`)
 - **依存関係**: `pyproject.toml` で `stock-db` をローカルパス参照
 - **テーブル構造**:
-  - `stocks`: 銘柄情報（ticker, name, sector, market, shares_outstanding）
-  - `financial_items`: 財務データ（PL/BS/CF/forecast のEAVモデル）
-  - `prices`: 株価データ（ticker, date, close, volume）
+  - `stocks`: 銘柄情報（ticker, edinet_code, name, sector, market, shares_outstanding, shares_updated_at, updated_at）
+  - `financial_items`: 財務データ（PL/BS/CF/dividend/ss/forecast のEAVモデル）
+  - `prices`: 株価データ（ticker, date, close, volume, updated_at）
 
 ## CLI 使用例
 
@@ -134,6 +139,9 @@ uv run python -m formula_screening screen -s strategies/net_cash.py
 
 # 結果をCSVに出力
 uv run python -m formula_screening screen -s strategies/net_cash.py -o result.csv
+
+# 単一銘柄のスクリーニング（PASS/FAIL判定）
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203
 
 # 上位5件を四季報オンラインで開く
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --open 5
