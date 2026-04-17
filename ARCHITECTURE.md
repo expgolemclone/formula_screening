@@ -149,3 +149,14 @@ uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --open 5
 # ワーカー数を指定（デフォルト: 4）
 uv run python -m formula_screening screen -s strategies/net_cash.py --workers 8
 ```
+
+### 戦略ファイルを直接実行
+
+各戦略ファイルは `__main__` ブロックを持ち、`screen` サブコマンドのショートカットとして直接実行できる。追加引数はそのまま `screen` に渡る。パス区切りはフォワードスラッシュで Windows bash / PowerShell / Linux / macOS 共通に動作する。
+
+```bash
+# 上記 CLI 例と等価
+uv run python strategies/net_cash_fcf.py -t 7203
+uv run python strategies/net_cash.py --workers 8
+uv run python strategies/net_cash_fcf.py --open 5
+```

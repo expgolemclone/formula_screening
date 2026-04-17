@@ -27,3 +27,12 @@ COLUMNS: list[tuple[str, Callable[[dict], float | None], str]] = [
     ("FCF_Y%", fcf_yield_avg, "{:.2%}"),
     ("CROIC%", croic, "{:.2%}"),
 ]
+
+
+if __name__ == "__main__":
+    import sys
+
+    from formula_screening.cli import main as _cli_main
+
+    sys.argv = ["formula_screening", "screen", "-s", __file__, *sys.argv[1:]]
+    _cli_main()

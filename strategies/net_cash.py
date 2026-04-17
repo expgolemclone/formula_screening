@@ -13,3 +13,12 @@ FILTERS: list[tuple[str, str, float | tuple[float, float]]] = [
     ("per", "between", (0, 10)),
     ("equity_ratio", ">", 50),
 ]
+
+
+if __name__ == "__main__":
+    import sys
+
+    from formula_screening.cli import main as _cli_main
+
+    sys.argv = ["formula_screening", "screen", "-s", __file__, *sys.argv[1:]]
+    _cli_main()
