@@ -5,6 +5,7 @@ import argparse
 import csv
 import logging
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -26,33 +27,66 @@ from formula_screening.screen_output import (
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
 
+_RANGE_RE = re.compile(r"^(\d+)-(\d+)$")
 
-def _cmd_screen_single(args: argparse.Namespace) -> None:
-    from formula_screening.screener import load_strategy, screen_single
 
-    strategy_path = Path(args.strategy)
-    if not strategy_path.exists():
-        print(f"Strategy file not found: {strategy_path}", file=sys.stderr)
-        sys.exit(1)
+def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
+    """Resolve ``--ticker`` value into a concrete list of ticker strings.
 
-    strategy_mod = load_strategy(strategy_path)
-    extra_cols_fn: _ExtraColsFn | None = getattr(strategy_mod, "columns", None)
+    Supported formats::
 
-    conn: sqlite3.Connection = get_connection()
-    try:
-        stock, passed = screen_single(conn, strategy_path, args.ticker)
-        _print_table([stock], extra_cols_fn=extra_cols_fn)
-        label: str = "PASS" if passed else "FAIL"
-        print(f"\n{args.ticker}: {label}")
-    finally:
-        conn.close()
+        7203          → single ticker
+        all           → every ticker in the DB
+        1000-2000     → DB tickers whose numeric code falls in [1000, 2000]
+        csv:path.csv  → tickers read from the first column of *path.csv*
+    """
+    if spec == "all":
+        from formula_screening.db.repository import get_all_tickers
+        return get_all_tickers(conn)
+
+    if spec.startswith("csv:"):
+        csv_path = Path(spec[4:])
+        if not csv_path.exists():
+            print(f"CSV file not found: {csv_path}", file=sys.stderr)
+            sys.exit(1)
+        tickers: list[str] = []
+        with csv_path.open(newline="", encoding="utf-8") as f:
+            for row in csv.reader(f):
+                if row:
+                    val = row[0].strip()
+                    if val:
+                        tickers.append(val)
+        if not tickers:
+            print(f"No tickers found in {csv_path}", file=sys.stderr)
+            sys.exit(1)
+        return tickers
+
+    m = _RANGE_RE.match(spec)
+    if m:
+        from formula_screening.db.repository import get_all_tickers
+        lo, hi = int(m.group(1)), int(m.group(2))
+        all_tickers = get_all_tickers(conn)
+        return [t for t in all_tickers if t.isdigit() and lo <= int(t) <= hi]
+
+    # bare value → single ticker
+    return [spec]
+
+
+def _run_single_ticker(
+    conn: sqlite3.Connection,
+    strategy_path: Path,
+    ticker: str,
+    extra_cols_fn: _ExtraColsFn | None,
+) -> None:
+    from formula_screening.screener import screen_single
+
+    stock, passed = screen_single(conn, strategy_path, ticker)
+    _print_table([stock], extra_cols_fn=extra_cols_fn)
+    label: str = "PASS" if passed else "FAIL"
+    print(f"\n{ticker}: {label}")
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
-    if args.ticker:
-        _cmd_screen_single(args)
-        return
-
     from formula_screening.screener import load_strategy, run_screening
 
     strategy_path = Path(args.strategy)
@@ -61,13 +95,24 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     strategy_mod = load_strategy(strategy_path)
-
     extra_cols_fn: _ExtraColsFn | None = getattr(strategy_mod, "columns", None)
 
     conn: sqlite3.Connection = get_connection()
     try:
+        # Determine which tickers to screen
+        specific_tickers: list[str] | None = None
+        if args.ticker:
+            parsed = _parse_ticker_spec(args.ticker, conn)
+            if parsed == [args.ticker]:
+                # bare ticker → single-ticker mode (PASS/FAIL output)
+                _run_single_ticker(conn, strategy_path, args.ticker, extra_cols_fn)
+                return
+            specific_tickers = parsed
+
         start: float = time.monotonic()
-        hits: list[dict] = run_screening(conn, strategy_path, workers=args.workers)
+        hits: list[dict] = run_screening(
+            conn, strategy_path, workers=args.workers, tickers=specific_tickers,
+        )
         elapsed: float = time.monotonic() - start
 
         if not hits:
@@ -207,7 +252,10 @@ def main() -> None:
     p_screen.add_argument("--output", "-o", help="Write results to CSV file")
     p_screen.add_argument("--open", nargs="?", type=int, const=0, default=None,
                            help="Open top N hits on Shikiho Online (omit N for all)")
-    p_screen.add_argument("--ticker", "-t", type=str, default=None, help="Screen a single ticker (e.g. 7203)")
+    p_screen.add_argument(
+        "--ticker", "-t", type=str, default=None,
+        help="Ticker(s) to screen: a single code (7203), 'all', a range (1000-2000), or csv:path.csv",
+    )
     p_screen.add_argument("--workers", type=int, default=MAGIC["screening"]["workers"], help="Number of parallel screening workers")
 
     args = parser.parse_args()

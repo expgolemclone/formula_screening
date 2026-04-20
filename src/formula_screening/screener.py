@@ -238,6 +238,7 @@ def run_screening(
     strategy_path: Path,
     *,
     workers: int = 1,
+    tickers: list[str] | None = None,
 ) -> list[dict]:
     """Run a screening strategy against all stocks in the DB.
 
@@ -249,7 +250,8 @@ def run_screening(
     mod: ModuleType = load_strategy(strategy_path)
     screen_fn: Callable[[dict], bool] = mod.screen
 
-    tickers: list[str] = get_all_tickers(conn)
+    if tickers is None:
+        tickers = get_all_tickers(conn)
     logger.info("Screening %d stocks with %s (workers=%d)", len(tickers), strategy_path.name, workers)
 
     names: dict[str, str] = get_stock_names(conn)

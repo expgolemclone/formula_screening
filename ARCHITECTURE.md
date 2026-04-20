@@ -8,11 +8,11 @@
 formula_screening/
 ├── src/formula_screening/      # メインパッケージ
 │   ├── __main__.py             # python -m formula_screening のエントリポイント
-│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + OSC 8 ハイパーリンク描画
+│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker マルチフォーマット解決 + OSC 8 ハイパーリンク描画
 │   ├── config.py               # config/*.toml の読み込み、パス定数の定義
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── fmt.py                  # 全角文字対応のテーブル整形ユーティリティ
-│   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行
+│   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers パラメータで対象銘柄を限定可能)
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
 │   ├── screen_output.py        # 共有カラムヘルパー (LinkCell, 外部サイトURL生成, カラムマージ)
 │   ├── indicators/
@@ -53,7 +53,7 @@ formula_screening/
                     │ - load_strategy()│
                     │ - build_stock_dict()│
                     │ - screen_single()│
-                    │ - run_screening()│
+                    │ - run_screening()  (tickers=で対象限定)│
                     └────────┬────────┘
                              │
                              v
@@ -142,6 +142,15 @@ uv run python -m formula_screening screen -s strategies/net_cash.py -o result.cs
 
 # 単一銘柄のスクリーニング（PASS/FAIL判定）
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203
+
+# 全銘柄をスクリーニング（--ticker省略と等価）
+uv run python -m formula_screening screen -s strategies/net_cash.py -t all
+
+# 範囲指定でスクリーニング（DB内の7200〜7210銘柄のみ）
+uv run python -m formula_screening screen -s strategies/net_cash.py -t 7200-7210
+
+# CSVファイルから銘柄一覧を指定してスクリーニング
+uv run python -m formula_screening screen -s strategies/net_cash.py -t csv:tickers.csv
 
 # 上位5件を四季報オンラインで開く
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --open 5
