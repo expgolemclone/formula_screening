@@ -8,7 +8,7 @@
 formula_screening/
 ├── src/formula_screening/      # メインパッケージ
 │   ├── __main__.py             # python -m formula_screening のエントリポイント
-│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンドのみ)
+│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + OSC 8 ハイパーリンク描画
 │   ├── config.py               # config/*.toml の読み込み、パス定数の定義
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── fmt.py                  # 全角文字対応のテーブル整形ユーティリティ
@@ -102,7 +102,7 @@ COLUMNS: list[tuple] = [
 ]
 ```
 
-すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。
+すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。`cli._print_table` は `LinkCell` を OSC 8 ハイパーリンクとして描画する（対応ターミナルのみ: kitty, iTerm2, WezTerm, VSCode 等）。
 
 ### 関数ベース形式
 

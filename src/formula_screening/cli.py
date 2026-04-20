@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import os
 import sqlite3
 import sys
 import time
@@ -16,6 +17,11 @@ from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.db.schema import get_connection, init_db
 from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
+from formula_screening.screen_output import (
+    LinkCell,
+    build_osc8_hyperlink,
+    supports_osc8_hyperlinks,
+)
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -116,6 +122,7 @@ def _print_table(
     """Print screening results as a formatted table to stdout."""
     headers = ["Ticker", "Name", "Price", "NC_Ratio", "PER", "PBR", "Div%"]
     rows: list[list[str]] = []
+    _osc8 = supports_osc8_hyperlinks(os.environ, sys.stdout.isatty())
 
     for s in hits:
         m = s["metrics"]
@@ -132,8 +139,10 @@ def _print_table(
             extra = extra_cols_fn(s)
             if not rows:
                 headers.extend(h for h, _ in extra)
-            # Convert LinkCell to string
-            row.extend(str(v) if not isinstance(v, str) else v for _, v in extra)
+            row.extend(
+                build_osc8_hyperlink(v.label, v.url) if isinstance(v, LinkCell) and _osc8 else str(v)
+                for _, v in extra
+            )
         rows.append(row)
 
     widths = [
