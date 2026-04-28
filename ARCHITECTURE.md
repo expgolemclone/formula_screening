@@ -14,6 +14,8 @@ formula_screening/
 │   ├── fmt.py                  # 全角文字対応のテーブル整形ユーティリティ
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers パラメータで対象銘柄を限定可能)
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
+│   ├── net_cash.py             # ネットキャッシュ・ネットキャッシュ比率の計算 (compute_net_cash_metrics)
+│   ├── validation.py           # スクレイピング値 vs OCR検証パイプライン (OpenAI抽出・CSV出力)
 │   ├── screen_output.py        # 共有カラムヘルパー (LinkCell, 外部サイトURL生成, カラムマージ)
 │   ├── indicators/
 │   │   ├── __init__.py         # 共有指標関数の re-export
@@ -22,6 +24,9 @@ formula_screening/
 │   └── db/
 │       ├── schema.py           # SQLite 接続管理 (stock_db.STOCKS_DB_PATH を使用)
 │       └── repository.py       # データアクセス層 (stocks, financial_items, prices)
+├── tests/                      # テストスイート
+│   ├── test_net_cash.py        # compute_net_cash_metrics のテスト
+│   └── test_validation.py      # バリデーションパイプラインのテスト
 ├── data/
 │   └── logs/                   # RotatingFileHandler のログ出力先
 ├── strategies/                 # スクリーニング戦略ファイル
@@ -45,32 +50,39 @@ formula_screening/
                     │ - financial_items│
                     └────────┬────────┘
                              │
-                             │ repository.py
-                             v
-                    ┌─────────────────┐
-                    │  screener.py    │
-                    │                 │
-                    │ - load_strategy()│
-                    │ - build_stock_dict()│
-                    │ - screen_single()│
-                    │ - run_screening()  (tickers=で対象限定)│
-                    └────────┬────────┘
-                             │
-                             v
-                    ┌─────────────────┐
-                    │  strategy.py    │
-                    │  (user-defined) │
-                    │                 │
-                    │ - FILTERS       │
-                    │ - SORT          │
-                    │ - COLUMNS       │
-                    └────────┬────────┘
-                             │
-                             v
-                    ┌─────────────────┐
-                    │   CLI Output    │
-                    │  (table/CSV)    │
-                    └─────────────────┘
+           ┌─────────────────┴──────────────────┐
+           │ repository.py                      │ validation.py
+           v                                    v
+  ┌─────────────────┐              ┌──────────────────────┐
+  │  screener.py    │              │ select_validation_   │
+  │                 │              │   targets()          │
+  │ - load_strategy()│              └──────────┬───────────┘
+  │ - build_stock_  │                         │
+  │   dict()        │              ┌──────────v───────────┐
+  │ - screen_single()│              │ scrape_validation_   │
+  │ - run_screening()│              │   sample()           │
+  └────────┬────────┘              │ (irbank BS再取得)    │
+           │                       └──────────┬───────────┘
+           v                                  │
+  ┌─────────────────┐              ┌──────────v───────────┐
+  │  strategy.py    │              │ extract_ocr_balance_ │
+  │  (user-defined) │              │   sheet()            │
+  │                 │              │ (有価証券報告書PDF   │
+  │ - FILTERS       │              │  → OpenAI抽出)       │
+  │ - SORT          │              └──────────┬───────────┘
+  │ - COLUMNS       │                         │
+  └────────┬────────┘              ┌──────────v───────────┐
+           │                       │ net_cash.py           │
+           v                       │ compute_net_cash_     │
+  ┌─────────────────┐              │   metrics()           │
+  │   CLI Output    │              │ (両方の指標を計算)    │
+  │  (table/CSV)    │              └──────────┬───────────┘
+  └─────────────────┘                         │
+                                  ┌──────────v───────────┐
+                                  │ compare_net_cash_    │
+                                  │   snapshots()        │
+                                  │ (差分判定 → CSV出力)  │
+                                  └──────────────────────┘
 ```
 
 ## 戦略ファイルフォーマット
@@ -127,7 +139,7 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
 - **DBパス**: `stock_db.paths.STOCKS_DB_PATH` (デフォルト: `var/db/stocks.db`)
 - **依存関係**: `pyproject.toml` で `stock-db` をローカルパス参照
 - **テーブル構造**:
-  - `stocks`: 銘柄情報（ticker, edinet_code, name, sector, market, shares_outstanding, shares_updated_at, updated_at）
+  - `stocks`: 銘柄情報（ticker, edinet_code, name, sector, market, shares_outstanding, shares_updated_at, securities_report_url, updated_at）
   - `financial_items`: 財務データ（PL/BS/CF/dividend/ss/forecast のEAVモデル）
   - `prices`: 株価データ（ticker, date, close, volume, updated_at）
 
