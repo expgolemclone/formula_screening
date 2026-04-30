@@ -147,14 +147,33 @@ def _open_shikiho(hits: list[dict]) -> None:
     print(f"Opened {len(hits)} tickers in browser.")
 
 
+def _cell(text: str, *, good: bool | None = None) -> str | Text:
+    """Return a styled Text cell or plain string."""
+    if text == "-":
+        return Text(text, style="dim")
+    if good is True:
+        return Text(text, style="green")
+    if good is False:
+        return Text(text, style="red")
+    return text
+
+
+def _style_signed(text: str) -> str | Text:
+    """Color a formatted numeric string green or red by sign."""
+    if text == "-":
+        return Text(text, style="dim")
+    return Text(text, style="green" if not text.startswith("-") else "red")
+
+
 def _print_table(
     hits: list[dict],
     *,
     extra_cols_fn: _ExtraColsFn | None = None,
 ) -> None:
-    """Print screening results as a markdown table to stdout."""
+    """Print screening results as a rich table to stdout."""
     console = Console(width=200)
-    table = Table(box=rich.box.MARKDOWN, show_lines=False, expand=False)
+    table = Table(box=rich.box.HEAVY_HEAD, show_lines=False, expand=False,
+                  header_style="bold cyan")
     table.add_column("Ticker")
     table.add_column("Name", max_width=20, no_wrap=True)
     table.add_column("Price", justify="right")
@@ -166,14 +185,28 @@ def _print_table(
 
     for s in hits:
         m = s["metrics"]
+        pbr_val = m.get("pbr")
+        div_val = m.get("dividend_yield")
         row: list[str | Text] = [
             s["ticker"],
             s["name"] or "",
-            f'{s["price"]:.0f}' if s["price"] else "-",
-            f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
-            f'{m["per"]:.1f}' if m.get("per") else "-",
-            f'{m["pbr"]:.2f}' if m.get("pbr") else "-",
-            f'{m["dividend_yield"]:.2f}' if m.get("dividend_yield") else "-",
+            _cell(f'{s["price"]:.0f}' if s["price"] else "-"),
+            _cell(
+                f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
+                good=m.get("net_cash_ratio") is not None,
+            ),
+            _cell(
+                f'{m["per"]:.1f}' if m.get("per") else "-",
+                good=m.get("per") is not None,
+            ),
+            _cell(
+                f'{pbr_val:.2f}' if pbr_val is not None else "-",
+                good=pbr_val is not None and pbr_val < 1.0,
+            ),
+            _cell(
+                f'{div_val:.2f}' if div_val is not None else "-",
+                good=div_val is not None and div_val > 0,
+            ),
         ]
         if extra_cols_fn is not None:
             extra = extra_cols_fn(s)
@@ -185,7 +218,7 @@ def _print_table(
                 if isinstance(v, LinkCell):
                     row.append(Text(v.label, style=f"link {v.url}"))
                 else:
-                    row.append(str(v))
+                    row.append(_style_signed(str(v)))
         table.add_row(*row)
 
     console.print(table)

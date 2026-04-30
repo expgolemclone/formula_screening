@@ -8,7 +8,7 @@
 formula_screening/
 ├── src/formula_screening/      # メインパッケージ
 │   ├── __main__.py             # python -m formula_screening のエントリポイント
-│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + --show-all + rich markdown テーブル描画
+│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + --show-all + rich colorful テーブル描画 (HEAVY_HEAD罫線, bold cyanヘッダー, 条件付きセル色付け)
 │   ├── config.py               # config/*.toml の読み込み、パス定数の定義
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers / return_all パラメータ対応)
@@ -107,7 +107,7 @@ COLUMNS: list[tuple] = [
 ]
 ```
 
-すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。`cli._print_table` は `LinkCell` を OSC 8 ハイパーリンクとして描画する（対応ターミナルのみ: kitty, iTerm2, WezTerm, VSCode 等）。
+すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。`cli._print_table` は `LinkCell` を OSC 8 ハイパーリンクとして描画する（対応ターミナルのみ: kitty, iTerm2, WezTerm, VSCode 等）。テーブルは `HEAVY_HEAD` 罫線 + `bold cyan` ヘッダーで描画し、各セルは条件付きで色付けされる（緑=良好値、赤=負値、dim=欠損値）。
 
 ### 関数ベース形式
 
