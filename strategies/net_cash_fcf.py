@@ -14,14 +14,16 @@ from formula_screening.indicators import croic, fcf_yield_avg
 
 REQUIRED_SOURCES: list[str] = ["irbank", "irbank_bs", "prices"]
 
-FILTERS: list[tuple[str | Callable[[dict], float | None], str, float | tuple[float, float]]] = [
+FILTERS: list[
+    tuple[str | Callable[[dict], float | None], str, float | tuple[float, float]]
+] = [
     ("net_cash_ratio", ">", 1.0),
     ("per", "between", (0, 10)),
     ("equity_ratio", ">", 50),
     (fcf_yield_avg, ">", 0),
 ]
 
-SORT: Callable[[dict], float | None] = fcf_yield_avg
+SORT: str = "net_cash_ratio"
 
 COLUMNS: list[tuple[str, Callable[[dict], float | None], str]] = [
     ("FCF_Y%", fcf_yield_avg, "{:.2%}"),

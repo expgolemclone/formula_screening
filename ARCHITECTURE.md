@@ -97,8 +97,8 @@ FILTERS: list[tuple] = [
     (fcf_yield_avg, ">", 0),                # カスタム関数も可
 ]
 
-# ソートキー（オプション）
-SORT: Callable[[dict], float | None] = fcf_yield_avg
+# ソートキー（オプション）— 文字列キー または 呼び出し可能関数
+SORT: str | Callable[[dict], float | None] = "net_cash_ratio"
 
 # 追加カラム（オプション）
 COLUMNS: list[tuple] = [
