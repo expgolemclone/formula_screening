@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-import logging
-from collections.abc import Mapping
 from dataclasses import dataclass
-
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,8 +22,6 @@ ScreenColumn = tuple[str, ScreenColumnValue]
 
 _MONEX_URL_TEMPLATE = "https://monex.ifis.co.jp/index.php?sa=find&ta=e&wd={ticker}&x=0&y=0"
 _SIKIHO_URL_TEMPLATE = "https://shikiho.toyokeizai.net/stocks/{ticker}/shikiho"
-_OSC8_ESCAPE = "\033]8;;"
-_OSC8_TERMINATOR = "\033\\"
 
 
 def build_monex_url(ticker: str) -> str:
@@ -41,40 +34,6 @@ def build_sikiho_url(ticker: str) -> str:
     """Return the Shikiho URL for a ticker."""
 
     return _SIKIHO_URL_TEMPLATE.format(ticker=ticker)
-
-
-def build_osc8_hyperlink(label: str, url: str) -> str:
-    """Return *label* wrapped in an OSC 8 hyperlink."""
-
-    return f"{_OSC8_ESCAPE}{url}{_OSC8_TERMINATOR}{label}{_OSC8_ESCAPE}{_OSC8_TERMINATOR}"
-
-
-def supports_osc8_hyperlinks(env: Mapping[str, str], is_tty: bool) -> bool:
-    """Return True when the terminal environment likely supports OSC 8."""
-
-    if not is_tty:
-        return False
-
-    term = env.get("TERM", "")
-    if term == "dumb":
-        return False
-
-    if env.get("KITTY_WINDOW_ID") or term == "xterm-kitty":
-        return True
-
-    if env.get("WT_SESSION") or env.get("KONSOLE_VERSION"):
-        return True
-
-    vte_version = env.get("VTE_VERSION")
-    if vte_version is not None:
-        try:
-            if int(vte_version) >= 5000:
-                return True
-        except ValueError:
-            logger.debug("Non-numeric VTE_VERSION: %s", vte_version)
-
-    term_program = env.get("TERM_PROGRAM", "").casefold()
-    return term_program in {"iterm.app", "wezterm", "vscode"}
 
 
 def build_common_link_columns(stock: dict) -> list[ScreenColumn]:

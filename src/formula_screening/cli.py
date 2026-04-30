@@ -4,25 +4,23 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
-import os
 import re
 import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from collections.abc import Callable
 
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
+import rich.box
+
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.db.schema import get_connection, init_db
-from formula_screening.fmt import display_width, ljust, truncate
 from formula_screening.log import setup_logging
-from formula_screening.screen_output import (
-    LinkCell,
-    build_osc8_hyperlink,
-    supports_osc8_hyperlinks,
-)
+from formula_screening.screen_output import LinkCell
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -154,16 +152,23 @@ def _print_table(
     *,
     extra_cols_fn: _ExtraColsFn | None = None,
 ) -> None:
-    """Print screening results as a formatted table to stdout."""
-    headers = ["Ticker", "Name", "Price", "NC_Ratio", "PER", "PBR", "Div%"]
-    rows: list[list[str]] = []
-    _osc8 = supports_osc8_hyperlinks(os.environ, sys.stdout.isatty())
+    """Print screening results as a markdown table to stdout."""
+    console = Console(width=200)
+    table = Table(box=rich.box.MARKDOWN, show_lines=False, expand=False)
+    table.add_column("Ticker")
+    table.add_column("Name", max_width=20, no_wrap=True)
+    table.add_column("Price", justify="right")
+    table.add_column("NC_Ratio", justify="right")
+    table.add_column("PER", justify="right")
+    table.add_column("PBR", justify="right")
+    table.add_column("Div%", justify="right")
+    extra_headers_added = False
 
     for s in hits:
         m = s["metrics"]
-        row = [
+        row: list[str | Text] = [
             s["ticker"],
-            truncate(s["name"] or "", 20),
+            s["name"] or "",
             f'{s["price"]:.0f}' if s["price"] else "-",
             f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
             f'{m["per"]:.1f}' if m.get("per") else "-",
@@ -172,24 +177,18 @@ def _print_table(
         ]
         if extra_cols_fn is not None:
             extra = extra_cols_fn(s)
-            if not rows:
-                headers.extend(h for h, _ in extra)
-            row.extend(
-                build_osc8_hyperlink(v.label, v.url) if isinstance(v, LinkCell) and _osc8 else str(v)
-                for _, v in extra
-            )
-        rows.append(row)
+            if not extra_headers_added:
+                for h, _ in extra:
+                    table.add_column(h, justify="right")
+                extra_headers_added = True
+            for _, v in extra:
+                if isinstance(v, LinkCell):
+                    row.append(Text(v.label, style=f"link {v.url}"))
+                else:
+                    row.append(str(v))
+        table.add_row(*row)
 
-    widths = [
-        max(display_width(h), max((display_width(r[i]) for r in rows), default=0))
-        for i, h in enumerate(headers)
-    ]
-
-    sep = "  "
-    print(sep.join(ljust(h, w) for h, w in zip(headers, widths)))
-    print(sep.join("-" * w for w in widths))
-    for row in rows:
-        print(sep.join(ljust(cell, w) for cell, w in zip(row, widths)))
+    console.print(table)
 
 
 def _write_csv(
