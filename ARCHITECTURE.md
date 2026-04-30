@@ -8,7 +8,7 @@
 formula_screening/
 ├── src/formula_screening/      # メインパッケージ
 │   ├── __main__.py             # python -m formula_screening のエントリポイント
-│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker マルチフォーマット解決 + OSC 8 ハイパーリンク描画
+│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + OSC 8 ハイパーリンク描画
 │   ├── config.py               # config/*.toml の読み込み、パス定数の定義
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── fmt.py                  # 全角文字対応のテーブル整形ユーティリティ
@@ -149,6 +149,9 @@ uv run python -m formula_screening screen -s strategies/net_cash.py -o result.cs
 
 # 単一銘柄のスクリーニング（PASS/FAIL判定）
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203
+
+# 複数銘柄のスクリーニング（スペース区切りで指定）
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 9984
 
 # 全銘柄をスクリーニング（--ticker省略と等価）
 uv run python -m formula_screening screen -s strategies/net_cash.py -t all

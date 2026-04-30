@@ -102,12 +102,20 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         # Determine which tickers to screen
         specific_tickers: list[str] | None = None
         if args.ticker:
-            parsed = _parse_ticker_spec(args.ticker, conn)
-            if parsed == [args.ticker]:
-                # bare ticker → single-ticker mode (PASS/FAIL output)
-                _run_single_ticker(conn, strategy_path, args.ticker, extra_cols_fn)
-                return
-            specific_tickers = parsed
+            if len(args.ticker) == 1 and (
+                args.ticker[0] == "all"
+                or _RANGE_RE.match(args.ticker[0])
+                or args.ticker[0].startswith("csv:")
+            ):
+                parsed = _parse_ticker_spec(args.ticker[0], conn)
+                if parsed == [args.ticker[0]]:
+                    # bare ticker → single-ticker mode (PASS/FAIL output)
+                    _run_single_ticker(conn, strategy_path, args.ticker[0], extra_cols_fn)
+                    return
+                specific_tickers = parsed
+            else:
+                # One or more bare ticker codes passed directly
+                specific_tickers = args.ticker
 
         start: float = time.monotonic()
         hits: list[dict] = run_screening(
@@ -253,8 +261,8 @@ def main() -> None:
     p_screen.add_argument("--open", nargs="?", type=int, const=0, default=None,
                            help="Open top N hits on Shikiho Online (omit N for all)")
     p_screen.add_argument(
-        "--ticker", "-t", type=str, default=None,
-        help="Ticker(s) to screen: a single code (7203), 'all', a range (1000-2000), or csv:path.csv",
+        "--ticker", "-t", type=str, nargs="+", default=None,
+        help="Ticker(s) to screen: codes (7203 6758), 'all', a range (1000-2000), or csv:path.csv",
     )
     p_screen.add_argument("--workers", type=int, default=MAGIC["screening"]["workers"], help="Number of parallel screening workers")
 
