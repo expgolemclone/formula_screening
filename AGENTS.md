@@ -15,7 +15,9 @@
   `('2024-03', 'bs', 'inventories', 28448283000.0, 'xbrl_bs')`、
   `('2023-03', 'bs', 'inventories', 0.0, 'xbrl_bs')` が入ることを確認済み。
 - 全銘柄確認:
-  `../stock_db/var/raw/edinet/xbrl` の全tickerディレクトリを走査し、`.xhtml` がある 2697 銘柄を一時DBの `sec_reports` に投入して `uv run python -m stock_db.cli.parse_xbrl_bs` を実行すること。
+  `../stock_db/var/raw/edinet/xbrl` の全tickerディレクトリを走査し、`.xhtml` がある全銘柄を一時DBの `sec_reports` に投入して `uv run python -m stock_db.cli.parse_xbrl_bs` を実行すること。
 - 全銘柄結果:
   2026-04-30 実行時点で `Done: 2498 ok, 0 errors`。詳細BSがない 199 銘柄は `no detailed BS data` で未保存、保存された 2498 銘柄では最新BSの `inventories` 欠落 0 件、全BS期間でも `inventories` 欠落 0 件を確認済み。
+- 全銘柄再実行結果:
+  2026-04-30 再実行時点で `.xhtml` がある 2883 銘柄を投入し、`Done: 2672 ok, 0 errors`。詳細BSがない 211 銘柄は `no detailed BS data` で未保存、保存された 2672 銘柄では最新BSの `inventories` 欠落 0 件、全BS期間でも `inventories` 欠落 0 件を確認済み。
 - `irbank_bs` は今回の検証対象外。
