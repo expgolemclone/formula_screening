@@ -118,30 +118,31 @@ def _cmd_screen(args: argparse.Namespace) -> None:
                 specific_tickers = args.ticker
 
         start: float = time.monotonic()
-        hits: list[dict] = run_screening(
+        stocks: list[dict] = run_screening(
             conn, strategy_path, workers=args.workers, tickers=specific_tickers,
+            return_all=args.show_all,
         )
         elapsed: float = time.monotonic() - start
 
-        if not hits:
+        if not stocks:
             print("No stocks matched the screening criteria.")
             return
 
         sort_key_fn = getattr(strategy_mod, "sort_key", None)
         if sort_key_fn is not None:
-            hits.sort(key=sort_key_fn, reverse=True)
+            stocks.sort(key=sort_key_fn, reverse=True)
         else:
-            hits.sort(key=lambda s: s["metrics"].get("net_cash_ratio") or 0, reverse=True)
+            stocks.sort(key=lambda s: s["metrics"].get("net_cash_ratio") or 0, reverse=True)
 
-        _print_table(hits, extra_cols_fn=extra_cols_fn)
-        print(f"\n{len(hits)} stocks matched ({elapsed:.1f}s)")
+        _print_table(stocks, extra_cols_fn=extra_cols_fn)
+        print(f"\n{len(stocks)} stocks shown ({elapsed:.1f}s)")
 
         if args.output:
-            _write_csv(hits, Path(args.output), extra_cols_fn=extra_cols_fn)
+            _write_csv(stocks, Path(args.output), extra_cols_fn=extra_cols_fn)
             print(f"Results written to {args.output}")
 
         if args.open is not None:
-            to_open: list[dict] = hits[:args.open] if args.open > 0 else hits
+            to_open: list[dict] = stocks[:args.open] if args.open > 0 else stocks
             _open_shikiho(to_open)
     finally:
         conn.close()
@@ -264,6 +265,7 @@ def main() -> None:
         "--ticker", "-t", type=str, nargs="+", default=None,
         help="Ticker(s) to screen: codes (7203 6758), 'all', a range (1000-2000), or csv:path.csv",
     )
+    p_screen.add_argument("--show-all", action="store_true", help="Show all screened stocks, not just hits")
     p_screen.add_argument("--workers", type=int, default=MAGIC["screening"]["workers"], help="Number of parallel screening workers")
 
     args = parser.parse_args()

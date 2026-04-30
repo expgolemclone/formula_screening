@@ -212,17 +212,22 @@ def _screen_chunk(
     names: dict[str, str],
     screen_fn: Callable[[dict], bool],
     strategy_path: Path,
-) -> tuple[list[dict], int]:
-    """Screen a chunk of tickers using a thread-local DB connection."""
+) -> tuple[list[dict], list[dict], int]:
+    """Screen a chunk of tickers using a thread-local DB connection.
+
+    Returns (all_stocks, hits, errors).
+    """
     from formula_screening.db.schema import get_connection
 
     conn: sqlite3.Connection = get_connection()
+    all_stocks: list[dict] = []
     hits: list[dict] = []
     errors: int = 0
     try:
         for ticker in tickers:
             try:
                 stock: dict = build_stock_dict(conn, ticker, names.get(ticker, ""))
+                all_stocks.append(stock)
                 if screen_fn(stock):
                     hits.append(stock)
             except (sqlite3.Error, ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
@@ -230,7 +235,7 @@ def _screen_chunk(
                 logger.debug("Error screening %s: %s", ticker, exc, exc_info=True)
     finally:
         conn.close()
-    return hits, errors
+    return all_stocks, hits, errors
 
 
 def run_screening(
@@ -239,11 +244,13 @@ def run_screening(
     *,
     workers: int = 1,
     tickers: list[str] | None = None,
+    return_all: bool = False,
 ) -> list[dict]:
     """Run a screening strategy against all stocks in the DB.
 
     Returns:
-        List of stock dicts that passed the screen() filter.
+        If return_all is True, all screened stock dicts.
+        Otherwise, only stock dicts that passed the screen() filter.
     """
     import concurrent.futures
 
@@ -259,21 +266,23 @@ def run_screening(
     effective_workers: int = min(workers, len(tickers)) or 1
 
     if effective_workers == 1:
-        all_hits, total_errors = _screen_chunk(tickers, names, screen_fn, strategy_path)
+        all_stocks, all_hits, total_errors = _screen_chunk(tickers, names, screen_fn, strategy_path)
     else:
         chunks: list[list[str]] = [[] for _ in range(effective_workers)]
         for i, ticker in enumerate(tickers):
             chunks[i % effective_workers].append(ticker)
 
+        all_stocks = []
         all_hits = []
         total_errors: int = 0
         with concurrent.futures.ThreadPoolExecutor(max_workers=effective_workers) as executor:
-            futures: list[concurrent.futures.Future[tuple[list[dict], int]]] = [
+            futures: list[concurrent.futures.Future[tuple[list[dict], list[dict], int]]] = [
                 executor.submit(_screen_chunk, chunk, names, screen_fn, strategy_path)
                 for chunk in chunks
             ]
             for future in concurrent.futures.as_completed(futures):
-                hits, errors = future.result()
+                stocks, hits, errors = future.result()
+                all_stocks.extend(stocks)
                 all_hits.extend(hits)
                 total_errors += errors
 
@@ -281,4 +290,4 @@ def run_screening(
         "Screening complete: %d hits / %d total (%d errors)",
         len(all_hits), len(tickers), total_errors,
     )
-    return all_hits
+    return all_stocks if return_all else all_hits

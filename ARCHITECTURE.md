@@ -165,6 +165,9 @@ uv run python -m formula_screening screen -s strategies/net_cash.py -t csv:ticke
 # 上位5件を四季報オンラインで開く
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --open 5
 
+# フィルタ非通過銘柄も含めて全銘柄を表示
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 --show-all
+
 # ワーカー数を指定（デフォルト: 4）
 uv run python -m formula_screening screen -s strategies/net_cash.py --workers 8
 ```
