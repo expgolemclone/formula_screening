@@ -197,7 +197,7 @@ def _print_table(
             ),
             _cell(
                 f'{m["per"]:.1f}' if m.get("per") else "-",
-                good=True if 0 < (m.get("per") or 0) <= 10 else (False if (m.get("per") or 0) > 10 else None),
+                good=True if 0 < (m.get("per") or 0) <= 7 else (False if (m.get("per") or 0) > 7 else None),
             ),
             _cell(
                 f'{pbr_val:.2f}' if pbr_val is not None else "-",
@@ -205,7 +205,7 @@ def _print_table(
             ),
             _cell(
                 f'{div_val:.2f}' if div_val is not None else "-",
-                good=div_val is not None and div_val > 0,
+                good=div_val is not None and div_val >= 4,
             ),
         ]
         if extra_cols_fn is not None:
