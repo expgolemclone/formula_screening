@@ -72,20 +72,6 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
     return [spec]
 
 
-def _run_single_ticker(
-    conn: sqlite3.Connection,
-    strategy_path: Path,
-    ticker: str,
-    extra_cols_fn: _ExtraColsFn | None,
-) -> None:
-    from formula_screening.screener import screen_single
-
-    stock, passed = screen_single(conn, strategy_path, ticker)
-    _print_table([stock], extra_cols_fn=extra_cols_fn)
-    label: str = "PASS" if passed else "FAIL"
-    print(f"\n{ticker}: {label}")
-
-
 def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening.screener import load_strategy, run_screening
 
@@ -107,12 +93,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
                 or _RANGE_RE.match(args.ticker[0])
                 or args.ticker[0].startswith("csv:")
             ):
-                parsed = _parse_ticker_spec(args.ticker[0], conn)
-                if parsed == [args.ticker[0]]:
-                    # bare ticker → single-ticker mode (PASS/FAIL output)
-                    _run_single_ticker(conn, strategy_path, args.ticker[0], extra_cols_fn)
-                    return
-                specific_tickers = parsed
+                specific_tickers = _parse_ticker_spec(args.ticker[0], conn)
             else:
                 # One or more bare ticker codes passed directly
                 specific_tickers = args.ticker
