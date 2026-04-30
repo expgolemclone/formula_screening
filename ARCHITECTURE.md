@@ -8,11 +8,11 @@
 formula_screening/
 ├── src/formula_screening/      # メインパッケージ
 │   ├── __main__.py             # python -m formula_screening のエントリポイント
-│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + OSC 8 ハイパーリンク描画
+│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + --show-all + OSC 8 ハイパーリンク描画
 │   ├── config.py               # config/*.toml の読み込み、パス定数の定義
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── fmt.py                  # 全角文字対応のテーブル整形ユーティリティ
-│   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers パラメータで対象銘柄を限定可能)
+│   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers / return_all パラメータ対応)
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
 │   ├── net_cash.py             # ネットキャッシュ・ネットキャッシュ比率の計算 (compute_net_cash_metrics)
 │   ├── validation.py           # 検証用ヘルパー (対象選定・XBRL BS読込・ネットキャッシュ指標計算)
@@ -30,7 +30,6 @@ formula_screening/
 ├── data/
 │   └── logs/                   # RotatingFileHandler のログ出力先
 ├── strategies/                 # スクリーニング戦略ファイル
-│   ├── net_cash.py             # ネットキャッシュ比率 (net_cash / 時価総額) > 1.0 戦略
 │   └── net_cash_fcf.py         # ネットキャッシュ + 平均FCFイールド戦略
 └── config/
     ├── path.toml               # データディレクトリ・DB パス等
@@ -142,25 +141,25 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
 
 ```bash
 # 基本的なスクリーニング
-uv run python -m formula_screening screen -s strategies/net_cash.py
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py
 
 # 結果をCSVに出力
-uv run python -m formula_screening screen -s strategies/net_cash.py -o result.csv
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -o result.csv
 
-# 単一銘柄のスクリーニング（PASS/FAIL判定）
+# 単一銘柄のスクリーニング
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203
 
 # 複数銘柄のスクリーニング（スペース区切りで指定）
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 9984
 
 # 全銘柄をスクリーニング（--ticker省略と等価）
-uv run python -m formula_screening screen -s strategies/net_cash.py -t all
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t all
 
 # 範囲指定でスクリーニング（DB内の7200〜7210銘柄のみ）
-uv run python -m formula_screening screen -s strategies/net_cash.py -t 7200-7210
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7200-7210
 
 # CSVファイルから銘柄一覧を指定してスクリーニング
-uv run python -m formula_screening screen -s strategies/net_cash.py -t csv:tickers.csv
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t csv:tickers.csv
 
 # 上位5件を四季報オンラインで開く
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --open 5
@@ -169,7 +168,7 @@ uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --open 5
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 --show-all
 
 # ワーカー数を指定（デフォルト: 4）
-uv run python -m formula_screening screen -s strategies/net_cash.py --workers 8
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --workers 8
 ```
 
 ### 戦略ファイルを直接実行
@@ -179,6 +178,6 @@ uv run python -m formula_screening screen -s strategies/net_cash.py --workers 8
 ```bash
 # 上記 CLI 例と等価
 uv run python strategies/net_cash_fcf.py -t 7203
-uv run python strategies/net_cash.py --workers 8
+uv run python strategies/net_cash_fcf.py --workers 8
 uv run python strategies/net_cash_fcf.py --open 5
 ```
