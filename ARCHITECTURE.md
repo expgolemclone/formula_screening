@@ -107,7 +107,7 @@ COLUMNS: list[tuple] = [
 ]
 ```
 
-すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。`cli._print_table` は `LinkCell` を OSC 8 ハイパーリンクとして描画する（対応ターミナルのみ: kitty, iTerm2, WezTerm, VSCode 等）。テーブルは `HEAVY_HEAD` 罫線 + `bold cyan` ヘッダーで描画し、各セルは条件付きで色付けされる（赤=割安、青=割高、dim=欠損値）。指標ごとの色付け基準: NC_Ratioは正負で赤青、PERは閾値10で赤青（≤10=赤、>10=青）、PBRは1未満で赤、Div%は正値で赤、FCF_Y%/CROIC%等の追加カラムは正負で赤青。
+すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。`cli._print_table` は `LinkCell` を OSC 8 ハイパーリンクとして描画する（対応ターミナルのみ: kitty, iTerm2, WezTerm, VSCode 等）。テーブルは `HEAVY_HEAD` 罫線 + `bold cyan` ヘッダーで描画し、各セルは条件付きで色付けされる（赤=割安、青=割高、dim=欠損値）。指標ごとの色付け基準: NC_Ratioは閾値1で赤青（>1=赤、≤1=青）、PERは閾値7で赤青（≤7=赤、>7=青）、PBRは0.5未満で赤、Div%は4以上で赤、FCF_Y%は10以上で赤、CROIC%は15以上で赤。
 
 ### 関数ベース形式
 

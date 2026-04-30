@@ -158,11 +158,15 @@ def _cell(text: str, *, good: bool | None = None) -> str | Text:
     return text
 
 
-def _style_signed(text: str) -> str | Text:
-    """Color a formatted numeric string red or blue by sign."""
+def _style_signed(text: str, *, threshold: float = 0.0) -> str | Text:
+    """Color a formatted numeric string red or blue by threshold."""
     if text == "-":
         return Text(text, style="dim")
-    return Text(text, style="red" if not text.startswith("-") else "blue")
+    try:
+        val = float(text.rstrip("%"))
+    except ValueError:
+        return text
+    return Text(text, style="red" if val >= threshold else "blue")
 
 
 def _print_table(
@@ -193,7 +197,7 @@ def _print_table(
             _cell(f'{s["price"]:.0f}' if s["price"] else "-"),
             _cell(
                 f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
-                good=(m.get("net_cash_ratio") or 0) > 0,
+                good=(m.get("net_cash_ratio") or 0) > 1,
             ),
             _cell(
                 f'{m["per"]:.1f}' if m.get("per") else "-",
@@ -201,7 +205,7 @@ def _print_table(
             ),
             _cell(
                 f'{pbr_val:.2f}' if pbr_val is not None else "-",
-                good=pbr_val is not None and pbr_val < 1.0,
+                good=pbr_val is not None and pbr_val < 0.5,
             ),
             _cell(
                 f'{div_val:.2f}' if div_val is not None else "-",
@@ -214,11 +218,12 @@ def _print_table(
                 for h, _ in extra:
                     table.add_column(h, justify="right")
                 extra_headers_added = True
-            for _, v in extra:
+            _EXTRA_THRESHOLDS: dict[str, float] = {"FCF_Y%": 10.0, "CROIC%": 15.0}
+            for h, v in extra:
                 if isinstance(v, LinkCell):
                     row.append(Text(v.label, style=f"link {v.url}"))
                 else:
-                    row.append(_style_signed(str(v)))
+                    row.append(_style_signed(str(v), threshold=_EXTRA_THRESHOLDS.get(h, 0.0)))
         table.add_row(*row)
 
     console.print(table)
