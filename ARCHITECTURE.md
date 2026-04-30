@@ -15,7 +15,7 @@ formula_screening/
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers パラメータで対象銘柄を限定可能)
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
 │   ├── net_cash.py             # ネットキャッシュ・ネットキャッシュ比率の計算 (compute_net_cash_metrics)
-│   ├── validation.py           # スクレイピング値 vs OCR検証パイプライン (OpenAI抽出・CSV出力)
+│   ├── validation.py           # 検証用ヘルパー (対象選定・XBRL BS読込・ネットキャッシュ指標計算)
 │   ├── screen_output.py        # 共有カラムヘルパー (LinkCell, 外部サイトURL生成, カラムマージ)
 │   ├── indicators/
 │   │   ├── __init__.py         # 共有指標関数の re-export
@@ -26,7 +26,7 @@ formula_screening/
 │       └── repository.py       # データアクセス層 (stocks, financial_items, prices)
 ├── tests/                      # テストスイート
 │   ├── test_net_cash.py        # compute_net_cash_metrics のテスト
-│   └── test_validation.py      # バリデーションパイプラインのテスト
+│   └── test_validation.py      # validation.py のヘルパー関数テスト
 ├── data/
 │   └── logs/                   # RotatingFileHandler のログ出力先
 ├── strategies/                 # スクリーニング戦略ファイル
@@ -59,30 +59,25 @@ formula_screening/
   │ - load_strategy()│              └──────────┬───────────┘
   │ - build_stock_  │                         │
   │   dict()        │              ┌──────────v───────────┐
-  │ - screen_single()│              │ scrape_validation_   │
-  │ - run_screening()│              │   sample()           │
-  └────────┬────────┘              │ (irbank BS再取得)    │
-           │                       └──────────┬───────────┘
-           v                                  │
-  ┌─────────────────┐              ┌──────────v───────────┐
-  │  strategy.py    │              │ extract_ocr_balance_ │
-  │  (user-defined) │              │   sheet()            │
-  │                 │              │ (有価証券報告書PDF   │
-  │ - FILTERS       │              │  → OpenAI抽出)       │
-  │ - SORT          │              └──────────┬───────────┘
-  │ - COLUMNS       │                         │
-  └────────┬────────┘              ┌──────────v───────────┐
-           │                       │ net_cash.py           │
-           v                       │ compute_net_cash_     │
-  ┌─────────────────┐              │   metrics()           │
-  │   CLI Output    │              │ (両方の指標を計算)    │
-  │  (table/CSV)    │              └──────────┬───────────┘
-  └─────────────────┘                         │
-                                  ┌──────────v───────────┐
-                                  │ compare_net_cash_    │
-                                  │   snapshots()        │
-                                  │ (差分判定 → CSV出力)  │
-                                  └──────────────────────┘
+  │ - screen_single()│              │ load_latest_bs()     │
+  │ - run_screening()│              │ (XBRL BS読込)        │
+  └────────┬────────┘              └──────────┬───────────┘
+           │                                  │
+           v                       ┌──────────v───────────┐
+  ┌─────────────────┐              │ net_cash.py           │
+  │  strategy.py    │              │ compute_net_cash_     │
+  │  (user-defined) │              │   metrics()           │
+  │                 │              └──────────┬───────────┘
+  │ - FILTERS       │                         │
+  │ - SORT          │              ┌──────────v───────────┐
+  │ - COLUMNS       │              │ build_net_cash_      │
+  └────────┬────────┘              │   snapshot()         │
+           │                       └──────────────────────┘
+           v
+  ┌─────────────────┐
+  │   CLI Output    │
+  │  (table/CSV)    │
+  └─────────────────┘
 ```
 
 ## 戦略ファイルフォーマット

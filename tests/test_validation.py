@@ -6,9 +6,7 @@ from stock_db.storage.schema import init_db
 
 from formula_screening.validation import (
     build_net_cash_snapshot,
-    compare_net_cash_snapshots,
-    load_latest_irbank_bs,
-    select_balance_sheet_text,
+    load_latest_bs,
     select_validation_targets,
 )
 
@@ -18,20 +16,6 @@ def _conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     init_db(conn)
     return conn
-
-
-def test_select_balance_sheet_text_keeps_heading_page_and_next_page() -> None:
-    text = select_balance_sheet_text([
-        "表紙",
-        "連結貸借対照表\n現金及び預金 123",
-        "販売用不動産 456",
-        "別表",
-    ])
-
-    assert text is not None
-    assert "連結貸借対照表" in text
-    assert "販売用不動産" in text
-    assert "別表" not in text
 
 
 def test_select_validation_targets_orders_by_market_cap() -> None:
@@ -64,7 +48,29 @@ def test_select_validation_targets_orders_by_market_cap() -> None:
         conn.close()
 
 
-def test_load_latest_irbank_bs_reads_data_rows() -> None:
+def test_load_latest_bs_prefers_xbrl_over_irbank() -> None:
+    conn = _conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO financial_items (
+                ticker, period, statement, item_name, value, source, updated_at
+            ) VALUES
+                ('8888', '2025-03', 'bs', 'current_assets', 38675872000, 'xbrl_bs', '2026-01-01'),
+                ('8888', '2025-03', 'bs', 'inventories', 32974467000, 'xbrl_bs', '2026-01-01')
+            """
+        )
+        conn.commit()
+
+        period, bs, status = load_latest_bs(conn, "8888")
+        assert period == "2025-03"
+        assert status is None
+        assert bs["inventories"] == 32_974_467_000
+    finally:
+        conn.close()
+
+
+def test_load_latest_bs_returns_missing_when_xbrl_absent() -> None:
     conn = _conn()
     try:
         conn.execute(
@@ -78,33 +84,43 @@ def test_load_latest_irbank_bs_reads_data_rows() -> None:
         )
         conn.commit()
 
-        period, bs, status = load_latest_irbank_bs(conn, "5280")
+        period, bs, status = load_latest_bs(conn, "5280")
 
-        assert period == "2025-03"
-        assert status is None
-        assert bs["inventories"] == 32_983_204_000
+        assert period is None
+        assert status == "scrape_missing"
+        assert bs == {}
     finally:
         conn.close()
 
 
-def test_compare_net_cash_snapshots_returns_delta() -> None:
-    scrape = build_net_cash_snapshot(
+def test_load_latest_bs_propagates_status_rows() -> None:
+    conn = _conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO financial_items (
+                ticker, period, statement, item_name, value, source, updated_at
+            ) VALUES
+                ('7000', '2025-03', '_status', 'blocked', NULL, 'xbrl_bs', '2026-01-01')
+            """
+        )
+        conn.commit()
+
+        period, bs, status = load_latest_bs(conn, "7000")
+
+        assert period is None
+        assert status == "scrape_blocked"
+        assert bs == {}
+    finally:
+        conn.close()
+
+
+def test_build_net_cash_snapshot_computes_ratio() -> None:
+    snapshot = build_net_cash_snapshot(
         "2025-03",
         {
             "current_assets": 38_675_872_000.0,
-            "inventories": 32_983_204_000.0,
-            "investment_securities": 2_985_654_000.0,
-            "current_liabilities": 15_158_894_000.0,
-            "non_current_liabilities": 1_468_637_000.0,
-        },
-        price=2567.0,
-        shares_outstanding=8_030_248,
-    )
-    ocr = build_net_cash_snapshot(
-        "2025-03",
-        {
-            "current_assets": 38_675_872_000.0,
-            "inventories": 32_983_204_000.0,
+            "inventories": 32_974_467_000.0,
             "investment_securities": 2_985_654_000.0,
             "current_liabilities": 15_158_894_000.0,
             "non_current_liabilities": 1_468_637_000.0,
@@ -113,7 +129,6 @@ def test_compare_net_cash_snapshots_returns_delta() -> None:
         shares_outstanding=8_030_248,
     )
 
-    status, delta = compare_net_cash_snapshots(scrape, ocr, max_delta=0.01)
-
-    assert status == "ok"
-    assert delta == 0.0
+    assert snapshot.market_cap is not None
+    assert snapshot.net_cash is not None
+    assert snapshot.net_cash_ratio is not None
