@@ -152,17 +152,17 @@ def _cell(text: str, *, good: bool | None = None) -> str | Text:
     if text == "-":
         return Text(text, style="dim")
     if good is True:
-        return Text(text, style="green")
-    if good is False:
         return Text(text, style="red")
+    if good is False:
+        return Text(text, style="blue")
     return text
 
 
 def _style_signed(text: str) -> str | Text:
-    """Color a formatted numeric string green or red by sign."""
+    """Color a formatted numeric string red or blue by sign."""
     if text == "-":
         return Text(text, style="dim")
-    return Text(text, style="green" if not text.startswith("-") else "red")
+    return Text(text, style="red" if not text.startswith("-") else "blue")
 
 
 def _print_table(
@@ -193,11 +193,11 @@ def _print_table(
             _cell(f'{s["price"]:.0f}' if s["price"] else "-"),
             _cell(
                 f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
-                good=m.get("net_cash_ratio") is not None,
+                good=(m.get("net_cash_ratio") or 0) > 0,
             ),
             _cell(
                 f'{m["per"]:.1f}' if m.get("per") else "-",
-                good=m.get("per") is not None,
+                good=True if 0 < (m.get("per") or 0) <= 10 else (False if (m.get("per") or 0) > 10 else None),
             ),
             _cell(
                 f'{pbr_val:.2f}' if pbr_val is not None else "-",
