@@ -148,7 +148,7 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
 - **API**: `/api/screening` エンドポイントがスクリーニング結果の JSON を返す
 - **フロントエンド**: `docs/assets/app.js` がカラム定義・閾値・ソート設定を注入
 - **共有ファイル**: `stock-table.js`, `style.css`, `index.html` は symlink で `stock_web_ui/docs/` を参照
-- **ブラウザ**: サーバー起動時に google-chrome で自動表示。銘柄コードから monex・四季報リンク、yazi PDF ビューアに遷移可能
+- **ブラウザ**: サーバー起動時に `xdg-open` で自動表示（Hyprland 等の Wayland 環境でフォーカス移動を確実にするため）。銘柄コードから monex・四季報リンク、yazi PDF ビューアに遷移可能
 
 ## stock_db との連携
 

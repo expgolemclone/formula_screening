@@ -105,7 +105,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         else:
             stocks.sort(key=lambda s: s["metrics"].get("net_cash_ratio") or 0, reverse=True)
 
-        print(f"{len(stocks)} stocks matched ({elapsed:.1f}s)")
+        print(f"{len(stocks)} stocks matched ({elapsed:.1f}s)", flush=True)
         serve_screening(stocks)
     finally:
         conn.close()
