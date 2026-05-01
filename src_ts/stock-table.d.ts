@@ -1,0 +1,1 @@
+/home/exp/projects/stock_web_ui/docs/assets/stock-table.d.ts
