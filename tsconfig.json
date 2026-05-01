@@ -2,9 +2,15 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
+    "moduleResolution": "bundler",
     "strict": true,
     "outDir": "docs/assets",
     "rootDir": "src_ts",
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@stock-web-ui/runtime": ["../stock_web_ui/docs/assets/stock-table.d.ts"]
+    },
     "declaration": false,
     "sourceMap": false,
     "skipLibCheck": true

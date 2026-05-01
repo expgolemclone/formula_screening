@@ -5,8 +5,23 @@
  * Fetches screening results from /api/screening and renders them.
  */
 
-import { StockTable } from "./stock-table.js";
-import type { ColumnDef, MetricThreshold } from "./stock-table.js";
+import type { ColumnDef, MetricThreshold, StockTableConfig } from "@stock-web-ui/runtime";
+
+type StockTableApi = {
+  init: (config: StockTableConfig) => void;
+};
+
+function getStockTable(): StockTableApi {
+  const runtime: StockTableApi | undefined = (
+    globalThis as typeof globalThis & { StockTable?: StockTableApi }
+  ).StockTable;
+  if (!runtime) {
+    throw new Error("Shared StockTable runtime is not loaded.");
+  }
+  return runtime;
+}
+
+const StockTable: StockTableApi = getStockTable();
 
 function buildMonexUrl(code: string): string {
   return "https://monex.ifis.co.jp/index.php?sa=report_zaimu&bcode=" + encodeURIComponent(code);
