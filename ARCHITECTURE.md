@@ -145,6 +145,7 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
 
 - **依存関係**: `pyproject.toml` で `stock-web-ui` をローカルパス参照
 - **Web UI**: `web.py` がスクリーニング結果を JSON に変換し、`stock_web_ui.serve.serve()` で HTTP サーバーを起動
+- **symlink 対応**: `web.py` が `extra_static_roots` に `stock_web_ui` の assets ディレクトリを渡し、パストラバーサルチェックで symlink 先を許可
 - **API**: `/api/screening` エンドポイントがスクリーニング結果の JSON を返す
 - **フロントエンド**: `docs/assets/app.js` がカラム定義・閾値・ソート設定を注入
 - **共有ファイル**: `stock-table.js`, `style.css`, `index.html` は symlink で `stock_web_ui/docs/` を参照

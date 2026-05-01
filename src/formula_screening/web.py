@@ -6,6 +6,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
+import stock_web_ui
 from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler
 from stock_web_ui.serve import serve as _serve
@@ -16,6 +17,7 @@ _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 _STATIC_ROOT: Path = _DOCS_DIR / "assets"
 _INDEX_PATH: Path = _DOCS_DIR / "index.html"
+_PACKAGE_ASSETS: Path = Path(stock_web_ui.__file__).resolve().parent.parent.parent / "docs" / "assets"
 
 
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
@@ -60,6 +62,7 @@ def serve_screening(
         index_path=_INDEX_PATH,
         server_config=server_config,
         api_routes=api_routes,
+        extra_static_roots=[_PACKAGE_ASSETS],
     )
 
 
