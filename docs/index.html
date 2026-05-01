@@ -1,1 +1,38 @@
-/home/exp/projects/stock_web_ui/docs/index.html
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formula Screening</title>
+    <link rel="stylesheet" href="assets/style.css?v=20260501">
+    <script type="module" src="assets/stock-table.js?v=20260501"></script>
+    <script type="module" src="assets/app.js?v=20260501"></script>
+  </head>
+  <body>
+    <div class="container">
+      <nav id="tabBar" class="tab-bar" aria-label="タブ切替"></nav>
+
+      <div class="toolbar">
+        <p id="statusMessage" class="status-message" aria-live="polite">
+          スクリーニング結果を読み込み中です。
+        </p>
+        <div id="toggleBar" class="column-toggles" aria-label="指標カラム表示切替"></div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="stockTable">
+          <thead>
+            <tr></tr>
+          </thead>
+          <tbody id="tbody">
+            <tr>
+              <td class="table-message" colspan="1">
+                スクリーニング結果を読み込み中です。
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </body>
+</html>

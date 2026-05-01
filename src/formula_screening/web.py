@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
-from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-import stock_web_ui
 from stock_web_ui.config import ServerConfig
-from stock_web_ui.handler import ApiHandler
+from stock_web_ui.handler import ApiHandler, json_route
+from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
 
 from formula_screening.indicators import croic, fcf_yield_avg
@@ -16,8 +14,6 @@ from formula_screening.indicators import croic, fcf_yield_avg
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 _STATIC_ROOT: Path = _DOCS_DIR / "assets"
-_INDEX_PATH: Path = _DOCS_DIR / "index.html"
-_PACKAGE_ASSETS: Path = Path(stock_web_ui.__file__).resolve().parent.parent.parent / "docs" / "assets"
 
 
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
@@ -29,19 +25,9 @@ def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
     Returns:
         Dict mapping route paths to handler callables.
     """
-    payload: bytes = json.dumps(
-        [_serialize_stock(s) for s in stocks],
-        ensure_ascii=False,
-    ).encode("utf-8")
+    payload: list[dict] = [_serialize_stock(s) for s in stocks]
 
-    def handle_screening(handler: BaseHTTPRequestHandler, _params: dict) -> None:
-        handler.send_response(200)
-        handler.send_header("Content-Type", "application/json; charset=utf-8")
-        handler.send_header("Content-Length", str(len(payload)))
-        handler.end_headers()
-        handler.wfile.write(payload)
-
-    return {"/api/screening": handle_screening}
+    return {"/api/screening": json_route(lambda _params: payload)}
 
 
 def serve_screening(
@@ -59,10 +45,13 @@ def serve_screening(
 
     _serve(
         static_root=_STATIC_ROOT,
-        index_path=_INDEX_PATH,
+        index_page=IndexPage(
+            title="Formula Screening",
+            loading_message="スクリーニング結果を読み込み中です。",
+            tab_aria_label="タブ切替",
+        ),
         server_config=server_config,
         api_routes=api_routes,
-        extra_static_roots=[_PACKAGE_ASSETS],
     )
 
 

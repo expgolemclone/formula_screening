@@ -8,6 +8,14 @@
 import { StockTable } from "./stock-table.js";
 import type { ColumnDef, MetricThreshold } from "./stock-table.js";
 
+function buildMonexUrl(code: string): string {
+  return "https://monex.ifis.co.jp/index.php?sa=report_zaimu&bcode=" + encodeURIComponent(code);
+}
+
+function buildShikihoUrl(code: string): string {
+  return "https://shikiho.toyokeizai.net/stocks/" + encodeURIComponent(code) + "/shikiho";
+}
+
 /* ------------------------------------------------------------------ */
 /*  Column definitions                                                 */
 /* ------------------------------------------------------------------ */
@@ -19,6 +27,9 @@ const COLUMNS: ColumnDef[] = [
     type: "code",
     title: "銘柄コード",
     render: (row): string => String(row.code ?? ""),
+    linkHref: (row): string => buildMonexUrl(String(row.code ?? "")),
+    linkMode: "browser",
+    browserKey: "monex",
   },
   {
     key: "name",
@@ -26,6 +37,9 @@ const COLUMNS: ColumnDef[] = [
     type: "name",
     title: "会社名",
     render: (row): string => String(row.name ?? ""),
+    linkHref: (row): string => buildShikihoUrl(String(row.code ?? "")),
+    linkMode: "browser",
+    browserKey: "shikiho",
   },
   {
     key: "price",
