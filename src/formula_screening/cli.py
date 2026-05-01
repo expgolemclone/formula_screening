@@ -1,4 +1,5 @@
 """CLI entry point for the screening tool."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,15 +13,9 @@ from pathlib import Path
 
 from collections.abc import Callable
 
-from rich.console import Console
-from rich.table import Table
-from rich.text import Text
-import rich.box
-
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.db.schema import get_connection, init_db
 from formula_screening.log import setup_logging
-from formula_screening.screen_output import LinkCell
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -72,14 +67,12 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
 
 def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening.screener import load_strategy, run_screening
+    from formula_screening.web import serve_screening
 
     strategy_path = Path(args.strategy)
     if not strategy_path.exists():
         print(f"Strategy file not found: {strategy_path}", file=sys.stderr)
         sys.exit(1)
-
-    strategy_mod = load_strategy(strategy_path)
-    extra_cols_fn: _ExtraColsFn | None = getattr(strategy_mod, "columns", None)
 
     conn: sqlite3.Connection = get_connection()
     try:
@@ -93,7 +86,6 @@ def _cmd_screen(args: argparse.Namespace) -> None:
             ):
                 specific_tickers = _parse_ticker_spec(args.ticker[0], conn)
             else:
-                # One or more bare ticker codes passed directly
                 specific_tickers = args.ticker
 
         start: float = time.monotonic()
@@ -107,160 +99,16 @@ def _cmd_screen(args: argparse.Namespace) -> None:
             print("No stocks matched the screening criteria.")
             return
 
-        sort_key_fn = getattr(strategy_mod, "sort_key", None)
+        sort_key_fn = getattr(load_strategy(strategy_path), "sort_key", None)
         if sort_key_fn is not None:
             stocks.sort(key=sort_key_fn, reverse=True)
         else:
             stocks.sort(key=lambda s: s["metrics"].get("net_cash_ratio") or 0, reverse=True)
 
-        _print_table(stocks, extra_cols_fn=extra_cols_fn)
-        print(f"\n{len(stocks)} stocks shown ({elapsed:.1f}s)")
-
-        if args.output:
-            _write_csv(stocks, Path(args.output), extra_cols_fn=extra_cols_fn)
-            print(f"Results written to {args.output}")
-
-        if args.open is not None:
-            to_open: list[dict] = stocks[:args.open] if args.open > 0 else stocks
-            _open_shikiho(to_open)
+        print(f"{len(stocks)} stocks matched ({elapsed:.1f}s)")
+        serve_screening(stocks)
     finally:
         conn.close()
-
-
-_SHIKIHO_URL_TEMPLATE = "https://shikiho.toyokeizai.net/stocks/{ticker}/shikiho"
-
-
-def _open_shikiho(hits: list[dict]) -> None:
-    """Open all hit tickers on Shikiho Online via qutebrowser (fallback: default browser)."""
-    import shutil
-    import subprocess
-
-    urls: list[str] = [_SHIKIHO_URL_TEMPLATE.format(ticker=s["ticker"]) for s in hits]
-    qb: str | None = shutil.which("qutebrowser")
-    if qb:
-        subprocess.Popen([qb, *urls])
-    else:
-        import webbrowser
-
-        for url in urls:
-            webbrowser.open(url)
-    print(f"Opened {len(hits)} tickers in browser.")
-
-
-def _cell(text: str, *, good: bool | None = None) -> str | Text:
-    """Return a styled Text cell or plain string."""
-    if text == "-":
-        return Text(text, style="dim")
-    if good is True:
-        return Text(text, style="red")
-    if good is False:
-        return Text(text, style="blue")
-    return text
-
-
-def _style_signed(text: str, *, threshold: float = 0.0) -> str | Text:
-    """Color a formatted numeric string red or blue by threshold."""
-    if text == "-":
-        return Text(text, style="dim")
-    try:
-        val = float(text.rstrip("%"))
-    except ValueError:
-        return text
-    return Text(text, style="red" if val >= threshold else "blue")
-
-
-def _print_table(
-    hits: list[dict],
-    *,
-    extra_cols_fn: _ExtraColsFn | None = None,
-) -> None:
-    """Print screening results as a rich table to stdout."""
-    console = Console(width=200)
-    table = Table(box=rich.box.HEAVY_HEAD, show_lines=False, expand=False,
-                  header_style="bold cyan")
-    table.add_column("Ticker")
-    table.add_column("Name", max_width=20, no_wrap=True)
-    table.add_column("Price", justify="right")
-    table.add_column("NC_Ratio", justify="right")
-    table.add_column("PER", justify="right")
-    table.add_column("PBR", justify="right")
-    table.add_column("Div%", justify="right")
-    extra_headers_added = False
-
-    for s in hits:
-        m = s["metrics"]
-        pbr_val = m.get("pbr")
-        div_val = m.get("dividend_yield")
-        row: list[str | Text] = [
-            s["ticker"],
-            s["name"] or "",
-            _cell(f'{s["price"]:.0f}' if s["price"] else "-"),
-            _cell(
-                f'{m["net_cash_ratio"]:.2f}' if m.get("net_cash_ratio") else "-",
-                good=(m.get("net_cash_ratio") or 0) > 1,
-            ),
-            _cell(
-                f'{m["per"]:.1f}' if m.get("per") else "-",
-                good=True if 0 < (m.get("per") or 0) <= 7 else (False if (m.get("per") or 0) > 7 else None),
-            ),
-            _cell(
-                f'{pbr_val:.2f}' if pbr_val is not None else "-",
-                good=pbr_val is not None and pbr_val < 0.5,
-            ),
-            _cell(
-                f'{div_val:.2f}' if div_val is not None else "-",
-                good=div_val is not None and div_val >= 4,
-            ),
-        ]
-        if extra_cols_fn is not None:
-            extra = extra_cols_fn(s)
-            if not extra_headers_added:
-                for h, _ in extra:
-                    table.add_column(h, justify="right")
-                extra_headers_added = True
-            _EXTRA_THRESHOLDS: dict[str, float] = {"FCF_Y%": 10.0, "CROIC%": 15.0}
-            for h, v in extra:
-                if isinstance(v, LinkCell):
-                    row.append(Text(v.label, style=f"link {v.url}"))
-                else:
-                    row.append(_style_signed(str(v), threshold=_EXTRA_THRESHOLDS.get(h, 0.0)))
-        table.add_row(*row)
-
-    console.print(table)
-
-
-def _write_csv(
-    hits: list[dict],
-    path: Path,
-    *,
-    extra_cols_fn: _ExtraColsFn | None = None,
-) -> None:
-    """Write screening results to a CSV file."""
-    fieldnames = ["ticker", "name", "price", "net_cash_ratio", "per", "pbr", "dividend_yield"]
-
-    extra_headers: list[str] = []
-    if extra_cols_fn is not None and hits:
-        extra_headers = [h for h, _ in extra_cols_fn(hits[0])]
-        fieldnames.extend(extra_headers)
-
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for s in hits:
-            m = s["metrics"]
-            row: dict[str, object] = {
-                "ticker": s["ticker"],
-                "name": s["name"],
-                "price": s["price"],
-                "net_cash_ratio": m.get("net_cash_ratio"),
-                "per": m.get("per"),
-                "pbr": m.get("pbr"),
-                "dividend_yield": m.get("dividend_yield"),
-            }
-            if extra_cols_fn is not None:
-                for header, value in extra_cols_fn(s):
-                    row[header] = value
-            writer.writerow(row)
 
 
 def main() -> None:
@@ -276,9 +124,6 @@ def main() -> None:
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
     p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
-    p_screen.add_argument("--output", "-o", help="Write results to CSV file")
-    p_screen.add_argument("--open", nargs="?", type=int, const=0, default=None,
-                           help="Open top N hits on Shikiho Online (omit N for all)")
     p_screen.add_argument(
         "--ticker", "-t", type=str, nargs="+", default=None,
         help="Ticker(s) to screen: codes (7203 6758), 'all', a range (1000-2000), or csv:path.csv",

@@ -8,12 +8,13 @@ dependencies = [
     "truststore>=0.9,<1",
     "brotli>=1.1,<2",
     "pysocks>=1.7,<2",
-    "rich>=13.0,<14",
-    "stock-db>=0.1.0",
+    "stock-db>=0.1.0,<1",
+    "stock-web-ui>=0.1.0,<1",
 ]
 
 [tool.uv.sources]
 stock-db = { path = "../stock_db", editable = true }
+stock-web-ui = { path = "../stock_web_ui", editable = true }
 
 [project.optional-dependencies]
 dev = [

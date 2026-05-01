@@ -1,6 +1,6 @@
 # Architecture
 
-日本株スクリーニングツール。ユーザ定義の Python 戦略ファイルでフィルタリングを行う。財務データ・株価データは隣接プロジェクト `../stock_db` (`stock_db.paths`) の SQLite DB から取得する。スクレイピング機能は `stock_db` プロジェクトに移管済み。
+日本株スクリーニングツール。ユーザ定義の Python 戦略ファイルでフィルタリングを行う。財務データ・株価データは隣接プロジェクト `../stock_db` (`stock_db.paths`) の SQLite DB から取得する。スクレイピング機能は `stock_db` プロジェクトに移管済み。スクリーニング結果は隣接プロジェクト `../stock_web_ui` (`stock_web_ui`) の Web UI でブラウザ表示する（ターミナル出力は廃止）。
 
 ## ディレクトリ構成
 
@@ -8,14 +8,15 @@
 formula_screening/
 ├── src/formula_screening/      # メインパッケージ
 │   ├── __main__.py             # python -m formula_screening のエントリポイント
-│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + --show-all + rich colorful テーブル描画 (HEAVY_HEAD罫線, bold cyanヘッダー, 赤青条件付きセル色付け)
+│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + --show-all
 │   ├── config.py               # config/*.toml の読み込み、パス定数の定義
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers / return_all パラメータ対応)
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
 │   ├── net_cash.py             # ネットキャッシュ・ネットキャッシュ比率の計算 (compute_net_cash_metrics)
 │   ├── validation.py           # 検証用ヘルパー (対象選定・XBRL BS読込・ネットキャッシュ指標計算)
-│   ├── screen_output.py        # 共有カラムヘルパー (LinkCell, 外部サイトURL生成, カラムマージ; rich Text でハイパーリンク描画)
+│   ├── screen_output.py        # 共有カラムヘルパー (LinkCell, 外部サイトURL生成, カラムマージ)
+│   ├── web.py                  # Web UI 統合 (stock_web_ui へのブリッジ, /api/screening で JSON 配信)
 │   ├── indicators/
 │   │   ├── __init__.py         # 共有指標関数の re-export
 │   │   ├── fcf.py              # 平均FCFイールド (fcf_yield_avg)
@@ -23,6 +24,12 @@ formula_screening/
 │   └── db/
 │       ├── schema.py           # SQLite 接続管理 (stock_db.STOCKS_DB_PATH を使用)
 │       └── repository.py       # データアクセス層 (stocks, financial_items, prices)
+├── docs/                       # Web UI 静的ファイル
+│   ├── index.html              # symlink → stock_web_ui/docs/index.html
+│   └── assets/
+│       ├── stock-table.js      # symlink → stock_web_ui/docs/assets/stock-table.js
+│       ├── style.css           # symlink → stock_web_ui/docs/assets/style.css
+│       └── app.js              # formula_screening 用テーブル設定 (フラットモード)
 ├── tests/                      # テストスイート
 │   ├── test_net_cash.py        # compute_net_cash_metrics のテスト
 │   └── test_validation.py      # validation.py のヘルパー関数テスト
@@ -73,8 +80,15 @@ formula_screening/
            │                       └──────────────────────┘
            v
   ┌─────────────────┐
-  │   CLI Output    │
-  │  (table/CSV)    │
+  │    web.py       │
+  │ /api/screening  │
+  │  (JSON配信)     │
+  └────────┬────────┘
+           │
+           v
+  ┌─────────────────┐
+  │  stock_web_ui   │
+  │ (ブラウザ表示)   │
   └─────────────────┘
 ```
 
@@ -107,7 +121,7 @@ COLUMNS: list[tuple] = [
 ]
 ```
 
-すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。`cli._print_table` は `LinkCell` を OSC 8 ハイパーリンクとして描画する（対応ターミナルのみ: kitty, iTerm2, WezTerm, VSCode 等）。テーブルは `HEAVY_HEAD` 罫線 + `bold cyan` ヘッダーで描画し、各セルは条件付きで色付けされる（赤=割安、青=割高、dim=欠損値）。指標ごとの色付け基準: NC_Ratioは閾値1で赤青（>1=赤、≤1=青）、PERは閾値7で赤青（≤7=赤、>7=青）、PBRは0.5未満で赤、Div%は4以上で赤、FCF_Y%は10以上で赤、CROIC%は15以上で赤。
+すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。
 
 ### 関数ベース形式
 
@@ -127,6 +141,15 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
     return [("custom", "value")]
 ```
 
+## stock_web_ui との連携
+
+- **依存関係**: `pyproject.toml` で `stock-web-ui` をローカルパス参照
+- **Web UI**: `web.py` がスクリーニング結果を JSON に変換し、`stock_web_ui.serve.serve()` で HTTP サーバーを起動
+- **API**: `/api/screening` エンドポイントがスクリーニング結果の JSON を返す
+- **フロントエンド**: `docs/assets/app.js` がカラム定義・閾値・ソート設定を注入
+- **共有ファイル**: `stock-table.js`, `style.css`, `index.html` は symlink で `stock_web_ui/docs/` を参照
+- **ブラウザ**: サーバー起動時に google-chrome で自動表示。銘柄コードから monex・四季報リンク、yazi PDF ビューアに遷移可能
+
 ## stock_db との連携
 
 - **DBパス**: `stock_db.paths.STOCKS_DB_PATH` (デフォルト: `var/db/stocks.db`)
@@ -139,11 +162,8 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
 ## CLI 使用例
 
 ```bash
-# 基本的なスクリーニング
+# 基本的なスクリーニング（ブラウザで表示）
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py
-
-# 結果をCSVに出力
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -o result.csv
 
 # 単一銘柄のスクリーニング
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203
@@ -160,9 +180,6 @@ uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7200-
 # CSVファイルから銘柄一覧を指定してスクリーニング
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t csv:tickers.csv
 
-# 上位5件を四季報オンラインで開く
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --open 5
-
 # フィルタ非通過銘柄も含めて全銘柄を表示
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 --show-all
 
@@ -178,5 +195,4 @@ uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --worker
 # 上記 CLI 例と等価
 uv run python strategies/net_cash_fcf.py -t 7203
 uv run python strategies/net_cash_fcf.py --workers 8
-uv run python strategies/net_cash_fcf.py --open 5
 ```
