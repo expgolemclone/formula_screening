@@ -22,8 +22,8 @@ formula_screening/
 │   │   ├── fcf.py              # 平均FCFイールド (fcf_yield_avg)
 │   │   └── croic.py            # CROIC (Cash Return on Invested Capital)
 │   └── db/
-│       ├── schema.py           # SQLite 接続管理 (stock_db.STOCKS_DB_PATH を使用)
-│       └── repository.py       # データアクセス層 (stocks, financial_items, prices)
+│       ├── schema.py           # SQLite 接続管理 (stock_db.storage.connection に委譲)
+│       └── repository.py       # データアクセス層 (stock_db.storage.* API に委譲)
 ├── docs/                       # Web UI 静的ファイル
 │   ├── index.html              # stock_web_ui テンプレートから生成した HTML
 │   └── assets/
@@ -153,6 +153,13 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
 
 - **DBパス**: `stock_db.paths.STOCKS_DB_PATH` (デフォルト: `var/db/stocks.db`)
 - **依存関係**: `pyproject.toml` で `stock-db` をローカルパス参照
+- **API委譲**: `db/schema.py` と `db/repository.py` は SQL を直書きせず、`stock_db.storage.*` の公開APIを経由する:
+  - `schema.get_connection()` → `stock_db.storage.connection.get_connection()`
+  - `repository.get_all_tickers()` → `stock_db.storage.stocks.get_all_tickers()`
+  - `repository.get_stock_names()` → `stock_db.storage.stocks.get_stock_names()`
+  - `repository.get_financial_dict()` → `stock_db.storage.financials.get_financial_dict()` (事前populate付きラッパ)
+  - `repository.get_historical_items()` → `stock_db.storage.financials.get_historical_items()`
+  - `repository.get_latest_price_with_shares()` → `stock_db.storage.prices.get_latest_price_with_shares()`
 - **テーブル構造**:
   - `stocks`: 銘柄情報（ticker, edinet_code, name, sector, market, shares_outstanding, shares_updated_at, securities_report_url, updated_at）
   - `financial_items`: 財務データ（PL/BS/CF/dividend/ss/forecast のEAVモデル）

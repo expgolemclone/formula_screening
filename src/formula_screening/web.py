@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from stock_web_ui.config import ServerConfig
@@ -9,11 +10,83 @@ from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
 
+from formula_screening.db.repository import (
+    get_financial_dict,
+    get_latest_price_with_shares,
+    get_stock_names,
+)
+from formula_screening.db.schema import get_connection
 from formula_screening.indicators import croic, fcf_yield_avg
+from formula_screening.metrics import compute_metrics
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 _STATIC_ROOT: Path = _DOCS_DIR / "assets"
+
+
+def compute_all_stock_metrics(
+    conn: sqlite3.Connection | None = None,
+) -> dict[str, dict[str, float | None]]:
+    """Compute enriched metrics for all tickers via the public API.
+
+    This is the single entry-point for external projects that need per-ticker
+    screening metrics.  Callers should use this instead of importing internal
+    modules (db.repository, indicators, metrics) directly.
+
+    Args:
+        conn: Optional existing DB connection.  If *None* a fresh one is
+              created and closed automatically.
+
+    Returns:
+        ``{ticker: {"price", "net_cash_ratio", "per", "equity_ratio",
+                     "fcf_yield_avg", "croic", "market_cap"}}``
+    """
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        names = get_stock_names(conn)
+        result: dict[str, dict[str, float | None]] = {}
+
+        for code in names:
+            try:
+                financials = get_financial_dict(conn, code)
+                if not financials:
+                    continue
+                price_data = get_latest_price_with_shares(conn, code)
+                price = price_data["price"]
+                shares = price_data["shares_outstanding"]
+                metrics = compute_metrics(financials, price, shares)
+
+                stock_dict = {
+                    "ticker": code,
+                    "price": price,
+                    "shares_outstanding": shares,
+                    "pl": financials.get("pl", {}),
+                    "bs": financials.get("bs", {}),
+                    "cf": financials.get("cf", {}),
+                    "dividend": financials.get("dividend", {}),
+                    "forecast": financials.get("forecast", {}),
+                    "metrics": metrics,
+                }
+                stock_dict["cf_history"] = []
+
+                result[code] = {
+                    "price": price,
+                    "net_cash_ratio": metrics.get("net_cash_ratio"),
+                    "per": metrics.get("per"),
+                    "equity_ratio": metrics.get("equity_ratio"),
+                    "fcf_yield_avg": fcf_yield_avg(stock_dict),
+                    "croic": croic(stock_dict),
+                    "market_cap": metrics.get("market_cap"),
+                }
+            except (KeyError, ValueError, ZeroDivisionError, TypeError):
+                continue
+
+        return result
+    finally:
+        if own_conn:
+            conn.close()
 
 
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
