@@ -3,6 +3,9 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from stock_db.storage.financials import get_items_by_source
+from stock_db.storage.stocks import get_validation_targets as _stock_db_get_validation_targets
+
 from formula_screening.net_cash import compute_net_cash_metrics
 
 
@@ -27,33 +30,7 @@ def select_validation_targets(
     conn: sqlite3.Connection,
     limit: int,
 ) -> list[ValidationTarget]:
-    rows = conn.execute(
-        """
-        WITH latest_price AS (
-            SELECT ticker, MAX(date) AS latest_date
-            FROM prices
-            GROUP BY ticker
-        )
-        SELECT
-            s.ticker,
-            s.name,
-            s.securities_report_url,
-            p.close,
-            s.shares_outstanding
-        FROM stocks s
-        JOIN latest_price lp
-          ON lp.ticker = s.ticker
-        JOIN prices p
-          ON p.ticker = lp.ticker
-         AND p.date = lp.latest_date
-        WHERE s.securities_report_url IS NOT NULL
-          AND s.shares_outstanding IS NOT NULL
-          AND p.close IS NOT NULL
-        ORDER BY CAST(p.close * s.shares_outstanding AS REAL) DESC, s.ticker
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
+    rows = _stock_db_get_validation_targets(conn, limit)
     return [
         ValidationTarget(
             ticker=row["ticker"],
@@ -71,16 +48,7 @@ def load_latest_bs(
     ticker: str,
 ) -> tuple[str | None, dict[str, float | None], str | None]:
     """Load the latest balance sheet rows stored from XBRL."""
-    rows = conn.execute(
-        """
-        SELECT period, statement, item_name, value
-        FROM financial_items
-        WHERE ticker = ?
-          AND source = 'xbrl_bs'
-        ORDER BY period DESC, statement, item_name
-        """,
-        (ticker,),
-    ).fetchall()
+    rows = get_items_by_source(conn, ticker, "xbrl_bs")
     if not rows:
         return None, {}, "scrape_missing"
 

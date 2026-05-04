@@ -14,7 +14,7 @@ formula_screening/
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers / return_all パラメータ対応)
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
 │   ├── net_cash.py             # ネットキャッシュ・ネットキャッシュ比率の計算 (compute_net_cash_metrics)
-│   ├── validation.py           # 検証用ヘルパー (対象選定・XBRL BS読込・ネットキャッシュ指標計算)
+│   ├── validation.py           # 検証用ヘルパー (対象選定・XBRL BS読込・ネットキャッシュ指標計算) — stock_db.storage API 経由
 │   ├── screen_output.py        # 共有カラムヘルパー (LinkCell, 外部サイトURL生成, カラムマージ)
 │   ├── web.py                  # Web UI 統合 (stock_web_ui へのブリッジ, /api/screening で JSON 配信)
 │   ├── indicators/
@@ -55,6 +55,7 @@ formula_screening/
                              │
            ┌─────────────────┴──────────────────┐
            │ repository.py                      │ validation.py
+           │ (db/repository.py)                 │ (stock_db.storage API)
            v                                    v
   ┌─────────────────┐              ┌──────────────────────┐
   │  screener.py    │              │ select_validation_   │
@@ -160,6 +161,9 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
   - `repository.get_financial_dict()` → `stock_db.storage.financials.get_financial_dict()` (事前populate付きラッパ)
   - `repository.get_historical_items()` → `stock_db.storage.financials.get_historical_items()`
   - `repository.get_latest_price_with_shares()` → `stock_db.storage.prices.get_latest_price_with_shares()`
+- **API委譲 (validation.py)**: 生SQLを直書きせず、`stock_db.storage.*` の公開APIを経由する:
+  - `validation.select_validation_targets()` → `stock_db.storage.stocks.get_validation_targets()` + ValidationTarget変換
+  - `validation.load_latest_bs()` → `stock_db.storage.financials.get_items_by_source()` + Python側でperiod/statement判定
 - **テーブル構造**:
   - `stocks`: 銘柄情報（ticker, edinet_code, name, sector, market, shares_outstanding, shares_updated_at, securities_report_url, updated_at）
   - `financial_items`: 財務データ（PL/BS/CF/dividend/ss/forecast のEAVモデル）
