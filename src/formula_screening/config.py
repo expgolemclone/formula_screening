@@ -19,7 +19,6 @@ CLI_DEFAULTS: dict = _load_toml("cli_defaults.toml")
 
 DATA_DIR = _PROJECT_ROOT / PATHS["data"]["root"]
 LOG_DIR = _PROJECT_ROOT / PATHS["data"]["log"]
-DB_PATH = _PROJECT_ROOT / PATHS["data"]["db"]
 
 
 def ensure_dirs() -> None:

@@ -9,7 +9,7 @@ formula_screening/
 ├── src/formula_screening/      # メインパッケージ
 │   ├── __main__.py             # python -m formula_screening のエントリポイント
 │   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + --show-all
-│   ├── config.py               # config/*.toml の読み込み、パス定数の定義
+│   ├── config.py               # config/*.toml の読み込み、パス定数の定義 (DATA_DIR, LOG_DIR)
 │   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
 │   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers / return_all パラメータ対応)
 │   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
