@@ -22,14 +22,7 @@ function getStockTable(): StockTableApi {
 }
 
 const StockTable: StockTableApi = getStockTable();
-
-function buildMonexUrl(code: string): string {
-  return "https://monex.ifis.co.jp/index.php?sa=report_zaimu&bcode=" + encodeURIComponent(code);
-}
-
-function buildShikihoUrl(code: string): string {
-  return "https://shikiho.toyokeizai.net/stocks/" + encodeURIComponent(code) + "/shikiho";
-}
+const IS_GITHUB_PAGES: boolean = location.hostname === "expgolemclone.github.io";
 
 /* ------------------------------------------------------------------ */
 /*  Column definitions                                                 */
@@ -42,9 +35,7 @@ const COLUMNS: ColumnDef[] = [
     type: "code",
     title: "銘柄コード",
     render: (row): string => String(row.code ?? ""),
-    linkHref: (row): string => buildMonexUrl(String(row.code ?? "")),
-    linkMode: "browser",
-    browserKey: "monex",
+    stockLink: "monex",
   },
   {
     key: "name",
@@ -52,9 +43,7 @@ const COLUMNS: ColumnDef[] = [
     type: "name",
     title: "会社名",
     render: (row): string => String(row.name ?? ""),
-    linkHref: (row): string => buildShikihoUrl(String(row.code ?? "")),
-    linkMode: "browser",
-    browserKey: "shikiho",
+    stockLink: "yazi",
   },
   {
     key: "price",
@@ -62,6 +51,7 @@ const COLUMNS: ColumnDef[] = [
     type: "num",
     title: "株価（終値）",
     toggleable: true,
+    stockLink: "shikiho",
     render: (row): string => {
       const v = row.price as number | null | undefined;
       return v !== null && v !== undefined
@@ -207,6 +197,7 @@ function bootstrap(): void {
     defaultSortKey: "net_cash_ratio",
     defaultSortDirection: "desc",
     tabMode: false,
+    githubPages: IS_GITHUB_PAGES,
   });
 }
 

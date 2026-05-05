@@ -22,6 +22,7 @@ from formula_screening.metrics import compute_metrics
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 _STATIC_ROOT: Path = _DOCS_DIR / "assets"
+_HANDBOOK_DATA_DIR: Path = _PROJECT_ROOT.parent / "japan_company_handbook" / "data"
 
 
 def compute_all_stock_metrics(
@@ -125,6 +126,7 @@ def serve_screening(
         ),
         server_config=server_config,
         api_routes=api_routes,
+        yazi_base_dir=_HANDBOOK_DATA_DIR,
     )
 
 

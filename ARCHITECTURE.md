@@ -156,9 +156,9 @@ def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
 - **Web UI**: `web.py` がスクリーニング結果を JSON に変換し、`stock_web_ui.page.IndexPage` と `stock_web_ui.serve.serve()` で HTTP サーバーを起動
 - **API**: `/api/screening` は `stock_web_ui.handler.json_route()` で組み立てる
 - **静的資産**: ローカルサーバーは `docs/assets/` を優先し、不足する共有資産は `stock_web_ui.ASSETS_DIR` から配信する
-- **フロントエンド**: `docs/assets/app.js` がカラム定義・閾値・ソート設定を注入し、ブラウザでは先に読み込まれた共有 `StockTable` API を使う。ネットキャッシュ比率列の表示ヘッダは `ncr`、内部指標キーは `metrics.net_cash_ratio`
+- **フロントエンド**: `docs/assets/app.js` がカラム定義・閾値・ソート設定を注入し、ブラウザでは先に読み込まれた共有 `StockTable` API を使う。`code` は Monex、`name` はローカルで yazi、`price` は四季報オンラインを開く。ネットキャッシュ比率列の表示ヘッダは `ncr`、内部指標キーは `metrics.net_cash_ratio`
 - **共有ファイル**: `index.html` は `python -m stock_web_ui.render_index --shared-asset-base-url https://expgolemclone.github.io/stock_web_ui/assets ...` で生成し、`stock-table.js` / `style.css` は `stock_web_ui` GitHub Pages を直接参照する
-- **ブラウザ**: サーバー起動時に `xdg-open` で自動表示する。銘柄コードは Monex 財務ページ、会社名は四季報オンラインを `stock_web_ui` の `/open` 経由で開く
+- **ブラウザ**: サーバー起動時に `xdg-open` で自動表示する。銘柄コードは Monex 財務ページ、会社名は `stock_web_ui` の `/open-yazi/{code}` 経由で `japan_company_handbook/data/{YYYY_Q}/{code}.pdf` を yazi で開き、株価列は四季報オンラインを `stock_web_ui` の `/open` 経由で開く
 
 ## stock_db との連携
 
