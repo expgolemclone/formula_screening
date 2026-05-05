@@ -30,11 +30,12 @@ formula_screening/
 │       └── app.js              # formula_screening 用テーブル設定 (フラットモード)
 ├── tests/                      # テストスイート
 │   ├── test_net_cash.py        # compute_net_cash_metrics のテスト
-│   └── test_validation.py      # validation.py のヘルパー関数テスト
+│   ├── test_validation.py      # validation.py のヘルパー関数テスト
+│   └── test_net_cash_fcf_strategy.py # net_cash_fcf 戦略の境界条件テスト
 ├── data/
 │   └── logs/                   # RotatingFileHandler のログ出力先
 ├── strategies/                 # スクリーニング戦略ファイル
-│   └── net_cash_fcf.py         # ネットキャッシュ + 平均FCFイールド戦略
+│   └── net_cash_fcf.py         # net_cash_ratio >= -1.0 のネットキャッシュ + 平均FCFイールド戦略
 └── config/
     ├── path.toml               # データディレクトリ・DB パス等
     ├── magic_numbers.toml      # スクリーニング設定 (fcf_years, workers)
@@ -121,6 +122,15 @@ COLUMNS: list[tuple] = [
 ```
 
 すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。
+
+### 同梱戦略 `net_cash_fcf.py`
+
+`strategies/net_cash_fcf.py` は次の条件を満たす銘柄を通す。
+
+- `net_cash_ratio >= -1.0`
+- `0 < per < 10`
+- `equity_ratio > 50`
+- `fcf_yield_avg > 0`
 
 ### 関数ベース形式
 

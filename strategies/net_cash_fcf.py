@@ -1,6 +1,6 @@
 """清原達郎式 ネットキャッシュ比率 + FCFイールド スクリーニング.
 
-net_cash_ratio > 1.0
+net_cash_ratio >= -1.0
 0 < per < 10
 自己資本比率 > 50%
 過去N年間の平均FCFイールド (FCF / 時価総額) > 0
@@ -17,7 +17,7 @@ REQUIRED_SOURCES: list[str] = ["irbank", "irbank_bs", "prices"]
 FILTERS: list[
     tuple[str | Callable[[dict], float | None], str, float | tuple[float, float]]
 ] = [
-    ("net_cash_ratio", ">", 1.0),
+    ("net_cash_ratio", ">=", -1.0),
     ("per", "between", (0, 10)),
     ("equity_ratio", ">", 50),
     (fcf_yield_avg, ">", 0),
