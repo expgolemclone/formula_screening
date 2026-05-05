@@ -58,7 +58,7 @@ const COLUMNS = [
     },
     {
         key: "net_cash_ratio",
-        header: "NC_Ratio",
+        header: "ncr",
         type: "num",
         title: "(流動資産 - 棚卸資産 + 有価証券 * 0.7) / 時価総額",
         toggleable: true,
