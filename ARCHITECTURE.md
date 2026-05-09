@@ -98,7 +98,7 @@ formula_screening/
 ```python
 """戦略の説明文"""
 
-REQUIRED_SOURCES: list[str] = ["irbank", "prices"]  # 必要なデータソース
+REQUIRED_SOURCES: list[str] = ["edinet_xbrl", "prices"]  # 必要なデータソース
 
 # フィルタ定義: (フィルタ対象, 演算子, 閾値)
 FILTERS: list[tuple] = [

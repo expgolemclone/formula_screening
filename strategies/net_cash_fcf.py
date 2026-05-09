@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 from formula_screening.indicators import croic, fcf_yield_avg
 
-REQUIRED_SOURCES: list[str] = ["irbank", "irbank_bs", "prices"]
+REQUIRED_SOURCES: list[str] = ["edinet_xbrl", "xbrl_bs", "prices"]
 
 FILTERS: list[
     tuple[str | Callable[[dict], float | None], str, float | tuple[float, float]]

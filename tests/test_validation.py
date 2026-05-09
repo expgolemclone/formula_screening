@@ -48,7 +48,7 @@ def test_select_validation_targets_orders_by_market_cap() -> None:
         conn.close()
 
 
-def test_load_latest_bs_prefers_xbrl_over_irbank() -> None:
+def test_load_latest_bs_returns_xbrl_data() -> None:
     conn = _conn()
     try:
         conn.execute(
@@ -78,8 +78,8 @@ def test_load_latest_bs_returns_missing_when_xbrl_absent() -> None:
             INSERT INTO financial_items (
                 ticker, period, statement, item_name, value, source, updated_at
             ) VALUES
-                ('5280', '2025-03', 'bs', 'current_assets', 38675872000, 'irbank_bs', '2026-01-01'),
-                ('5280', '2025-03', 'bs', 'inventories', 32983204000, 'irbank_bs', '2026-01-01')
+                ('5280', '2025-03', 'bs', 'current_assets', 38675872000, 'other_source', '2026-01-01'),
+                ('5280', '2025-03', 'bs', 'inventories', 32983204000, 'other_source', '2026-01-01')
             """
         )
         conn.commit()
