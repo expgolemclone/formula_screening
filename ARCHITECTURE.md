@@ -1,213 +1,147 @@
 # Architecture
 
-日本株スクリーニングツール。ユーザ定義の Python 戦略ファイルでフィルタリングを行う。財務データ・株価データは隣接プロジェクト `../stock_db` (`stock_db.paths`) の SQLite DB から取得する。スクレイピング機能は `stock_db` プロジェクトに移管済み。スクリーニング結果は隣接プロジェクト `../stock_web_ui` (`stock_web_ui`) の Web UI でブラウザ表示する（ターミナル出力は廃止）。
+## 概要
 
-## ディレクトリ構成
+`formula_screening` は、`stock_db` が保持する日本株データを読み出し、戦略ファイルで定義した条件に基づいて銘柄を抽出し、`stock_web_ui` に結果を渡してブラウザ表示する薄いアプリケーション層です。
 
-```
-formula_screening/
-├── src/formula_screening/      # メインパッケージ
-│   ├── __main__.py             # python -m formula_screening のエントリポイント
-│   ├── cli.py                  # argparse によるCLI定義 (screenサブコマンド) + --ticker 複数銘柄対応 (nargs="+") + マルチフォーマット解決 (all/range/csv) + --show-all
-│   ├── config.py               # config/*.toml の読み込み、パス定数の定義 (DATA_DIR, LOG_DIR)
-│   ├── log.py                  # ロギング設定 (stderr + RotatingFileHandler)
-│   ├── screener.py             # 戦略ファイルの動的ロードとスクリーニング実行 (tickers / return_all パラメータ対応)
-│   ├── metrics.py              # 財務指標の計算 (PER, PBR, ネットキャッシュ比率, 配当利回り 等)
-│   ├── net_cash.py             # ネットキャッシュ・ネットキャッシュ比率の計算 (compute_net_cash_metrics)
-│   ├── validation.py           # 検証用ヘルパー (対象選定・XBRL BS読込・ネットキャッシュ指標計算) — stock_db.storage API 経由
-│   ├── screen_output.py        # 共有カラムヘルパー (LinkCell, 外部サイトURL生成, カラムマージ)
-│   ├── web.py                  # Web UI 統合 (stock_web_ui へのブリッジ, /api/screening で JSON 配信)
-│   ├── indicators/
-│   │   ├── __init__.py         # 共有指標関数の re-export
-│   │   ├── fcf.py              # 平均FCFイールド (fcf_yield_avg)
-│   │   └── croic.py            # CROIC (Cash Return on Invested Capital)
-├── docs/                       # Web UI 静的ファイル
-│   ├── index.html              # stock_web_ui テンプレートから生成した HTML
-│   └── assets/
-│       └── app.js              # formula_screening 用テーブル設定 (フラットモード)
-├── tests/                      # テストスイート
-│   ├── test_net_cash.py        # compute_net_cash_metrics のテスト
-│   ├── test_validation.py      # validation.py のヘルパー関数テスト
-│   └── test_net_cash_fcf_strategy.py # net_cash_fcf 戦略の境界条件テスト
-├── data/
-│   └── logs/                   # RotatingFileHandler のログ出力先
-├── strategies/                 # スクリーニング戦略ファイル
-│   └── net_cash_fcf.py         # net_cash_ratio >= -1.0 のネットキャッシュ + 平均FCFイールド戦略
-└── config/
-    ├── path.toml               # データディレクトリ・DB パス等
-    ├── magic_numbers.toml      # スクリーニング設定 (fcf_years, workers)
-    └── cli_defaults.toml       # CLIオプションのデフォルト値
-```
+処理の主経路は次のとおりです。
 
-## データフロー
+1. CLI が戦略ファイルと対象銘柄を受け取る
+2. スクリーナーが各銘柄の財務データと株価を読み込み、`stock` 辞書を構築する
+3. `metrics.py` と `indicators/` が派生指標を計算する
+4. 戦略が `screen(stock)` を評価し、通過銘柄を返す
+5. `web.py` が `/api/screening` を配信し、`src_ts/app.ts` がテーブル表示する
 
-```
-                    ┌─────────────────┐
-                    │   stock_db      │
-                    │ (SQLite DB)     │
-                    │                 │
-                    │ - stocks        │
-                    │ - prices        │
-                    │ - financial_items│
-                    └────────┬────────┘
-                             │
-           ┌─────────────────┴──────────────────┐
-           │ stock_db.storage.*                 │ validation.py
-           │ (直接参照)                          │ (stock_db.storage API)
-           v                                    v
-  ┌─────────────────┐              ┌──────────────────────┐
-  │  screener.py    │              │ select_validation_   │
-  │                 │              │   targets()          │
-  │ - load_strategy()│              └──────────┬───────────┘
-  │ - build_stock_  │                         │
-  │   dict()        │              ┌──────────v───────────┐
-  │ - screen_single()│              │ load_latest_bs()     │
-  │ - run_screening()│              │ (XBRL BS読込)        │
-  └────────┬────────┘              └──────────┬───────────┘
-           │                                  │
-           v                       ┌──────────v───────────┐
-  ┌─────────────────┐              │ net_cash.py           │
-  │  strategy.py    │              │ compute_net_cash_     │
-  │  (user-defined) │              │   metrics()           │
-  │                 │              └──────────┬───────────┘
-  │ - FILTERS       │                         │
-  │ - SORT          │              ┌──────────v───────────┐
-  │ - COLUMNS       │              │ build_net_cash_      │
-  └────────┬────────┘              │   snapshot()         │
-           │                       └──────────────────────┘
-           v
-  ┌─────────────────┐
-  │    web.py       │
-  │ /api/screening  │
-  │  (JSON配信)     │
-  └────────┬────────┘
-           │
-           v
-  ┌─────────────────┐
-  │  stock_web_ui   │
-  │ (ブラウザ表示)   │
-  └─────────────────┘
+## モジュール責務
+
+### `src/formula_screening/cli.py`
+
+- `screen` サブコマンドを提供する
+- `--ticker` の単一値、複数値、範囲、`all`、`csv:path.csv` を解決する
+- `run_screening()` を呼び出し、結果をソートして `serve_screening()` に渡す
+
+### `src/formula_screening/screener.py`
+
+- 戦略ファイルを `importlib` で動的ロードする
+- 宣言的戦略の `FILTERS` / `SORT` / `COLUMNS` を実行可能な関数に変換する
+- `stock_db` から財務、価格、発行済株式数、履歴 CF を読み出し、戦略評価用の `stock` 辞書を組み立てる
+- 並列実行時はワーカーごとに DB 接続を開く
+
+### `src/formula_screening/metrics.py`
+
+- PL / BS / CF と現在株価から派生指標を計算する
+- `market_cap`, `per`, `pbr`, `dividend_yield`, `equity_ratio`, `free_cf`, `interest_bearing_debt`, `net_cash`, `net_cash_ratio` などを `metrics` に詰める
+- `net_cash` は次の式で求める
+
+```text
+current_assets - inventories + investment_securities * 0.7
+- current_liabilities - non_current_liabilities
 ```
 
-## 戦略ファイルフォーマット
+### `src/formula_screening/indicators/`
 
-戦略ファイルはPythonモジュールとして動的にロードされ、以下の属性を定義できます：
+- `fcf.py`: 過去 N 期の平均 FCF Yield を計算する。既定の N は `config/magic_numbers.toml` の `fcf_years = 10`
+- `croic.py`: `free_cf / (stockholders_equity + interest_bearing_debt)` を計算する
 
-### 宣言的フィルタ形式（推奨）
+`fcf_yield_avg()` は過去各期の FCF を「現在の時価総額」で割る実装です。コード内コメントにもある通り、ライブスクリーニング向けであり、バックテスト用途には先読みバイアスがあります。
+
+### `src/formula_screening/web.py`
+
+- `/api/screening` を返す API ルートを作る
+- `stock_web_ui` の `serve()` に `docs/assets`、`IndexPage`、API ルートを渡す
+- handbook 参照用に `../japan_company_handbook/data` を `yazi_base_dir` として渡す
+- 外部利用向けに `compute_all_stock_metrics()` を公開する
+
+### `src_ts/app.ts`
+
+- `stock_web_ui` の `StockTable` ランタイムを読み込む
+- `/api/screening` を fetch し、単一テーブルとして描画する
+- 表示カラム、ソート、閾値色分けをここで定義する
+
+## 戦略インターフェース
+
+戦略ファイルは次のどちらかを満たす必要があります。
+
+1. `FILTERS` を定義する
+2. `screen(stock) -> bool` を定義する
+
+宣言的戦略では、追加で以下を定義できます。
+
+- `SORT`: 並び順に使う `metrics` キーまたは callable
+- `COLUMNS`: 追加表示カラム定義
+- `columns(stock)`: `COLUMNS` の代わりに直接カラム生成する関数
+
+`FILTERS` は `(source, operator, threshold)` の配列です。
+
+- `source`: `metrics` 内のキー名、または `stock` を受け取る callable
+- `operator`: `>`, `>=`, `<`, `<=`, `between`
+- `threshold`: 数値、または `between` 用の `(lo, hi)`
+
+ロード後の戦略モジュールには必ず `screen(stock)` が生え、`columns` には共通リンク列が自動マージされます。
+
+## `stock` データモデル
+
+戦略に渡す辞書は、`build_stock_dict()` が構築します。
 
 ```python
-"""戦略の説明文"""
-
-REQUIRED_SOURCES: list[str] = ["edinet_xbrl", "prices"]  # 必要なデータソース
-
-# フィルタ定義: (フィルタ対象, 演算子, 閾値)
-FILTERS: list[tuple] = [
-    ("net_cash_ratio", ">", 1.0),           # ネットキャッシュ比率 > 1.0
-    ("per", "between", (0, 10)),            # 0 < PER < 10
-    ("equity_ratio", ">", 50),              # 自己資本比率 > 50%
-    (fcf_yield_avg, ">", 0),                # カスタム関数も可
-]
-
-# ソートキー（オプション）— 文字列キー または 呼び出し可能関数
-SORT: str | Callable[[dict], float | None] = "net_cash_ratio"
-
-# 追加カラム（オプション）
-COLUMNS: list[tuple] = [
-    ("FCF_Y%", fcf_yield_avg, "{:.2%}"),
-    ("CROIC%", croic, "{:.2%}"),
-]
+{
+    "ticker": str,
+    "name": str,
+    "price": float | None,
+    "shares_outstanding": int | None,
+    "pl": dict[str, float | None],
+    "bs": dict[str, float | None],
+    "cf": dict[str, float | None],
+    "dividend": dict[str, float | None],
+    "forecast": dict[str, float | None],
+    "metrics": dict[str, float | None],
+    "cf_history": list[tuple[str, dict[str, float | None]]],
+}
 ```
 
-すべての戦略に対し、`screener.py` が monex・四季報オンラインへのリンクカラムを自動付与する（`screen_output.build_common_link_columns`）。戦略側で同名ヘッダを定義した場合はそちらが優先される。
+`screen_output.py` は共通リンク列として少なくとも次を追加します。
 
-### 同梱戦略 `net_cash_fcf.py`
+- `monex`
+- `sikiho`
 
-`strategies/net_cash_fcf.py` は次の条件を満たす銘柄を通す。Web UI 上の表示名は `ncr` だが、戦略条件・ソートキー・JSON の内部キーは `net_cash_ratio` を使う。
+Web UI 側では会社名列に handbook 連携用の `yazi` リンクも使います。
 
-- `net_cash_ratio >= -1.0`
-- `0 < per < 10`
-- `equity_ratio > 50`
-- `fcf_yield_avg > 0`
+## Web UI と API
 
-### 関数ベース形式
+`create_screening_api()` は、通過銘柄の `stock` 辞書をフロントエンド向け JSON に変換し、`/api/screening` で返します。返却形状は次のキーを中心に構成されます。
 
-```python
-def screen(stock: dict) -> bool:
-    """stock は build_stock_dict() で構築された辞書"""
-    m = stock["metrics"]
-    return (
-        m.get("net_cash_ratio", 0) > 1.0
-        and 0 < m.get("per", 999) < 10
-    )
+- `code`
+- `name`
+- `price`
+- `metrics.net_cash_ratio`
+- `metrics.per`
+- `metrics.pbr`
+- `metrics.dividend_yield`
+- `metrics.equity_ratio`
+- `metrics.market_cap`
+- `fcf_yield_avg`
+- `croic`
 
-def sort_key(stock: dict) -> float:
-    return stock["metrics"].get("net_cash_ratio") or 0
+フロントエンド資産は次の分担です。
 
-def columns(stock: dict) -> list[tuple[str, str | LinkCell]]:
-    return [("custom", "value")]
-```
+- `stock_web_ui.page.IndexPage`: ローカルサーバー起動時の HTML テンプレート入力
+- `docs/index.html`: 静的配信用のページ骨格
+- `docs/assets/app.js`: ビルド済みフロントエンド
+- `src_ts/app.ts`: TypeScript ソース
 
-## stock_web_ui との連携
+`app.ts` は既定ソートを `net_cash_ratio` 降順に設定し、PER、PBR、配当利回り、自己資本比率、FCF Yield、CROIC に閾値ベースの色付けを行います。
 
-- **依存関係**: `pyproject.toml` で `stock-web-ui` をローカルパス参照
-- **Web UI**: `web.py` がスクリーニング結果を JSON に変換し、`stock_web_ui.page.IndexPage` と `stock_web_ui.serve.serve()` で HTTP サーバーを起動
-- **API**: `/api/screening` は `stock_web_ui.handler.json_route()` で組み立てる
-- **静的資産**: ローカルサーバーは `docs/assets/` を優先し、不足する共有資産は `stock_web_ui.ASSETS_DIR` から配信する
-- **フロントエンド**: `docs/assets/app.js` がカラム定義・閾値・ソート設定を注入し、ブラウザでは先に読み込まれた共有 `StockTable` API を使う。`code` は `stockLink: "monex"`、`name` は `stockLink: "yazi"`、`price` は `stockLink: "shikiho"` を使う。`name` はローカルで yazi、静的環境では非リンクになる。ネットキャッシュ比率列の表示ヘッダは `ncr`、内部指標キーは `metrics.net_cash_ratio`
-- **共有ファイル**: `index.html` は `python -m stock_web_ui.render_index --shared-asset-base-url https://expgolemclone.github.io/stock_web_ui/assets ...` で生成し、`stock-table.js` / `style.css` は `stock_web_ui` GitHub Pages を直接参照する
-- **ブラウザ**: サーバー起動時に `xdg-open` で自動表示する。銘柄コードは Monex 財務ページ、会社名は `stock_web_ui` の `/open-yazi/{code}` 経由で `japan_company_handbook/data/{YYYY_Q}/{code}.pdf` を yazi で開き、株価列は四季報オンラインを `stock_web_ui` の `/open` 経由で開く
+## 設定
 
-## stock_db との連携
+設定値は `config/` 配下の TOML で管理します。
 
-- **DBパス**: `stock_db.paths.STOCKS_DB_PATH` (デフォルト: `var/db/stocks.db`)
-- **依存関係**: `pyproject.toml` で `stock-db` をローカルパス参照
-- **API参照**: 各モジュールは `stock_db.storage.*` の公開APIを直接参照する:
-  - `stock_db.storage.connection.get_connection()`
-  - `stock_db.storage.stocks.get_all_tickers()`, `get_stock_names()`
-  - `stock_db.storage.financials.get_financial_dict()`, `get_historical_items()`
-  - `stock_db.storage.prices.get_latest_price_with_shares()`
-- **API参照 (validation.py)**: 生SQLを直書きせず、`stock_db.storage.*` の公開APIを経由する:
-  - `validation.select_validation_targets()` → `stock_db.storage.stocks.get_validation_targets()` + ValidationTarget変換
-  - `validation.load_latest_bs()` → `stock_db.storage.financials.get_items_by_source()` + Python側でperiod/statement判定
-- **テーブル構造**:
-  - `stocks`: 銘柄情報（ticker, edinet_code, name, sector, market, shares_outstanding, shares_updated_at, securities_report_url, updated_at）
-  - `financial_items`: 財務データ（PL/BS/CF/dividend/ss/forecast のEAVモデル）
-  - `prices`: 株価データ（ticker, date, close, volume, updated_at）
+- `magic_numbers.toml`: `fcf_years`, `workers`
+- `cli_defaults.toml`: CLI 既定値
+- `path.toml`: データ・ログ系パス
 
-## CLI 使用例
+現行コードでは、DB パス自体は `path.toml` ではなく `stock_db.paths.STOCKS_DB_PATH` を使用します。  
+`path.toml` は `formula_screening` 自身の `data/` と `logs/` の管理に使われます。
 
-```bash
-# 基本的なスクリーニング（ブラウザで表示）
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py
+## 補助モジュール
 
-# 単一銘柄のスクリーニング
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203
-
-# 複数銘柄のスクリーニング（スペース区切りで指定）
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 9984
-
-# 全銘柄をスクリーニング（--ticker省略と等価）
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t all
-
-# 範囲指定でスクリーニング（DB内の7200〜7210銘柄のみ）
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7200-7210
-
-# CSVファイルから銘柄一覧を指定してスクリーニング
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t csv:tickers.csv
-
-# フィルタ非通過銘柄も含めて全銘柄を表示
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 --show-all
-
-# ワーカー数を指定（デフォルト: 4）
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py --workers 8
-```
-
-### 戦略ファイルを直接実行
-
-各戦略ファイルは `__main__` ブロックを持ち、`screen` サブコマンドのショートカットとして直接実行できる。追加引数はそのまま `screen` に渡る。パス区切りはフォワードスラッシュで Windows bash / PowerShell / Linux / macOS 共通に動作する。
-
-```bash
-# 上記 CLI 例と等価
-uv run python strategies/net_cash_fcf.py -t 7203
-uv run python strategies/net_cash_fcf.py --workers 8
-```
+`validation.py` は、`stock_db` 内の検証対象銘柄と XBRL 由来 BS データを使って、`net_cash_ratio` 検証用のスナップショットを作る補助モジュールです。現時点では CLI から直接呼ばれていませんが、テストで振る舞いが固定されています。

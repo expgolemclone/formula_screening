@@ -1,96 +1,82 @@
-# formula-screening
+# formula_screening
 
-日本株を、Pythonで書いた戦略ファイルに沿ってスクリーニングするツールです。
-
-財務データと株価データは隣接プロジェクト `../stock_db` のSQLite DBから読み取り、結果は `../stock_web_ui` のWeb UIでブラウザ表示します。このリポジトリはスクリーニングロジック、指標計算、戦略ファイル、Web UIへの橋渡しに集中しています。
-
-## できること
-
-- Pythonモジュールとして書いた戦略を動的に読み込み、銘柄ごとにフィルタリングする
-- PER、PBR、自己資本比率、ネットキャッシュ比率、平均FCFイールド、CROICなどの指標を計算する
-- 銘柄コード、範囲、CSV、全銘柄指定でスクリーニング対象を切り替える
-- 通過銘柄だけでなく、`--show-all` で非通過銘柄も含めて確認する
-- 結果をローカルWeb UIで表示し、Monex、四季報オンライン、会社四季報PDFへのリンクを付ける
-
-詳しい内部設計は [ARCHITECTURE.md](ARCHITECTURE.md) を参照してください。
+日本株の財務データに対して、Python で書いた条件式を使ってスクリーニングを行うツールです。  
+データ取得と保存は `stock_db`、結果表示は `stock_web_ui` に委譲し、このリポジトリは「戦略の読み込み」「指標計算」「絞り込み」「Web UI への受け渡し」を担当します。
 
 ## 前提
 
-- Python `>= 3.13`
+- Python 3.13 以上
 - `uv`
-- 財務・株価データを持つ `../stock_db`
-- Web UIを提供する `../stock_web_ui`
+- このリポジトリと、依存先の `stock_db` / `stock_web_ui` が同じ親ディレクトリ配下にあること
 
-`pyproject.toml` では `stock-db` と `stock-web-ui` をローカルパス依存として参照しています。初回セットアップ前に、同じ親ディレクトリ配下へ次のように配置してください。
+`pyproject.toml` では次のようにローカル依存を参照しています。
 
-```text
-projects/
-├── formula_screening/
-├── stock_db/
-└── stock_web_ui/
-```
+- `../stock_db`
+- `../stock_web_ui`
 
-Nix環境を使う場合は `flake.nix` のdev shellから `uv` などを利用できます。
+また、スクリーニング対象の DB は `formula_screening` 配下ではなく、`stock_db` 側の `STOCKS_DB_PATH` を使います。現行環境では `/home/exp/projects/stock_db/var/db/stocks.db` が参照先です。
 
 ## セットアップ
 
 ```bash
-uv sync --extra dev
+uv sync
 ```
 
-データベースの作成、更新、スクレイピングは `stock_db` 側の責務です。スクリーニング実行前に、`stock_db` から参照されるDBに銘柄情報、財務データ、株価データが入っている状態にしてください。
+`stock_db` 側で価格・財務データが投入済みであることを確認してください。  
+このリポジトリ単体では DB を作成しません。
 
-## 使い方
+## クイックスタート
 
-同梱のネットキャッシュ + FCFイールド戦略を実行します。
+同梱の戦略 `strategies/net_cash_fcf.py` を 1 銘柄に対して実行する例です。
 
 ```bash
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 1867
 ```
 
-実行後、条件に合致した銘柄数が表示され、ローカルWeb UIが起動します。
+`1867` は現行 DB でこの戦略にヒットすることを確認済みの銘柄コードです。  
+ヒット銘柄が 1 件以上あれば、スクリーニング結果を返すローカル Web サーバーが起動し、`/api/screening` を配信します。画面本体は `stock_web_ui` のテンプレートから生成され、アプリ固有の表示ロジックは `docs/assets/app.js` が担当します。
 
-対象銘柄を絞る場合:
+## CLI
+
+実行入口:
 
 ```bash
-# 単一銘柄
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203
-
-# 複数銘柄
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 9984
-
-# DB内の銘柄コード範囲
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7200-7210
-
-# CSVの1列目から銘柄コードを読み込む
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t csv:tickers.csv
-
-# フィルタ非通過銘柄も含めて表示
-uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 7203 6758 --show-all
+uv run python -m formula_screening screen --strategy <strategy.py>
 ```
 
-戦略ファイルは直接実行することもできます。
+主要オプション:
+
+- `--strategy`, `-s`: 実行する戦略ファイル
+- `--ticker`, `-t`: 対象銘柄
+- `--show-all`: 条件に通らなかった銘柄も含めて返す
+- `--workers`: 並列スクリーニング数。既定値は `4`
+- `--verbose`, `-v`: 詳細ログ
+- `--quiet`, `-q`: ログ抑制
+
+`--ticker` は次の形式を受け付けます。
+
+- `7203`: 単一銘柄
+- `7203 6758`: 複数銘柄
+- `all`: DB 内の全銘柄
+- `1000-2000`: 数値コードの範囲指定
+- `csv:path.csv`: CSV 1 列目から銘柄コードを読み込む
+
+例:
 
 ```bash
-uv run python strategies/net_cash_fcf.py -t 7203 --workers 8
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t 1867 7203
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t all --workers 8
+uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t csv:data/tickers.csv
 ```
-
-## 同梱戦略
-
-`strategies/net_cash_fcf.py` は、清原達郎式のネットキャッシュ比率とFCFイールドを軸にしたサンプル戦略です。
-
-通過条件:
-
-- `net_cash_ratio >= -1.0`
-- `0 < per < 10`
-- `equity_ratio > 50`
-- 過去N年の平均FCFイールドがプラス
-
-N年の値やワーカー数は `config/magic_numbers.toml` で調整できます。
 
 ## 戦略ファイルの書き方
 
-推奨形式は、モジュール変数で条件を宣言する形式です。
+戦略は Python ファイルとして読み込まれます。2 通りの書き方があります。
+
+1. 宣言的に `FILTERS` を定義する
+2. `screen(stock) -> bool` を自前で実装する
+
+宣言的な戦略では、必要に応じて `SORT` と `COLUMNS` も定義できます。
 
 ```python
 from formula_screening.indicators import croic, fcf_yield_avg
@@ -110,40 +96,38 @@ COLUMNS = [
 ]
 ```
 
-`FILTERS` の左辺には、`stock["metrics"]` のキー名、または `stock` を受け取る関数を指定できます。独自の処理が必要な場合は、`screen(stock)`、`sort_key(stock)`、`columns(stock)` を定義する関数ベース形式も使えます。
+`FILTERS` で使える比較演算子は `>`, `>=`, `<`, `<=`, `between` です。  
+`source` には `metrics` キー名か、`stock` を受け取る callable を指定できます。
 
-`stock` には主に次の値が入ります。
+## `stock` 引数の形
 
-- `ticker`, `name`, `price`, `shares_outstanding`
-- `pl`, `bs`, `cf`, `dividend`, `forecast`
-- `metrics`
-- `cf_history`
+戦略に渡される `stock` は概ね次の形です。
 
-## 主なディレクトリ
-
-```text
-src/formula_screening/     # CLI、スクリーニングエンジン、指標計算、Web連携
-strategies/                # ユーザ定義のスクリーニング戦略
-config/                    # ワーカー数、FCF年数、ログ出力先などの設定
-docs/                      # Web UI用の静的ファイル
-tests/                     # pytestテスト
+```python
+{
+    "ticker": "1867",
+    "name": "植木組",
+    "price": 0.0,
+    "shares_outstanding": 0,
+    "pl": {...},
+    "bs": {...},
+    "cf": {...},
+    "dividend": {...},
+    "forecast": {...},
+    "metrics": {...},
+    "cf_history": [("2025-03", {...}), ...],
+}
 ```
 
-## テスト
+`metrics` には少なくとも次のような派生指標が入ります。
 
-```bash
-uv run pytest
-```
+- `market_cap`
+- `per`, `per_actual`, `pbr`
+- `dividend_yield`
+- `equity_ratio`
+- `free_cf`
+- `interest_bearing_debt`
+- `net_cash`
+- `net_cash_ratio`
 
-フロントエンドTypeScriptを確認する場合:
-
-```bash
-npm install
-npm exec -- tsc --noEmit
-```
-
-## トラブルシュート
-
-- `stock-db` または `stock-web-ui` が見つからない場合は、隣接プロジェクトの配置と `uv sync --extra dev` の結果を確認してください。
-- スクリーニング結果が0件の場合は、DBに対象銘柄の財務データ、株価、発行済株式数が揃っているか確認してください。
-- Web UIは `stock_web_ui` のサーバー設定を利用します。ポートやホストを変えたい場合は `stock_web_ui` 側の設定も確認してください。
+詳細な流れとモジュール分割は [ARCHITECTURE.md](./ARCHITECTURE.md) を参照してください。
