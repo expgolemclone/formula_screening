@@ -5,17 +5,15 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from stock_db.paths import STOCKS_DB_PATH
+from stock_db.storage.connection import get_connection
+from stock_db.storage.financials import get_financial_dict
+from stock_db.storage.prices import get_latest_price_with_shares
+from stock_db.storage.stocks import get_stock_names
 from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
-
-from formula_screening.db.repository import (
-    get_financial_dict,
-    get_latest_price_with_shares,
-    get_stock_names,
-)
-from formula_screening.db.schema import get_connection
 from formula_screening.indicators import croic, fcf_yield_avg
 from formula_screening.metrics import compute_metrics
 
@@ -44,7 +42,7 @@ def compute_all_stock_metrics(
     """
     own_conn = conn is None
     if own_conn:
-        conn = get_connection()
+        conn = get_connection(STOCKS_DB_PATH)
     try:
         names = get_stock_names(conn)
         result: dict[str, dict[str, float | None]] = {}

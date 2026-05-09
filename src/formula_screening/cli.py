@@ -14,8 +14,9 @@ from pathlib import Path
 from collections.abc import Callable
 
 from formula_screening.config import CLI_DEFAULTS, MAGIC
-from formula_screening.db.schema import get_connection, init_db
 from formula_screening.log import setup_logging
+from stock_db.paths import STOCKS_DB_PATH
+from stock_db.storage.connection import get_connection
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -34,7 +35,7 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
         csv:path.csv  → tickers read from the first column of *path.csv*
     """
     if spec == "all":
-        from formula_screening.db.repository import get_all_tickers
+        from stock_db.storage.stocks import get_all_tickers
         return get_all_tickers(conn)
 
     if spec.startswith("csv:"):
@@ -56,7 +57,7 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
 
     m = _RANGE_RE.match(spec)
     if m:
-        from formula_screening.db.repository import get_all_tickers
+        from stock_db.storage.stocks import get_all_tickers
         lo, hi = int(m.group(1)), int(m.group(2))
         all_tickers = get_all_tickers(conn)
         return [t for t in all_tickers if t.isdigit() and lo <= int(t) <= hi]
@@ -74,7 +75,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         print(f"Strategy file not found: {strategy_path}", file=sys.stderr)
         sys.exit(1)
 
-    conn: sqlite3.Connection = get_connection()
+    conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
     try:
         # Determine which tickers to screen
         specific_tickers: list[str] | None = None
@@ -134,7 +135,6 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging(verbose=args.verbose, quiet=args.quiet)
-    init_db()
 
     cmds = {
         "screen": _cmd_screen,

@@ -11,14 +11,12 @@ from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 
-from formula_screening.db.repository import (
-    get_all_tickers,
-    get_financial_dict,
-    get_historical_items,
-    get_latest_price_with_shares,
-    get_stock_names,
-)
 from formula_screening.config import MAGIC
+from stock_db.paths import STOCKS_DB_PATH
+from stock_db.storage.connection import get_connection
+from stock_db.storage.financials import get_financial_dict, get_historical_items
+from stock_db.storage.prices import get_latest_price_with_shares
+from stock_db.storage.stocks import get_all_tickers, get_stock_names
 from formula_screening.metrics import compute_metrics
 from formula_screening.screen_output import (
     ScreenColumn,
@@ -217,9 +215,9 @@ def _screen_chunk(
 
     Returns (all_stocks, hits, errors).
     """
-    from formula_screening.db.schema import get_connection
+    from stock_db.storage.connection import get_connection
 
-    conn: sqlite3.Connection = get_connection()
+    conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
     all_stocks: list[dict] = []
     hits: list[dict] = []
     errors: int = 0
