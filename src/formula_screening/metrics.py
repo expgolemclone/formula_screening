@@ -40,7 +40,8 @@ def compute_metrics(
     operating_income = pl.get("operating_income")
     ordinary_income = pl.get("ordinary_income")
     net_income = pl.get("net_income")
-    forecast_net_income = financials.get("forecast", {}).get("net_income")
+    ni_current = financials.get("forecast", {}).get("net_income_current")
+    ni_next = financials.get("forecast", {}).get("net_income_next")
 
     total_assets = bs.get("total_assets")
     stockholders_equity = bs.get("stockholders_equity")
@@ -66,7 +67,8 @@ def compute_metrics(
     # values in the IR BANK JSON aren't adjusted for stock splits, so the
     # total-value form is split-safe.
     metrics["market_cap"] = market_cap
-    metrics["per"] = _safe_div(market_cap, forecast_net_income)
+    metrics["per"] = _safe_div(market_cap, ni_current)
+    metrics["per_next"] = _safe_div(market_cap, ni_next)
     metrics["per_actual"] = _safe_div(market_cap, net_income)
     metrics["pbr"] = _safe_div(market_cap, total_equity)
 
