@@ -7,14 +7,15 @@ from pathlib import Path
 
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.storage.connection import get_connection
-from stock_db.storage.financials import get_financial_dict
+from stock_db.storage.financials import get_financial_dict, get_historical_items
 from stock_db.storage.prices import get_latest_price_with_shares
 from stock_db.storage.stocks import get_stock_names
 from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
-from formula_screening.indicators import croic, fcf_yield_avg
+from formula_screening.indicators import croic, fcf_yield_avg, peg_5
+from formula_screening.indicators.peg import PEG_YEARS
 from formula_screening.metrics import compute_metrics
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
@@ -38,7 +39,7 @@ def compute_all_stock_metrics(
 
     Returns:
         ``{ticker: {"price", "net_cash_ratio", "per", "equity_ratio",
-                     "fcf_yield_avg", "croic", "market_cap"}}``
+                     "fcf_yield_avg", "croic", "peg_5", "market_cap"}}``
     """
     own_conn = conn is None
     if own_conn:
@@ -69,6 +70,7 @@ def compute_all_stock_metrics(
                     "metrics": metrics,
                 }
                 stock_dict["cf_history"] = []
+                stock_dict["pl_history"] = get_historical_items(conn, code, "pl", n_periods=PEG_YEARS)
 
                 result[code] = {
                     "price": price,
@@ -77,6 +79,7 @@ def compute_all_stock_metrics(
                     "equity_ratio": metrics.get("equity_ratio"),
                     "fcf_yield_avg": fcf_yield_avg(stock_dict),
                     "croic": croic(stock_dict),
+                    "peg_5": peg_5(stock_dict),
                     "market_cap": metrics.get("market_cap"),
                 }
             except (KeyError, ValueError, ZeroDivisionError, TypeError):
@@ -134,6 +137,7 @@ def _serialize_stock(stock: dict) -> dict:
 
     fcf_value = fcf_yield_avg(stock)
     croic_value = croic(stock)
+    peg_value = peg_5(stock)
 
     return {
         "code": stock.get("ticker", ""),
@@ -149,4 +153,5 @@ def _serialize_stock(stock: dict) -> dict:
         },
         "fcf_yield_avg": fcf_value,
         "croic": croic_value,
+        "peg_5": peg_value,
     }

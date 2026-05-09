@@ -2,5 +2,6 @@
 
 from formula_screening.indicators.croic import croic
 from formula_screening.indicators.fcf import fcf_yield_avg
+from formula_screening.indicators.peg import peg_5
 
-__all__: list[str] = ["croic", "fcf_yield_avg"]
+__all__: list[str] = ["croic", "fcf_yield_avg", "peg_5"]

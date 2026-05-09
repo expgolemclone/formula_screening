@@ -17,6 +17,7 @@ from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import get_financial_dict, get_historical_items
 from stock_db.storage.prices import get_latest_price_with_shares
 from stock_db.storage.stocks import get_all_tickers, get_stock_names
+from formula_screening.indicators.peg import PEG_YEARS
 from formula_screening.metrics import compute_metrics
 from formula_screening.screen_output import (
     ScreenColumn,
@@ -189,6 +190,7 @@ def build_stock_dict(
     metrics = compute_metrics(financials, price, shares)
 
     cf_history = get_historical_items(conn, ticker, "cf", n_periods=MAGIC["screening"]["fcf_years"])
+    pl_history = get_historical_items(conn, ticker, "pl", n_periods=PEG_YEARS)
 
     return {
         "ticker": ticker,
@@ -202,6 +204,7 @@ def build_stock_dict(
         "forecast": financials.get("forecast", {}),
         "metrics": metrics,
         "cf_history": cf_history,
+        "pl_history": pl_history,
     }
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from formula_screening.indicators import croic, fcf_yield_avg
+from formula_screening.indicators import croic, fcf_yield_avg, peg_5
 
 REQUIRED_SOURCES: list[str] = ["edinet_xbrl", "xbrl_bs", "prices"]
 
@@ -28,6 +28,7 @@ SORT: str = "net_cash_ratio"
 COLUMNS: list[tuple[str, Callable[[dict], float | None], str]] = [
     ("FCF_Y%", fcf_yield_avg, "{:.2%}"),
     ("CROIC%", croic, "{:.2%}"),
+    ("peg_5", peg_5, "{:.2f}"),
 ]
 
 

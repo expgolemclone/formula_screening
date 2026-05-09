@@ -93,6 +93,18 @@ const COLUMNS: ColumnDef[] = [
     },
   },
   {
+    key: "peg_5",
+    header: "peg_5",
+    type: "num",
+    title: "実績PER / 過去5期純利益CAGR[%]",
+    toggleable: true,
+    render: (row): string => {
+      const v = row.peg_5 as number | null | undefined;
+      return v !== null && v !== undefined ? v.toFixed(2) : "-";
+    },
+    sortValue: (row): number | null => (row.peg_5 as number) ?? null,
+  },
+  {
     key: "pbr",
     header: "PBR",
     type: "num",

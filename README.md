@@ -79,7 +79,7 @@ uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t csv:d
 宣言的な戦略では、必要に応じて `SORT` と `COLUMNS` も定義できます。
 
 ```python
-from formula_screening.indicators import croic, fcf_yield_avg
+from formula_screening.indicators import croic, fcf_yield_avg, peg_5
 
 FILTERS = [
     ("net_cash_ratio", ">=", -1.0),
@@ -93,6 +93,7 @@ SORT = "net_cash_ratio"
 COLUMNS = [
     ("FCF_Y%", fcf_yield_avg, "{:.2%}"),
     ("CROIC%", croic, "{:.2%}"),
+    ("peg_5", peg_5, "{:.2f}"),
 ]
 ```
 
@@ -116,6 +117,7 @@ COLUMNS = [
     "forecast": {...},
     "metrics": {...},
     "cf_history": [("2025-03", {...}), ...],
+    "pl_history": [("2025-03", {...}), ...],
 }
 ```
 
