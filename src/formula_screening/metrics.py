@@ -23,8 +23,8 @@ def compute_metrics(
 
     Args:
         financials: Nested dict {statement: {item_name: value}} from DB.
-        price: Current stock price from Stooq.
-        shares_outstanding: Current shares outstanding (from IR BANK or Stooq).
+        price: Latest stock price from stock_db price data.
+        shares_outstanding: Current shares outstanding from stock_db.stocks.
 
     Returns:
         Dict of metric_name -> value.
@@ -62,10 +62,9 @@ def compute_metrics(
 
     metrics: dict[str, float | None] = {}
 
-    # Price-dependent metrics (always computed from real-time data).
-    # PER is market_cap / net_income rather than price / EPS: per-share
-    # values in the IR BANK JSON aren't adjusted for stock splits, so the
-    # total-value form is split-safe.
+    # Price-dependent metrics use market_cap / net_income rather than
+    # price / EPS, keeping calculations independent from per-share adjustment
+    # differences across data sources.
     metrics["market_cap"] = market_cap
     metrics["per"] = _safe_div(market_cap, ni_current)
     metrics["per_next"] = _safe_div(market_cap, ni_next)

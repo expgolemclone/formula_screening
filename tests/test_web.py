@@ -39,6 +39,7 @@ def test_serialize_stock_includes_peg_5() -> None:
             "metrics": {
                 "net_cash_ratio": 1.0,
                 "per": 5.0,
+                "per_next": 6.0,
                 "per_actual": 10.0,
                 "pbr": 0.5,
                 "dividend_yield": 2.0,
@@ -60,3 +61,4 @@ def test_serialize_stock_includes_peg_5() -> None:
     )
 
     assert payload["peg_5"] == pytest.approx(0.5285213507883246)
+    assert payload["metrics"]["per_next"] == 6.0

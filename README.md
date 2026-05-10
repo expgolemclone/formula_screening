@@ -23,6 +23,7 @@ uv sync
 ```
 
 `stock_db` 側で価格・財務データが投入済みであることを確認してください。  
+BS / PL / CF / dividend は `source=edinet_xbrl`、四季報の今期・来期純利益予想は `source=shikiho` を参照します。
 このリポジトリ単体では DB を作成しません。
 
 ## クイックスタート
@@ -124,7 +125,7 @@ COLUMNS = [
 `metrics` には少なくとも次のような派生指標が入ります。
 
 - `market_cap`
-- `per`, `per_actual`, `pbr`
+- `per`, `per_next`, `per_actual`, `pbr`
 - `dividend_yield`
 - `equity_ratio`
 - `free_cf`

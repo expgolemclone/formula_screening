@@ -47,8 +47,8 @@ def load_latest_bs(
     conn: sqlite3.Connection,
     ticker: str,
 ) -> tuple[str | None, dict[str, float | None], str | None]:
-    """Load the latest balance sheet rows stored from XBRL."""
-    rows = get_items_by_source(conn, ticker, "xbrl_bs")
+    """Load the latest balance sheet rows stored from EDINET XBRL."""
+    rows = get_items_by_source(conn, ticker, "edinet_xbrl")
     if not rows:
         return None, {}, "scrape_missing"
 

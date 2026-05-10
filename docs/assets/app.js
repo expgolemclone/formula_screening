@@ -68,7 +68,7 @@ const COLUMNS = [
         key: "per",
         header: "PER",
         type: "num",
-        title: "株価 / 来期予想EPS",
+        title: "時価総額 / 四季報今期予想純利益",
         toggleable: true,
         render: (row) => {
             const metrics = row.metrics;
@@ -78,6 +78,22 @@ const COLUMNS = [
         sortValue: (row) => {
             const metrics = row.metrics;
             return metrics?.per ?? null;
+        },
+    },
+    {
+        key: "per_next",
+        header: "PER+1",
+        type: "num",
+        title: "時価総額 / 四季報来期予想純利益",
+        toggleable: true,
+        render: (row) => {
+            const metrics = row.metrics;
+            const v = metrics?.per_next;
+            return v !== null && v !== undefined ? v.toFixed(1) : "-";
+        },
+        sortValue: (row) => {
+            const metrics = row.metrics;
+            return metrics?.per_next ?? null;
         },
     },
     {
@@ -180,6 +196,7 @@ const COLUMNS = [
 const METRIC_THRESHOLDS = {
     net_cash_ratio: { good: (v) => v > 1 },
     per: { good: (v) => v > 0 && v <= 7, bad: (v) => v > 7 },
+    per_next: { good: (v) => v > 0 && v <= 7, bad: (v) => v > 7 },
     pbr: { good: (v) => v < 0.5 },
     dividend_yield: { good: (v) => v >= 4 },
     equity_ratio: { good: (v) => v >= 50 },

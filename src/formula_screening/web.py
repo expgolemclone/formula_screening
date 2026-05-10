@@ -38,7 +38,7 @@ def compute_all_stock_metrics(
               created and closed automatically.
 
     Returns:
-        ``{ticker: {"price", "net_cash_ratio", "per", "equity_ratio",
+        ``{ticker: {"price", "net_cash_ratio", "per", "per_next", "equity_ratio",
                      "fcf_yield_avg", "croic", "peg_5", "market_cap"}}``
     """
     own_conn = conn is None
@@ -76,6 +76,7 @@ def compute_all_stock_metrics(
                     "price": price,
                     "net_cash_ratio": metrics.get("net_cash_ratio"),
                     "per": metrics.get("per"),
+                    "per_next": metrics.get("per_next"),
                     "equity_ratio": metrics.get("equity_ratio"),
                     "fcf_yield_avg": fcf_yield_avg(stock_dict),
                     "croic": croic(stock_dict),
@@ -146,6 +147,7 @@ def _serialize_stock(stock: dict) -> dict:
         "metrics": {
             "net_cash_ratio": metrics.get("net_cash_ratio"),
             "per": metrics.get("per"),
+            "per_next": metrics.get("per_next"),
             "pbr": metrics.get("pbr"),
             "dividend_yield": metrics.get("dividend_yield"),
             "equity_ratio": metrics.get("equity_ratio"),

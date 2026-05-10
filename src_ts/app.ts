@@ -80,7 +80,7 @@ const COLUMNS: ColumnDef[] = [
     key: "per",
     header: "PER",
     type: "num",
-    title: "株価 / 来期予想EPS",
+    title: "時価総額 / 四季報今期予想純利益",
     toggleable: true,
     render: (row): string => {
       const metrics = row.metrics as Record<string, unknown> | undefined;
@@ -90,6 +90,22 @@ const COLUMNS: ColumnDef[] = [
     sortValue: (row): number | null => {
       const metrics = row.metrics as Record<string, unknown> | undefined;
       return (metrics?.per as number) ?? null;
+    },
+  },
+  {
+    key: "per_next",
+    header: "PER+1",
+    type: "num",
+    title: "時価総額 / 四季報来期予想純利益",
+    toggleable: true,
+    render: (row): string => {
+      const metrics = row.metrics as Record<string, unknown> | undefined;
+      const v = metrics?.per_next as number | null | undefined;
+      return v !== null && v !== undefined ? v.toFixed(1) : "-";
+    },
+    sortValue: (row): number | null => {
+      const metrics = row.metrics as Record<string, unknown> | undefined;
+      return (metrics?.per_next as number) ?? null;
     },
   },
   {
@@ -189,6 +205,7 @@ const COLUMNS: ColumnDef[] = [
 const METRIC_THRESHOLDS: Record<string, MetricThreshold> = {
   net_cash_ratio: { good: (v): boolean => v > 1 },
   per: { good: (v): boolean => v > 0 && v <= 7, bad: (v): boolean => v > 7 },
+  per_next: { good: (v): boolean => v > 0 && v <= 7, bad: (v): boolean => v > 7 },
   pbr: { good: (v): boolean => v < 0.5 },
   dividend_yield: { good: (v): boolean => v >= 4 },
   equity_ratio: { good: (v): boolean => v >= 50 },
