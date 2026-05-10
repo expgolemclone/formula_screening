@@ -77,8 +77,24 @@ const COLUMNS: ColumnDef[] = [
     },
   },
   {
+    key: "per_actual",
+    header: "per_a",
+    type: "num",
+    title: "時価総額 / 実績純利益",
+    toggleable: true,
+    render: (row): string => {
+      const metrics = row.metrics as Record<string, unknown> | undefined;
+      const v = metrics?.per_actual as number | null | undefined;
+      return v !== null && v !== undefined ? v.toFixed(1) : "-";
+    },
+    sortValue: (row): number | null => {
+      const metrics = row.metrics as Record<string, unknown> | undefined;
+      return (metrics?.per_actual as number) ?? null;
+    },
+  },
+  {
     key: "per",
-    header: "PER",
+    header: "per_c",
     type: "num",
     title: "時価総額 / 四季報今期予想純利益",
     toggleable: true,
@@ -94,7 +110,7 @@ const COLUMNS: ColumnDef[] = [
   },
   {
     key: "per_next",
-    header: "PER+1",
+    header: "per_n",
     type: "num",
     title: "時価総額 / 四季報来期予想純利益",
     toggleable: true,
@@ -204,6 +220,7 @@ const COLUMNS: ColumnDef[] = [
 
 const METRIC_THRESHOLDS: Record<string, MetricThreshold> = {
   net_cash_ratio: { good: (v): boolean => v > 1 },
+  per_actual: { good: (v): boolean => v > 0 && v <= 7, bad: (v): boolean => v > 7 },
   per: { good: (v): boolean => v > 0 && v <= 7, bad: (v): boolean => v > 7 },
   per_next: { good: (v): boolean => v > 0 && v <= 7, bad: (v): boolean => v > 7 },
   pbr: { good: (v): boolean => v < 0.5 },

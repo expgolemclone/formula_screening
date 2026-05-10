@@ -65,8 +65,24 @@ const COLUMNS = [
         },
     },
     {
+        key: "per_actual",
+        header: "per_a",
+        type: "num",
+        title: "時価総額 / 実績純利益",
+        toggleable: true,
+        render: (row) => {
+            const metrics = row.metrics;
+            const v = metrics?.per_actual;
+            return v !== null && v !== undefined ? v.toFixed(1) : "-";
+        },
+        sortValue: (row) => {
+            const metrics = row.metrics;
+            return metrics?.per_actual ?? null;
+        },
+    },
+    {
         key: "per",
-        header: "PER",
+        header: "per_c",
         type: "num",
         title: "時価総額 / 四季報今期予想純利益",
         toggleable: true,
@@ -82,7 +98,7 @@ const COLUMNS = [
     },
     {
         key: "per_next",
-        header: "PER+1",
+        header: "per_n",
         type: "num",
         title: "時価総額 / 四季報来期予想純利益",
         toggleable: true,
@@ -195,6 +211,7 @@ const COLUMNS = [
 ];
 const METRIC_THRESHOLDS = {
     net_cash_ratio: { good: (v) => v > 1 },
+    per_actual: { good: (v) => v > 0 && v <= 7, bad: (v) => v > 7 },
     per: { good: (v) => v > 0 && v <= 7, bad: (v) => v > 7 },
     per_next: { good: (v) => v > 0 && v <= 7, bad: (v) => v > 7 },
     pbr: { good: (v) => v < 0.5 },
