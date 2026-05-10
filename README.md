@@ -125,7 +125,7 @@ COLUMNS = [
 `metrics` には少なくとも次のような派生指標が入ります。
 
 - `market_cap`
-- `per`, `per_next`, `per_actual`, `pbr`
+- `per_actual`, `per`, `per_next`, `pbr`
 - `dividend_yield`
 - `equity_ratio`
 - `free_cf`
