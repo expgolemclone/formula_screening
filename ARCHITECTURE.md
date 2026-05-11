@@ -54,11 +54,17 @@ current_assets - inventories + investment_securities * 0.7
 - `stock_web_ui` の `serve()` に `docs/assets`、`IndexPage`、API ルートを渡す
 - handbook 参照用に `../japan_company_handbook/data` を `yazi_base_dir` として渡す
 - 外部利用向けに `compute_all_stock_metrics()` を公開する
+- `save_screening_json(stocks, path)` でスクリーニング結果を静的 JSON ファイルとして保存する（GitHub Pages 用）
+
+### `src/formula_screening/cli.py`
+
+- `screen` サブコマンドの `--json <path>` オプションでスクリーニング結果を JSON に保存して終了する（Web サーバーを起動しない）
+- `--json` 未指定時は従来どおり Web サーバーを起動する
 
 ### `src_ts/app.ts`
 
 - `stock_web_ui` の `StockTable` ランタイムを読み込む
-- `/api/screening` を fetch し、単一テーブルとして描画する
+- ローカル時は `/api/screening`、GitHub Pages 時は `assets/screening.json` を fetch する
 - 表示カラム、ソート、`peg_trailing_5` / `peg_blended_5y_actual_2f` を含む追加列、閾値色分けをここで定義する
 
 ## 戦略インターフェース

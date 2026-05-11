@@ -140,6 +140,15 @@ def serve_screening(
     )
 
 
+def save_screening_json(stocks: list[dict], path: Path) -> None:
+    """Save screening results as a static JSON file for GitHub Pages."""
+    import json
+
+    payload = [_serialize_stock(s) for s in stocks]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _serialize_stock(stock: dict) -> dict:
     """Convert a screener stock dict to the JSON shape expected by app.js."""
     metrics = stock.get("metrics", {})

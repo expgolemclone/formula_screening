@@ -107,6 +107,13 @@ def _cmd_screen(args: argparse.Namespace) -> None:
             stocks.sort(key=lambda s: s["metrics"].get("net_cash_ratio") or 0, reverse=True)
 
         print(f"{len(stocks)} stocks matched ({elapsed:.1f}s)", flush=True)
+
+        if args.json:
+            from formula_screening.web import save_screening_json
+            save_screening_json(stocks, Path(args.json))
+            print(f"Saved to {args.json}")
+            return
+
         serve_screening(stocks)
     finally:
         conn.close()
@@ -130,6 +137,7 @@ def main() -> None:
         help="Ticker(s) to screen: codes (7203 6758), 'all', a range (1000-2000), or csv:path.csv",
     )
     p_screen.add_argument("--show-all", action="store_true", help="Show all screened stocks, not just hits")
+    p_screen.add_argument("--json", type=str, default=None, metavar="PATH", help="Save results as JSON and exit (no web server)")
     p_screen.add_argument("--workers", type=int, default=MAGIC["screening"]["workers"], help="Number of parallel screening workers")
 
     args = parser.parse_args()

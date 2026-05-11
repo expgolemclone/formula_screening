@@ -238,7 +238,7 @@ const METRIC_THRESHOLDS = {
 function bootstrap() {
     StockTable.init({
         defaultTitle: "Formula Screening",
-        dataUrl: "/api/screening",
+        dataUrl: IS_GITHUB_PAGES ? "assets/screening.json" : "/api/screening",
         columns: COLUMNS,
         metricThresholds: METRIC_THRESHOLDS,
         defaultSortKey: "net_cash_ratio",
