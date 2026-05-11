@@ -15,7 +15,7 @@ from formula_screening.config import MAGIC
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import get_financial_dict, get_historical_items
-from stock_db.storage.prices import get_latest_price_with_shares, get_price_at_or_before
+from stock_db.storage.prices import get_latest_price_with_shares
 from stock_db.storage.stocks import get_all_tickers, get_stock_names
 from formula_screening.metrics import compute_metrics
 from formula_screening.screen_output import (
@@ -195,11 +195,6 @@ def build_stock_dict(
     )
     pl_history = get_historical_items(conn, ticker, "pl", n_periods=n_pl_periods)
 
-    price_at_period: dict[str, float | None] = {}
-    for period, _cf in cf_history:
-        date_end = f"{period}-31"
-        price_at_period[period] = get_price_at_or_before(conn, ticker, date_end)
-
     return {
         "ticker": ticker,
         "name": name,
@@ -213,7 +208,6 @@ def build_stock_dict(
         "metrics": metrics,
         "cf_history": cf_history,
         "pl_history": pl_history,
-        "price_at_period": price_at_period,
     }
 
 

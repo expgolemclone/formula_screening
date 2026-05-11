@@ -25,7 +25,6 @@
 - 戦略ファイルを `importlib` で動的ロードする
 - 宣言的戦略の `FILTERS` / `SORT` / `COLUMNS` を実行可能な関数に変換する
 - `stock_db` から EDINET XBRL 財務、四季報予想、価格、発行済株式数、履歴 CF / PL を読み出し、戦略評価用の `stock` 辞書を組み立てる
-- 各 CF 期間に対応する過去株価を `prices` テーブルから取得し `price_at_period` に格納する
 - 並列実行時はワーカーごとに DB 接続を開く
 
 ### `src/formula_screening/metrics.py`
@@ -43,7 +42,7 @@ current_assets - inventories + investment_securities * 0.7
 
 ### `src/formula_screening/indicators/`
 
-- `fcf.py`: 過去 N 期の平均 FCF Yield を計算する。既定の N は `config/magic_numbers.toml` の `fcf_years = 10`。各期の FCF をその期の時価総額（`price_at_period[period] × shares_outstanding`）で割ることで先読みバイアスを回避する。価格が取得できない期は計算から除外する。
+- `fcf.py`: 過去 N 期の平均 FCF Yield を計算する。既定の N は `config/magic_numbers.toml` の `fcf_years = 10`。各期の FCF を現在の時価総額で割る。ライブスクリーニング向けであり、バックテスト用途には先読みバイアスがある。
 - `croic.py`: `free_cf / (stockholders_equity + interest_bearing_debt)` を計算する
 - `peg.py`: Trailing PEG（`peg_trailing`）と独自ブレンドPEG（`peg_blended_2f`）を計算する。いずれもEPSベース（`stock_db` の `compute_eps` で計算済み）。
   - `peg_trailing(stock, years)`: 過去 `years` 期間の実績EPS CAGRを使い、`per_actual / CAGR%` を返す。5年CAGRには6データポイントが必要（`years+1`）。
@@ -101,7 +100,6 @@ current_assets - inventories + investment_securities * 0.7
     "metrics": dict[str, float | None],
     "cf_history": list[tuple[str, dict[str, float | None]]],
     "pl_history": list[tuple[str, dict[str, float | None]]],
-    "price_at_period": dict[str, float | None],
 }
 ```
 
