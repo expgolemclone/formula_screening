@@ -32,7 +32,7 @@
 - PL / BS / CF と現在株価から派生指標を計算する
 - `market_cap`, `per_actual`, `per`, `per_next`, `pbr`, `dividend_yield`, `equity_ratio`, `free_cf`, `interest_bearing_debt`, `net_cash`, `net_cash_ratio` などを `metrics` に詰める
 - `per_actual` は `market_cap / pl.net_income`、`per` は `market_cap / forecast.net_income_current`（四季報今期予想純利益）、`per_next` は `market_cap / forecast.net_income_next`（四季報来期予想純利益）。純利益予想の単一ソースは `japan_company_handbook`（`stock_db` の `source=shikiho`）
-- BS / PL / CF / dividend の単一ソースは `stock_db` の `source=edinet_xbrl`
+- BS / PL / CF の単一ソースは `stock_db` の `source=edinet_xbrl`、dividend の単一ソースは `source=shikiho`（四季報）
 - `net_cash` は次の式で求める
 
 ```text
