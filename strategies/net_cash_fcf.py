@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from formula_screening.indicators import croic, fcf_yield_avg, peg_5
+from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
 
 REQUIRED_SOURCES: list[str] = ["edinet_xbrl", "shikiho", "prices"]
 
@@ -28,7 +28,8 @@ SORT: str = "net_cash_ratio"
 COLUMNS: list[tuple[str, Callable[[dict], float | None], str]] = [
     ("FCF_Y%", fcf_yield_avg, "{:.2%}"),
     ("CROIC%", croic, "{:.2%}"),
-    ("peg_5", peg_5, "{:.2f}"),
+    ("peg_trailing_5", lambda s: peg_trailing(s, 5), "{:.2f}"),
+    ("peg_blended_5y_2f", lambda s: peg_blended_2f(s, 5), "{:.2f}"),
 ]
 
 

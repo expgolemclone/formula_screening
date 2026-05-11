@@ -30,7 +30,7 @@ def test_serve_screening_passes_handbook_dir_to_stock_web_ui(
     assert captured["yazi_base_dir"] == web_mod._HANDBOOK_DATA_DIR
 
 
-def test_serialize_stock_includes_peg_5() -> None:
+def test_serialize_stock_includes_peg_trailing_5() -> None:
     payload = web_mod._serialize_stock(
         {
             "ticker": "1301",
@@ -49,17 +49,25 @@ def test_serialize_stock_includes_peg_5() -> None:
                 "interest_bearing_debt": 50.0,
             },
             "pl_history": [
-                ("2025-03", {"net_income": 200.0}),
-                ("2024-03", {"net_income": 180.0}),
-                ("2023-03", {"net_income": 160.0}),
-                ("2022-03", {"net_income": 140.0}),
-                ("2021-03", {"net_income": 100.0}),
+                ("2025-03", {"eps": 200.0, "net_income": 200.0}),
+                ("2024-03", {"eps": 180.0, "net_income": 180.0}),
+                ("2023-03", {"eps": 160.0, "net_income": 160.0}),
+                ("2022-03", {"eps": 140.0, "net_income": 140.0}),
+                ("2021-03", {"eps": 120.0, "net_income": 120.0}),
+                ("2020-03", {"eps": 100.0, "net_income": 100.0}),
             ],
+            "forecast": {
+                "eps_current": 220.0,
+                "eps_next": 240.0,
+            },
             "cf_history": [],
             "bs": {"stockholders_equity": 100.0},
         }
     )
 
-    assert payload["peg_5"] == pytest.approx(0.5285213507883246)
+    expected_cagr = (200.0 / 100.0) ** (1 / 5) - 1
+    expected_peg = 10.0 / (expected_cagr * 100)
+    assert payload["peg_trailing_5"] == pytest.approx(expected_peg)
+    assert payload["peg_blended_5y_actual_2f"] is not None
     assert payload["metrics"]["per_actual"] == 10.0
     assert payload["metrics"]["per_next"] == 6.0

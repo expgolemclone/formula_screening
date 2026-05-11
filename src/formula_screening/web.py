@@ -14,8 +14,8 @@ from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
-from formula_screening.indicators import croic, fcf_yield_avg, peg_5
-from formula_screening.indicators.peg import PEG_YEARS
+from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
+from formula_screening.config import MAGIC
 from formula_screening.metrics import compute_metrics
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
@@ -70,7 +70,11 @@ def compute_all_stock_metrics(
                     "metrics": metrics,
                 }
                 stock_dict["cf_history"] = []
-                stock_dict["pl_history"] = get_historical_items(conn, code, "pl", n_periods=PEG_YEARS)
+                n_pl_periods = max(
+                    MAGIC["screening"]["peg_trailing_years"] + 1,
+                    MAGIC["screening"]["peg_blended_actual_years"] + 1,
+                )
+                stock_dict["pl_history"] = get_historical_items(conn, code, "pl", n_periods=n_pl_periods)
 
                 result[code] = {
                     "price": price,
@@ -81,7 +85,8 @@ def compute_all_stock_metrics(
                     "equity_ratio": metrics.get("equity_ratio"),
                     "fcf_yield_avg": fcf_yield_avg(stock_dict),
                     "croic": croic(stock_dict),
-                    "peg_5": peg_5(stock_dict),
+                    "peg_trailing_5": peg_trailing(stock_dict, 5),
+                    "peg_blended_5y_actual_2f": peg_blended_2f(stock_dict, 5),
                     "market_cap": metrics.get("market_cap"),
                 }
             except (KeyError, ValueError, ZeroDivisionError, TypeError):
@@ -139,7 +144,8 @@ def _serialize_stock(stock: dict) -> dict:
 
     fcf_value = fcf_yield_avg(stock)
     croic_value = croic(stock)
-    peg_value = peg_5(stock)
+    peg_trailing_5_value = peg_trailing(stock, 5)
+    peg_blended_value = peg_blended_2f(stock, 5)
 
     return {
         "code": stock.get("ticker", ""),
@@ -157,5 +163,6 @@ def _serialize_stock(stock: dict) -> dict:
         },
         "fcf_yield_avg": fcf_value,
         "croic": croic_value,
-        "peg_5": peg_value,
+        "peg_trailing_5": peg_trailing_5_value,
+        "peg_blended_5y_actual_2f": peg_blended_value,
     }
