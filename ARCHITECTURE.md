@@ -60,7 +60,7 @@ current_assets - inventories + investment_securities * 0.7
 
 - `stock_web_ui` の `StockTable` ランタイムを読み込む
 - `/api/screening` を fetch し、単一テーブルとして描画する
-- 表示カラム、ソート、`peg_5` を含む追加列、閾値色分けをここで定義する
+- 表示カラム、ソート、`peg_trailing_5` / `peg_blended_5y_actual_2f` を含む追加列、閾値色分けをここで定義する
 
 ## 戦略インターフェース
 
