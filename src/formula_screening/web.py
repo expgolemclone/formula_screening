@@ -8,7 +8,7 @@ from pathlib import Path
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import get_financial_dict, get_historical_items
-from stock_db.storage.prices import get_latest_price_with_shares
+from stock_db.storage.prices import get_latest_price_with_shares, get_price_at_or_before
 from stock_db.storage.stocks import get_stock_names
 from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
@@ -69,7 +69,13 @@ def compute_all_stock_metrics(
                     "forecast": financials.get("forecast", {}),
                     "metrics": metrics,
                 }
-                stock_dict["cf_history"] = []
+                stock_dict["cf_history"] = get_historical_items(
+                    conn, code, "cf", n_periods=MAGIC["screening"]["fcf_years"],
+                )
+                price_at_period: dict[str, float | None] = {}
+                for period, _cf in stock_dict["cf_history"]:
+                    price_at_period[period] = get_price_at_or_before(conn, code, f"{period}-31")
+                stock_dict["price_at_period"] = price_at_period
                 n_pl_periods = max(
                     MAGIC["screening"]["peg_trailing_years"] + 1,
                     MAGIC["screening"]["peg_blended_actual_years"] + 1,
