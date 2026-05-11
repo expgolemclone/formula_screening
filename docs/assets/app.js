@@ -113,16 +113,28 @@ const COLUMNS = [
         },
     },
     {
-        key: "peg_5",
-        header: "peg_5",
+        key: "peg_trailing_5",
+        header: "PEG実績5年",
         type: "num",
-        title: "実績PER / 過去5期純利益CAGR[%]",
+        title: "実績PER / 過去5年EPS CAGR[%]",
         toggleable: true,
         render: (row) => {
-            const v = row.peg_5;
+            const v = row.peg_trailing_5;
             return v !== null && v !== undefined ? v.toFixed(2) : "-";
         },
-        sortValue: (row) => row.peg_5 ?? null,
+        sortValue: (row) => row.peg_trailing_5 ?? null,
+    },
+    {
+        key: "peg_blended_5y_actual_2f",
+        header: "PEG5年+2F",
+        type: "num",
+        title: "来期予想PER / (過去5年実績+2期予想)EPS CAGR[%]",
+        toggleable: true,
+        render: (row) => {
+            const v = row.peg_blended_5y_actual_2f;
+            return v !== null && v !== undefined ? v.toFixed(2) : "-";
+        },
+        sortValue: (row) => row.peg_blended_5y_actual_2f ?? null,
     },
     {
         key: "pbr",
