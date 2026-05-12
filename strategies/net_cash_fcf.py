@@ -26,7 +26,7 @@ FILTERS: list[
 SORT: str = "net_cash_ratio"
 
 COLUMNS: list[tuple[str, Callable[[dict], float | None], str]] = [
-    ("FCF_Y%", fcf_yield_avg, "{:.2%}"),
+    ("FCF_10Y%", fcf_yield_avg, "{:.2%}"),
     ("CROIC%", croic, "{:.2%}"),
     ("peg_trailing_5", lambda s: peg_trailing(s, 5), "{:.2f}"),
     ("peg_blended_5y_2f", lambda s: peg_blended_2f(s, 5), "{:.2f}"),
