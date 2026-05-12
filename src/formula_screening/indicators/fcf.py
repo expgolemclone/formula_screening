@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 from formula_screening.config import MAGIC
 
@@ -49,5 +48,5 @@ def fcf_yield_avg(stock: dict, years: int = _FCF_YEARS) -> float | None:
             "fcf_yield_avg: %s has %d/%d valid FCF periods — insufficient data",
             ticker, len(yields), years,
         )
-        sys.exit(1)
+        return None
     return sum(yields) / len(yields)
