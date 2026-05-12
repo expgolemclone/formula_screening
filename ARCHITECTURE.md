@@ -58,7 +58,8 @@ current_assets - inventories + investment_securities * 0.7
 
 ### `src/formula_screening/cli.py`
 
-- `screen` サブコマンドの `--json <path>` オプションでスクリーニング結果を JSON に保存して終了する（Web サーバーを起動しない）
+- `screen` サブコマンドはスクリーニング実行後、常に `docs/assets/screening.json`（GitHub Pages 用）を自動生成する
+- `--json <path>` オプションで追加の JSON 保存先を指定できる（Web サーバーを起動しない）
 - `--json` 未指定時は従来どおり Web サーバーを起動する
 
 ### `src_ts/app.ts`

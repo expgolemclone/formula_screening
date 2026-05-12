@@ -18,6 +18,8 @@ from formula_screening.log import setup_logging
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.storage.connection import get_connection
 
+_GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
+
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
 
@@ -108,8 +110,10 @@ def _cmd_screen(args: argparse.Namespace) -> None:
 
         print(f"{len(stocks)} stocks matched ({elapsed:.1f}s)", flush=True)
 
+        from formula_screening.web import save_screening_json
+        save_screening_json(stocks, _GH_PAGES_JSON)
+
         if args.json:
-            from formula_screening.web import save_screening_json
             save_screening_json(stocks, Path(args.json))
             print(f"Saved to {args.json}")
             return
