@@ -43,7 +43,7 @@ current_assets - inventories + investment_securities * 0.7
 ### `src/formula_screening/indicators/`
 
 - `fcf.py`: 過去 N 期の平均 FCF Yield を計算する。既定の N は `config/magic_numbers.toml` の `fcf_years = 10`。各期の FCF を現在の時価総額で割る。ライブスクリーニング向けであり、バックテスト用途には先読みバイアスがある。
-- `croic.py`: `free_cf / (stockholders_equity + interest_bearing_debt)` を計算する
+- `croic.py`: `free_cf / (stockholders_equity + interest_bearing_debt)` を計算する。`interest_bearing_debt` は `metrics.py` が `short_term_debt + long_term_debt` から導出する。これらのBS項目は `stock_db` の XBRL パーサーが JPPFS（`ShortTermLoansPayable` / `LongTermLoansPayable` 等）と IFRS（`BorrowingsNCLIFRS` / `BondsAndBorrowingsCLIFRS` 等）の両概念名を候補としてパースする。
 - `peg.py`: Trailing PEG（`peg_trailing`）と独自ブレンドPEG（`peg_blended_2f`）を計算する。いずれもEPSベース（`stock_db` の `compute_eps` で計算済み）。
   - `peg_trailing(stock, years)`: 過去 `years` 期間の実績EPS CAGRを使い、`per_actual / CAGR%` を返す。5年CAGRには6データポイントが必要（`years+1`）。
   - `peg_blended_2f(stock, actual_years)`: 過去 `actual_years` 期間の実績EPS + 今期予想EPS + 来期予想EPS の独自ブレンドCAGRを使い、`per_next / CAGR%` を返す。標準Forward PEGではない。
