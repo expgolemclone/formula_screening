@@ -97,10 +97,7 @@ def compute_metrics(
 
     short_term_debt = bs.get("short_term_debt")
     long_term_debt = bs.get("long_term_debt")
-    interest_bearing_debt: float | None = None
-    if short_term_debt is not None and long_term_debt is not None:
-        interest_bearing_debt = short_term_debt + long_term_debt
-    metrics["interest_bearing_debt"] = interest_bearing_debt
+    metrics["interest_bearing_debt"] = (short_term_debt or 0) + (long_term_debt or 0)
 
     # Net cash (清原達郎): 流動資産 − 棚卸資産 + 投資有価証券×70% − 負債
     current_assets = bs.get("current_assets")
