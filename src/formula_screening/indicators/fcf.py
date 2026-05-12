@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+import sys
+
 from formula_screening.config import MAGIC
 
 _FCF_YEARS: int = MAGIC["screening"]["fcf_years"]
+logger = logging.getLogger("formula_screening.fcf")
 
 
 def _resolve_free_cf(cf: dict[str, float | None]) -> float | None:
@@ -39,6 +43,11 @@ def fcf_yield_avg(stock: dict, years: int = _FCF_YEARS) -> float | None:
         if fcf is not None:
             yields.append(fcf / market_cap)
 
-    if not yields:
-        return None
+    if len(yields) < years:
+        ticker: str = stock.get("ticker", "?")
+        logger.error(
+            "fcf_yield_avg: %s has %d/%d valid FCF periods — insufficient data",
+            ticker, len(yields), years,
+        )
+        sys.exit(1)
     return sum(yields) / len(yields)
