@@ -35,6 +35,6 @@ uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t csv:d
 uv run python -m formula_screening screen -s strategies/net_cash_fcf.py -t all --json docs/assets/screening.json
 ```
 
-## 戦略
+## 条件指定
 
-戦略ファイルは `FILTERS` または `screen(stock) -> bool` で定義します。例は [strategies/net_cash_fcf.py](./strategies/net_cash_fcf.py) を参照してください。
+スクリーニング条件は `FILTERS` または `screen(stock) -> bool` で定義します。例は [strategies/net_cash_fcf.py](./strategies/net_cash_fcf.py) を参照してください。
