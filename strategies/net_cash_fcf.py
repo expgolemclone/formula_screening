@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
+from formula_screening.preferred_shares import preferred_share_label
 
 REQUIRED_SOURCES: list[str] = ["edinet_xbrl", "shikiho", "prices"]
 
@@ -25,11 +26,12 @@ FILTERS: list[
 
 SORT: str = "net_cash_ratio"
 
-COLUMNS: list[tuple[str, Callable[[dict], float | None], str]] = [
+COLUMNS: list[tuple[str, Callable[[dict], float | str | None], str]] = [
     ("FCF_10Y%", fcf_yield_avg, "{:.2%}"),
     ("CROIC%", croic, "{:.2%}"),
     ("peg_trailing_5", lambda s: peg_trailing(s, 5), "{:.2f}"),
     ("peg_blended_5y_2f", lambda s: peg_blended_2f(s, 5), "{:.2f}"),
+    ("優先株", preferred_share_label, "{}"),
 ]
 
 

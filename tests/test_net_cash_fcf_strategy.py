@@ -2,16 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from formula_screening.screener import load_strategy
 
 _STRATEGY_PATH = Path(__file__).resolve().parent.parent / "strategies" / "net_cash_fcf.py"
 
 
-def _build_stock(net_cash_ratio: float) -> dict:
+def _build_stock(net_cash_ratio: float, *, has_preferred_shares: float | None = None) -> dict:
+    bs = {
+        "stockholders_equity": 100.0,
+    }
+    if has_preferred_shares is not None:
+        bs["has_preferred_shares"] = has_preferred_shares
+
     return {
-        "bs": {
-            "stockholders_equity": 100.0,
-        },
+        "bs": bs,
         "metrics": {
             "net_cash_ratio": net_cash_ratio,
             "per": 5.0,
@@ -63,3 +69,18 @@ def test_net_cash_fcf_columns_include_peg_trailing_5() -> None:
 
     assert "peg_trailing_5" in columns
     assert "peg_blended_5y_2f" in columns
+
+
+def test_net_cash_fcf_columns_show_preferred_share_flag() -> None:
+    strategy = load_strategy(_STRATEGY_PATH)
+
+    assert dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=1.0)))["優先株"] == "あり"
+    assert dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=0.0)))["優先株"] == "なし"
+    assert dict(strategy.columns(_build_stock(-1.0)))["優先株"] == "-"
+
+
+def test_net_cash_fcf_columns_reject_invalid_preferred_share_flag() -> None:
+    strategy = load_strategy(_STRATEGY_PATH)
+
+    with pytest.raises(ValueError, match="bs.has_preferred_shares"):
+        strategy.columns(_build_stock(-1.0, has_preferred_shares=2.0))

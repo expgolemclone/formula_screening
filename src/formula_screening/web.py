@@ -17,6 +17,7 @@ from stock_web_ui.serve import serve as _serve
 from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
 from formula_screening.config import MAGIC
 from formula_screening.metrics import compute_metrics
+from formula_screening.preferred_shares import preferred_share_flag
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
@@ -176,4 +177,5 @@ def _serialize_stock(stock: dict) -> dict:
         "croic": croic_value,
         "peg_trailing_5": peg_trailing_5_value,
         "peg_blended_5y_actual_2f": peg_blended_value,
+        "has_preferred_shares": preferred_share_flag(stock),
     }

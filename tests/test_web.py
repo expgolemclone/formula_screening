@@ -61,7 +61,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
                 "eps_next": 240.0,
             },
             "cf_history": [],
-            "bs": {"stockholders_equity": 100.0},
+            "bs": {"stockholders_equity": 100.0, "has_preferred_shares": 1.0},
         }
     )
 
@@ -71,3 +71,25 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
     assert payload["peg_blended_5y_actual_2f"] is not None
     assert payload["metrics"]["per_actual"] == 10.0
     assert payload["metrics"]["per_next"] == 6.0
+    assert payload["has_preferred_shares"] is True
+
+
+def test_serialize_stock_preserves_missing_preferred_share_flag() -> None:
+    payload = web_mod._serialize_stock(
+        {
+            "ticker": "1301",
+            "name": "test",
+            "price": 1000.0,
+            "metrics": {
+                "market_cap": 0.0,
+                "free_cf": None,
+                "interest_bearing_debt": None,
+            },
+            "pl_history": [],
+            "forecast": {},
+            "cf_history": [],
+            "bs": {},
+        }
+    )
+
+    assert payload["has_preferred_shares"] is None

@@ -75,6 +75,33 @@ const COLUMNS = [
             return metrics?.dividend_yield ?? null;
         },
     },
+    {
+        key: "has_preferred_shares",
+        header: "pref",
+        type: "text",
+        title: "優先株",
+        toggleable: true,
+        render: (row) => {
+            const value = row.has_preferred_shares;
+            if (value === true) {
+                return "あり";
+            }
+            if (value === false) {
+                return "なし";
+            }
+            return "-";
+        },
+        sortValue: (row) => {
+            const value = row.has_preferred_shares;
+            if (value === true) {
+                return 1;
+            }
+            if (value === false) {
+                return 0;
+            }
+            return null;
+        },
+    },
     C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
     C.fcfYCol,
     C.croicCol,

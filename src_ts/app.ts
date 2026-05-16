@@ -110,6 +110,33 @@ const COLUMNS: ColumnDef[] = [
       return (metrics?.dividend_yield as number) ?? null;
     },
   },
+  {
+    key: "has_preferred_shares",
+    header: "pref",
+    type: "text",
+    title: "優先株",
+    toggleable: true,
+    render: (row): string => {
+      const value = row.has_preferred_shares;
+      if (value === true) {
+        return "あり";
+      }
+      if (value === false) {
+        return "なし";
+      }
+      return "-";
+    },
+    sortValue: (row): number | null => {
+      const value = row.has_preferred_shares;
+      if (value === true) {
+        return 1;
+      }
+      if (value === false) {
+        return 0;
+      }
+      return null;
+    },
+  },
   C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
   C.fcfYCol,
   C.croicCol,
