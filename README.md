@@ -1,7 +1,7 @@
 # formula_screening
 
-Pythonで条件指定できるスクリーナー
-データ取得は `stock_db`、画面表示は `stock_web_ui` に委譲します。
+- Pythonで条件指定できるスクリーナー
+- データ取得は `stock_db`、画面表示は `stock_web_ui` が担当する
 
 - GitHub Pages: https://expgolemclone.github.io/formula_screening/
 - 詳細設計: [ARCHITECTURE.md](./ARCHITECTURE.md)
