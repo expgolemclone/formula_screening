@@ -57,7 +57,7 @@ current_assets - inventories + investment_securities * 0.7
 - `/api/screening` を返す API ルートを作る
 - `stock_web_ui` の `serve()` に `docs/assets`、`IndexPage`、API ルートを渡す
 - handbook 参照用に `../japan_company_handbook/data` を `yazi_base_dir` として渡す
-- 外部利用向けに `compute_all_stock_metrics()` を公開する
+- 外部利用向けに `compute_all_stock_metrics()` を公開し、`has_preferred_shares` も返す
 - `save_screening_json(stocks, path)` でスクリーニング結果を静的 JSON ファイルとして保存する（GitHub Pages 用）
 
 ### `src/formula_screening/cli.py`

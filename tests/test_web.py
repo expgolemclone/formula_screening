@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Mapping
 
 import pytest
@@ -93,3 +94,30 @@ def test_serialize_stock_preserves_missing_preferred_share_flag() -> None:
     )
 
     assert payload["has_preferred_shares"] is None
+
+
+def test_compute_all_stock_metrics_exposes_preferred_share_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(web_mod, "get_stock_names", lambda _conn: {"1301": "test"})
+    monkeypatch.setattr(
+        web_mod,
+        "get_financial_dict",
+        lambda _conn, _ticker: {"bs": {"has_preferred_shares": 1.0}},
+    )
+    monkeypatch.setattr(
+        web_mod,
+        "get_latest_price_with_shares",
+        lambda _conn, _ticker: {"price": 1000.0, "shares_outstanding": 10},
+    )
+    monkeypatch.setattr(web_mod, "compute_metrics", lambda _financials, _price, _shares: {})
+    monkeypatch.setattr(web_mod, "get_historical_items", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(web_mod, "fcf_yield_avg", lambda _stock: None)
+    monkeypatch.setattr(web_mod, "croic", lambda _stock: None)
+    monkeypatch.setattr(web_mod, "peg_trailing", lambda _stock, _years: None)
+    monkeypatch.setattr(web_mod, "peg_blended_2f", lambda _stock, _years: None)
+
+    with sqlite3.connect(":memory:") as conn:
+        metrics = web_mod.compute_all_stock_metrics(conn)
+
+    assert metrics["1301"]["has_preferred_shares"] is True

@@ -24,10 +24,12 @@ _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 _STATIC_ROOT: Path = _DOCS_DIR / "assets"
 _HANDBOOK_DATA_DIR: Path = _PROJECT_ROOT.parent / "japan_company_handbook" / "data"
 
+StockMetricValue = float | bool | None
+
 
 def compute_all_stock_metrics(
     conn: sqlite3.Connection | None = None,
-) -> dict[str, dict[str, float | None]]:
+) -> dict[str, dict[str, StockMetricValue]]:
     """Compute enriched metrics for all tickers via the public API.
 
     This is the single entry-point for external projects that need per-ticker
@@ -40,14 +42,15 @@ def compute_all_stock_metrics(
 
     Returns:
         ``{ticker: {"price", "net_cash_ratio", "per_actual", "per", "per_next",
-                     "equity_ratio", "fcf_yield_avg", "croic", "peg_5", "market_cap"}}``
+                     "equity_ratio", "fcf_yield_avg", "croic", "peg_trailing_5",
+                     "peg_blended_5y_actual_2f", "market_cap", "has_preferred_shares"}}``
     """
     own_conn = conn is None
     if own_conn:
         conn = get_connection(STOCKS_DB_PATH)
     try:
         names = get_stock_names(conn)
-        result: dict[str, dict[str, float | None]] = {}
+        result: dict[str, dict[str, StockMetricValue]] = {}
 
         for code in names:
             try:
@@ -91,6 +94,7 @@ def compute_all_stock_metrics(
                     "peg_trailing_5": peg_trailing(stock_dict, 5),
                     "peg_blended_5y_actual_2f": peg_blended_2f(stock_dict, 5),
                     "market_cap": metrics.get("market_cap"),
+                    "has_preferred_shares": preferred_share_flag(stock_dict),
                 }
             except (KeyError, ValueError, ZeroDivisionError, TypeError):
                 continue
