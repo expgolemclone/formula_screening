@@ -1,6 +1,7 @@
 # formula_screening
 
-日本株の財務データを、Python の条件式でスクリーニングする薄いアプリケーション層です。データ取得は `stock_db`、画面表示は `stock_web_ui` に委譲します。
+Pythonで条件指定できるスクリーナー
+データ取得は `stock_db`、画面表示は `stock_web_ui` に委譲します。
 
 - GitHub Pages: https://expgolemclone.github.io/formula_screening/
 - 詳細設計: [ARCHITECTURE.md](./ARCHITECTURE.md)
