@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import formula_screening.price_updates as price_updates
-from stock_db.sources.stooq import StooqDailyPriceUpdateError, StooqDailyPriceUpdateResult
+from stock_db.sources.stooq import StooqDailyPriceUpdateError, StooqPriceUpdateCommandResult
 from stock_db.storage.connection import get_connection
 from stock_db.storage.prices import upsert_price
 from stock_db.storage.schema import init_db
@@ -31,12 +31,12 @@ def test_ensure_stooq_prices_fresh_skips_update_when_fresh_on_jpx_holiday(
     _init_price_db(db_path, "2026-05-01")
     called = False
 
-    def fake_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+    def fake_run_stooq_price_update_command(**kwargs: object) -> StooqPriceUpdateCommandResult:
         nonlocal called
         called = True
         raise AssertionError(f"unexpected update: {kwargs}")
 
-    monkeypatch.setattr(price_updates, "update_stooq_daily_prices", fake_update_stooq_daily_prices)
+    monkeypatch.setattr(price_updates, "run_stooq_price_update_command", fake_run_stooq_price_update_command)
 
     result = price_updates.ensure_stooq_prices_fresh(
         db_path=db_path,
@@ -55,16 +55,14 @@ def test_ensure_stooq_prices_fresh_runs_update_when_stale(
     _init_price_db(db_path, "2026-05-08")
     captured: dict[str, object] = {}
 
-    def fake_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+    def fake_run_stooq_price_update_command(**kwargs: object) -> StooqPriceUpdateCommandResult:
         captured.update(kwargs)
-        return StooqDailyPriceUpdateResult(
-            imported=1,
-            date="20260511",
-            label="0511_d",
-            file_path=tmp_path / "raw" / "0511_d.csv",
+        return StooqPriceUpdateCommandResult(
+            stdout="",
+            stderr="Imported 1 JP prices for 20260511",
         )
 
-    monkeypatch.setattr(price_updates, "update_stooq_daily_prices", fake_update_stooq_daily_prices)
+    monkeypatch.setattr(price_updates, "run_stooq_price_update_command", fake_run_stooq_price_update_command)
 
     result = price_updates.ensure_stooq_prices_fresh(
         db_path=db_path,
@@ -72,9 +70,8 @@ def test_ensure_stooq_prices_fresh_runs_update_when_stale(
     )
 
     assert result is not None
-    assert result.date == "20260511"
-    assert captured["db_path"] == db_path
-    assert captured["headless"] is True
+    assert result.stderr == "Imported 1 JP prices for 20260511"
+    assert captured == {}
 
 
 def test_ensure_stooq_prices_fresh_propagates_update_failure(
@@ -84,11 +81,11 @@ def test_ensure_stooq_prices_fresh_propagates_update_failure(
     db_path = tmp_path / "stocks.db"
     _init_price_db(db_path, "2026-05-08")
 
-    def fake_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+    def fake_run_stooq_price_update_command(**kwargs: object) -> StooqPriceUpdateCommandResult:
         del kwargs
         raise StooqDailyPriceUpdateError("Unauthorized")
 
-    monkeypatch.setattr(price_updates, "update_stooq_daily_prices", fake_update_stooq_daily_prices)
+    monkeypatch.setattr(price_updates, "run_stooq_price_update_command", fake_run_stooq_price_update_command)
 
     with pytest.raises(StooqDailyPriceUpdateError, match="Unauthorized"):
         price_updates.ensure_stooq_prices_fresh(

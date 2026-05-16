@@ -19,7 +19,7 @@
 
 - `screen` サブコマンドを提供する
 - `--ticker` の単一値、複数値、範囲、`all`、`csv:path.csv` を解決する
-- スクリーニング前に `stock_db.storage.prices.is_stooq_price_update_required()` で株価鮮度を確認し、必要なら `stock_db.sources.stooq.update_stooq_daily_prices()` を呼ぶ
+- スクリーニング前に `stock_db.storage.prices.is_stooq_price_update_required()` で株価鮮度を確認し、必要なら `stock_db.sources.stooq.run_stooq_price_update_command()` を呼ぶ
 - Stooq 更新失敗時は古い株価で続行せず、エラー終了する
 - `run_screening()` を呼び出し、結果をソートして `serve_screening()` に渡す
 
@@ -63,7 +63,7 @@ current_assets - inventories + investment_securities * 0.7
 ### `src/formula_screening/cli.py`
 
 - `screen` サブコマンドはスクリーニング実行後、常に `docs/assets/screening.json`（GitHub Pages 用）を自動生成する
-- `screen` サブコマンドは実行前に Stooq 株価の最新日付を確認する。最新価格日の翌日から実行日までに JPX 営業日が1日以上ある場合だけ Stooq 更新を実行する。JPX 休日定義は `stock_db` 側の `config/jpx_market_holidays.toml` を使う
+- `screen` サブコマンドは実行前に Stooq 株価の最新日付を確認する。最新価格日の翌日から実行日までに JPX 営業日が1日以上ある場合だけ、`../stock_db` を cwd にした `uv run scrape-stooq-prices` 経由で Stooq 更新を実行する。JPX 休日定義は `stock_db` 側の `config/jpx_market_holidays.toml` を使う
 - `--json <path>` オプションで追加の JSON 保存先を指定できる（Web サーバーを起動しない）
 - `--json` 未指定時は従来どおり Web サーバーを起動する
 

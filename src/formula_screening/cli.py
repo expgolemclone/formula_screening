@@ -86,11 +86,10 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     if update_result is not None:
+        update_message = (update_result.stderr or update_result.stdout).strip()
+        suffix = f": {update_message}" if update_message else ""
         print(
-            (
-                f"Updated Stooq prices: imported {update_result.imported} JP prices "
-                f"for {update_result.date}"
-            ),
+            f"Updated Stooq prices{suffix}",
             file=sys.stderr,
         )
 
