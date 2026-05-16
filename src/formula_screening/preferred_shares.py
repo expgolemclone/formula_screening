@@ -26,4 +26,4 @@ def preferred_share_label(stock: dict) -> str:
     flag = preferred_share_flag(stock)
     if flag is None:
         return "-"
-    return "あり" if flag else "なし"
+    return "yes" if flag else "no"

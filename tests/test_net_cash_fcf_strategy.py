@@ -74,8 +74,8 @@ def test_net_cash_fcf_columns_include_peg_trailing_5() -> None:
 def test_net_cash_fcf_columns_show_preferred_share_flag() -> None:
     strategy = load_strategy(_STRATEGY_PATH)
 
-    assert dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=1.0)))["優先株"] == "あり"
-    assert dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=0.0)))["優先株"] == "なし"
+    assert dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=1.0)))["優先株"] == "yes"
+    assert dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=0.0)))["優先株"] == "no"
     assert dict(strategy.columns(_build_stock(-1.0)))["優先株"] == "-"
 
 

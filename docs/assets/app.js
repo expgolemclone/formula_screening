@@ -84,10 +84,10 @@ const COLUMNS = [
         render: (row) => {
             const value = row.has_preferred_shares;
             if (value === true) {
-                return "あり";
+                return "yes";
             }
             if (value === false) {
-                return "なし";
+                return "no";
             }
             return "-";
         },
