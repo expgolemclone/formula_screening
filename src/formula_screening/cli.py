@@ -15,7 +15,9 @@ from collections.abc import Callable
 
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.log import setup_logging
+from formula_screening.price_updates import ensure_stooq_prices_fresh
 from stock_db.paths import STOCKS_DB_PATH
+from stock_db.sources.stooq import StooqDailyPriceUpdateError
 from stock_db.storage.connection import get_connection
 
 _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
@@ -76,6 +78,21 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     if not strategy_path.exists():
         print(f"Strategy file not found: {strategy_path}", file=sys.stderr)
         sys.exit(1)
+
+    try:
+        update_result = ensure_stooq_prices_fresh(db_path=STOCKS_DB_PATH)
+    except (StooqDailyPriceUpdateError, ValueError) as exc:
+        print(f"Failed to update Stooq prices: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if update_result is not None:
+        print(
+            (
+                f"Updated Stooq prices: imported {update_result.imported} JP prices "
+                f"for {update_result.date}"
+            ),
+            file=sys.stderr,
+        )
 
     conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
     try:
