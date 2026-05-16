@@ -71,7 +71,7 @@ def test_ensure_stooq_prices_fresh_runs_update_when_stale(
 
     assert result is not None
     assert result.stderr == "Imported 1 JP prices for 20260511"
-    assert captured == {}
+    assert captured == {"db_path": db_path}
 
 
 def test_ensure_stooq_prices_fresh_propagates_update_failure(

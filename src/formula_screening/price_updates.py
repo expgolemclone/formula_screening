@@ -23,4 +23,4 @@ def ensure_stooq_prices_fresh(
     if not update_required:
         return None
 
-    return run_stooq_price_update_command()
+    return run_stooq_price_update_command(db_path=db_path)
