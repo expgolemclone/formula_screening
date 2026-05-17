@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from formula_screening._core import run_screening_payload_py
+from formula_screening._core import (
+    run_screening_payload_py,
+    run_screening_payload_with_diagnostics_py,
+)
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import upsert_financial_item
 from stock_db.storage.prices import upsert_price, upsert_shares_outstanding
@@ -32,6 +35,7 @@ def _insert_screening_stock(
     ticker: str,
     name: str,
     forecast_net_income_current: float,
+    include_dividend: bool = True,
 ) -> None:
     upsert_stock(conn, ticker, name, "sector", "market")
     upsert_shares_outstanding(conn, ticker, 1_000)
@@ -70,13 +74,14 @@ def _insert_screening_stock(
             "eps": 200.0,
         },
     )
-    _upsert_items(
-        conn,
-        ticker,
-        "2025-03",
-        "dividend",
-        {"dps": 1.0},
-    )
+    if include_dividend:
+        _upsert_items(
+            conn,
+            ticker,
+            "2025-03",
+            "dividend",
+            {"dps": 1.0},
+        )
     _upsert_items(
         conn,
         ticker,
@@ -184,3 +189,42 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
         True,
     )
     assert {row["code"] for row in all_payload} == {"1111", "2222"}
+
+
+def test_rust_payload_diagnostics_cover_all_screened_stocks(tmp_path: Path) -> None:
+    db_path = tmp_path / "stocks.db"
+    conn = get_connection(db_path)
+    try:
+        init_db(conn)
+        _insert_screening_stock(
+            conn,
+            ticker="1111",
+            name="pass stock",
+            forecast_net_income_current=2_000.0,
+        )
+        _insert_screening_stock(
+            conn,
+            ticker="2222",
+            name="fail stock",
+            forecast_net_income_current=400.0,
+            include_dividend=False,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = run_screening_payload_with_diagnostics_py(
+        str(_STRATEGY_PATH),
+        str(db_path),
+        ["1111", "2222"],
+        False,
+    )
+
+    assert [row["code"] for row in result["payload"]] == ["1111"]
+    assert result["diagnostics"] == [
+        {
+            "code": "2222",
+            "name": "fail stock",
+            "missing_fields": ["metrics.dividend_yield"],
+        }
+    ]

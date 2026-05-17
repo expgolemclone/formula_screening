@@ -71,12 +71,12 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
         def close(self) -> None:
             pass
 
-    def fake_run_screening_payload_py(
+    def fake_run_screening_payload_with_diagnostics_py(
         strategy: str,
         database: str,
         tickers: list[str] | None,
         return_all: bool,
-    ) -> list[dict]:
+    ) -> dict[str, list[dict]]:
         captured_core.update(
             {
                 "strategy": strategy,
@@ -85,13 +85,15 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
                 "return_all": return_all,
             }
         )
-        return payload
+        return {"payload": payload, "diagnostics": []}
 
     def fake_save_screening_payload_json(rows: list[dict], path: Path) -> None:
         saved.append((rows, path))
 
     fake_core = types.ModuleType("formula_screening._core")
-    fake_core.run_screening_payload_py = fake_run_screening_payload_py
+    fake_core.run_screening_payload_with_diagnostics_py = (
+        fake_run_screening_payload_with_diagnostics_py
+    )
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
     monkeypatch.setattr(cli_module, "STOCKS_DB_PATH", db_path)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
@@ -115,4 +117,64 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
         "tickers": ["1301", "7203"],
         "return_all": True,
     }
+    assert saved == [(payload, gh_pages_json), (payload, json_path)]
+
+
+def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    strategy_path = tmp_path / "strategy.toml"
+    strategy_path.write_text(
+        "[[filters]]\n"
+        'source = "net_cash_ratio"\n'
+        'operator = ">="\n'
+        "threshold = -1.0\n",
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "stocks.db"
+    json_path = tmp_path / "screening.json"
+    gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
+    payload = [{"code": "1301", "metrics": {"net_cash_ratio": None}}]
+    diagnostics = [
+        {
+            "code": "1301",
+            "name": "test stock",
+            "missing_fields": ["metrics.net_cash_ratio", "fcf_yield_avg"],
+        }
+    ]
+    saved: list[tuple[list[dict], Path]] = []
+
+    class FakeConnection:
+        def close(self) -> None:
+            pass
+
+    def fake_save_screening_payload_json(rows: list[dict], path: Path) -> None:
+        saved.append((rows, path))
+
+    fake_core = types.ModuleType("formula_screening._core")
+    fake_core.run_screening_payload_with_diagnostics_py = lambda *_args: {
+        "payload": payload,
+        "diagnostics": diagnostics,
+    }
+    monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
+    monkeypatch.setattr(cli_module, "STOCKS_DB_PATH", db_path)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
+    monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
+    monkeypatch.setattr(cli_module, "ensure_stooq_prices_fresh", lambda **_kwargs: None)
+    monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
+
+    args = argparse.Namespace(
+        strategy=str(strategy_path),
+        ticker=["1301"],
+        workers=1,
+        show_all=False,
+        json=str(json_path),
+    )
+
+    with caplog.at_level("ERROR", logger="formula_screening.cli"):
+        cli_module._cmd_screen(args)
+
+    assert "Missing screening fields for 1301 (test stock): metrics.net_cash_ratio, fcf_yield_avg" in caplog.text
     assert saved == [(payload, gh_pages_json), (payload, json_path)]

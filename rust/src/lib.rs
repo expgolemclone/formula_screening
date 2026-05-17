@@ -64,6 +64,19 @@ pub struct ScreeningPayload {
     pub has_preferred_shares: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct MissingMetricDiagnostic {
+    pub code: String,
+    pub name: String,
+    pub missing_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScreeningRunResult {
+    pub payload: Vec<ScreeningPayload>,
+    pub diagnostics: Vec<MissingMetricDiagnostic>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicMetrics {
     pub net_cash_ratio: Option<f64>,
@@ -142,6 +155,26 @@ pub fn run_screening_payload(
         .collect()
 }
 
+pub fn run_screening_payload_with_diagnostics(
+    strategy_path: &Path,
+    db_path: &Path,
+    tickers: Option<&[String]>,
+    return_all: bool,
+) -> Result<ScreeningRunResult, String> {
+    let strategy = load_strategy(strategy_path)?;
+    let raw_stocks = stock_db_core::screening::load_screening_stocks(db_path, tickers, 10, 6)?;
+    let stocks = raw_stocks.into_iter().map(build_stock).collect::<Vec<_>>();
+    let diagnostics = collect_missing_metric_diagnostics(&stocks)?;
+    let payload = run_strategy_with_mode(&strategy, stocks, return_all)
+        .iter()
+        .map(serialize_stock)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ScreeningRunResult {
+        payload,
+        diagnostics,
+    })
+}
+
 pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
     Ok(ScreeningPayload {
         code: stock.ticker.clone(),
@@ -163,6 +196,53 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
         peg_blended_5y_actual_2f: peg_blended_2f(stock, 5),
         has_preferred_shares: preferred_share_flag(stock)?,
     })
+}
+
+pub fn collect_missing_metric_diagnostics(
+    stocks: &[Stock],
+) -> Result<Vec<MissingMetricDiagnostic>, String> {
+    stocks
+        .iter()
+        .map(|stock| {
+            let mut missing_fields = Vec::new();
+            if stock.price.is_none() {
+                missing_fields.push("price".to_string());
+            }
+            for (field, value) in [
+                ("metrics.net_cash_ratio", metric(stock, "net_cash_ratio")),
+                ("metrics.per_actual", metric(stock, "per_actual")),
+                ("metrics.per", metric(stock, "per")),
+                ("metrics.per_next", metric(stock, "per_next")),
+                ("metrics.pbr", metric(stock, "pbr")),
+                ("metrics.dividend_yield", metric(stock, "dividend_yield")),
+                ("metrics.equity_ratio", metric(stock, "equity_ratio")),
+                ("metrics.market_cap", metric(stock, "market_cap")),
+                ("fcf_yield_avg", fcf_yield_avg(stock, 10)),
+                ("croic", croic(stock)),
+                ("peg_trailing_5", peg_trailing(stock, 5)),
+                (
+                    "peg_blended_5y_actual_2f",
+                    peg_blended_2f(stock, 5),
+                ),
+            ] {
+                if value.is_none() {
+                    missing_fields.push(field.to_string());
+                }
+            }
+            if preferred_share_flag(stock)?.is_none() {
+                missing_fields.push("has_preferred_shares".to_string());
+            }
+            Ok(MissingMetricDiagnostic {
+                code: stock.ticker.clone(),
+                name: stock.name.clone(),
+                missing_fields,
+            })
+        })
+        .filter_map(|diagnostic: Result<MissingMetricDiagnostic, String>| match diagnostic {
+            Ok(diagnostic) if diagnostic.missing_fields.is_empty() => None,
+            result => Some(result),
+        })
+        .collect()
 }
 
 pub fn compute_all_metrics(
@@ -548,10 +628,36 @@ fn run_screening_payload_py(
     payloads_to_py(py, &payload)
 }
 
+#[pyfunction]
+#[pyo3(signature = (strategy_path, db_path, tickers=None, return_all=false))]
+fn run_screening_payload_with_diagnostics_py(
+    py: Python<'_>,
+    strategy_path: String,
+    db_path: String,
+    tickers: Option<Vec<String>>,
+    return_all: bool,
+) -> PyResult<PyObject> {
+    let result = py
+        .allow_threads(|| {
+            run_screening_payload_with_diagnostics(
+                Path::new(&strategy_path),
+                Path::new(&db_path),
+                tickers.as_deref(),
+                return_all,
+            )
+        })
+        .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
+    run_result_to_py(py, &result)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compute_all_stock_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(run_screening_payload_py, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        run_screening_payload_with_diagnostics_py,
+        m
+    )?)?;
     Ok(())
 }
 
@@ -614,6 +720,22 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
         rows.append(row)?;
     }
     Ok(rows.into())
+}
+
+fn run_result_to_py(py: Python<'_>, result: &ScreeningRunResult) -> PyResult<PyObject> {
+    let row = pyo3::types::PyDict::new(py);
+    row.set_item("payload", payloads_to_py(py, &result.payload)?)?;
+
+    let diagnostics = pyo3::types::PyList::empty(py);
+    for diagnostic in &result.diagnostics {
+        let item = pyo3::types::PyDict::new(py);
+        item.set_item("code", &diagnostic.code)?;
+        item.set_item("name", &diagnostic.name)?;
+        item.set_item("missing_fields", &diagnostic.missing_fields)?;
+        diagnostics.append(item)?;
+    }
+    row.set_item("diagnostics", diagnostics)?;
+    Ok(row.into())
 }
 
 fn set_optional_float(
@@ -726,5 +848,37 @@ mod tests {
         assert!(peg_trailing(&stock, 5).is_some());
         assert!(peg_blended_2f(&stock, 5).is_some());
         assert_eq!(preferred_share_flag(&stock), Ok(Some(true)));
+    }
+
+    #[test]
+    fn missing_metric_diagnostics_skip_complete_stocks() {
+        let stock = sample_stock();
+
+        assert_eq!(collect_missing_metric_diagnostics(&[stock]), Ok(vec![]));
+    }
+
+    #[test]
+    fn missing_metric_diagnostics_report_public_payload_fields() {
+        let mut stock = sample_stock();
+        stock.price = None;
+        stock.metrics.insert("per".to_string(), None);
+        stock
+            .financials
+            .get_mut("bs")
+            .expect("sample stock has bs")
+            .remove("has_preferred_shares");
+
+        assert_eq!(
+            collect_missing_metric_diagnostics(&[stock]),
+            Ok(vec![MissingMetricDiagnostic {
+                code: "1301".to_string(),
+                name: "test".to_string(),
+                missing_fields: vec![
+                    "price".to_string(),
+                    "metrics.per".to_string(),
+                    "has_preferred_shares".to_string(),
+                ],
+            }])
+        );
     }
 }

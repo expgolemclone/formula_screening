@@ -71,7 +71,7 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
-    from formula_screening._core import run_screening_payload_py
+    from formula_screening._core import run_screening_payload_with_diagnostics_py
     from formula_screening.web import save_screening_payload_json, serve_screening_payload
 
     strategy_path = Path(args.strategy)
@@ -108,12 +108,20 @@ def _cmd_screen(args: argparse.Namespace) -> None:
                 specific_tickers = args.ticker
 
         start: float = time.monotonic()
-        payload: list[dict] = run_screening_payload_py(
+        result: dict[str, list[dict]] = run_screening_payload_with_diagnostics_py(
             str(strategy_path),
             str(STOCKS_DB_PATH),
             specific_tickers,
             args.show_all,
         )
+        payload: list[dict] = result["payload"]
+        for diagnostic in result["diagnostics"]:
+            logger.error(
+                "Missing screening fields for %s (%s): %s",
+                diagnostic["code"],
+                diagnostic["name"],
+                ", ".join(diagnostic["missing_fields"]),
+            )
         elapsed: float = time.monotonic() - start
 
         if not payload:
