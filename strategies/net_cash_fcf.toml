@@ -1,0 +1,47 @@
+required_sources = ["edinet_xbrl", "shikiho", "prices"]
+sort = "net_cash_ratio"
+
+[[filters]]
+source = "net_cash_ratio"
+operator = ">="
+threshold = -1.0
+
+[[filters]]
+source = "per"
+operator = "between"
+threshold = [0.0, 10.0]
+
+[[filters]]
+source = "equity_ratio"
+operator = ">"
+threshold = 50.0
+
+[[filters]]
+source = "fcf_yield_avg"
+operator = ">"
+threshold = 0.0
+
+[[columns]]
+header = "FCF_10Y%"
+source = "fcf_yield_avg"
+format = "{:.2%}"
+
+[[columns]]
+header = "CROIC%"
+source = "croic"
+format = "{:.2%}"
+
+[[columns]]
+header = "peg_trailing_5"
+source = "peg_trailing_5"
+format = "{:.2f}"
+
+[[columns]]
+header = "peg_blended_5y_2f"
+source = "peg_blended_5y_actual_2f"
+format = "{:.2f}"
+
+[[columns]]
+header = "優先株"
+source = "preferred_share_label"
+format = "{}"

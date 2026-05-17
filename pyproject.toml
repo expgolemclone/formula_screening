@@ -1,7 +1,7 @@
 [project]
 name = "formula-screening"
 version = "0.1.0"
-description = "Stock screening tool with user-defined Python formulas for Japanese equities"
+description = "Stock screening tool with TOML strategies for Japanese equities"
 requires-python = ">=3.13"
 dependencies = [
     "requests>=2.28,<3",
@@ -22,8 +22,10 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.0,<2"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/formula_screening"]
+[tool.maturin]
+manifest-dir = "rust"
+module-name = "formula_screening._core"
+python-packages = ["src/formula_screening"]

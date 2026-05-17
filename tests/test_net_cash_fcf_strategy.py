@@ -6,7 +6,7 @@ import pytest
 
 from formula_screening.screener import load_strategy
 
-_STRATEGY_PATH = Path(__file__).resolve().parent.parent / "strategies" / "net_cash_fcf.py"
+_STRATEGY_PATH = Path(__file__).resolve().parent.parent / "strategies" / "net_cash_fcf.toml"
 
 
 def _build_stock(net_cash_ratio: float, *, has_preferred_shares: float | None = None) -> dict:
@@ -84,3 +84,11 @@ def test_net_cash_fcf_columns_reject_invalid_preferred_share_flag() -> None:
 
     with pytest.raises(ValueError, match="bs.has_preferred_shares"):
         strategy.columns(_build_stock(-1.0, has_preferred_shares=2.0))
+
+
+def test_load_strategy_rejects_python_strategy_files(tmp_path: Path) -> None:
+    strategy_path = tmp_path / "legacy.py"
+    strategy_path.write_text("FILTERS = []\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be TOML"):
+        load_strategy(strategy_path)

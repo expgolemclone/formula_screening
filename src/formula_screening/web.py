@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 from stock_db.paths import STOCKS_DB_PATH
-from stock_db.storage.connection import get_connection
-from stock_db.storage.financials import get_financial_dict, get_historical_items
-from stock_db.storage.prices import get_latest_price_with_shares
-from stock_db.storage.stocks import get_stock_names
 from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
 from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
-from formula_screening.config import MAGIC
-from formula_screening.metrics import compute_metrics
 from formula_screening.preferred_shares import preferred_share_flag
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
@@ -28,81 +21,27 @@ StockMetricValue = float | bool | None
 
 
 def compute_all_stock_metrics(
-    conn: sqlite3.Connection | None = None,
+    conn: object | None = None,
 ) -> dict[str, dict[str, StockMetricValue]]:
-    """Compute enriched metrics for all tickers via the public API.
+    """Compute enriched metrics for all tickers via the Rust-backed public API.
 
     This is the single entry-point for external projects that need per-ticker
-    screening metrics.  Callers should use this instead of importing internal
-    modules (db.repository, indicators, metrics) directly.
-
-    Args:
-        conn: Optional existing DB connection.  If *None* a fresh one is
-              created and closed automatically.
+    screening metrics. Callers should use this instead of importing internal
+    modules directly. ``conn`` is retained only to fail loudly for old callers;
+    connection injection is no longer part of the public API.
 
     Returns:
         ``{ticker: {"price", "net_cash_ratio", "per_actual", "per", "per_next",
                      "equity_ratio", "fcf_yield_avg", "croic", "peg_trailing_5",
                      "peg_blended_5y_actual_2f", "market_cap", "has_preferred_shares"}}``
     """
-    own_conn = conn is None
-    if own_conn:
-        conn = get_connection(STOCKS_DB_PATH)
-    try:
-        names = get_stock_names(conn)
-        result: dict[str, dict[str, StockMetricValue]] = {}
+    if conn is not None:
+        msg = "compute_all_stock_metrics no longer accepts sqlite connections"
+        raise TypeError(msg)
 
-        for code in names:
-            try:
-                financials = get_financial_dict(conn, code)
-                if not financials:
-                    continue
-                price_data = get_latest_price_with_shares(conn, code)
-                price = price_data["price"]
-                shares = price_data["shares_outstanding"]
-                metrics = compute_metrics(financials, price, shares)
+    from formula_screening._core import compute_all_stock_metrics as _compute_all_stock_metrics
 
-                stock_dict = {
-                    "ticker": code,
-                    "price": price,
-                    "shares_outstanding": shares,
-                    "pl": financials.get("pl", {}),
-                    "bs": financials.get("bs", {}),
-                    "cf": financials.get("cf", {}),
-                    "dividend": financials.get("dividend", {}),
-                    "forecast": financials.get("forecast", {}),
-                    "metrics": metrics,
-                }
-                stock_dict["cf_history"] = get_historical_items(
-                    conn, code, "cf", n_periods=MAGIC["screening"]["fcf_years"],
-                )
-                n_pl_periods = max(
-                    MAGIC["screening"]["peg_trailing_years"] + 1,
-                    MAGIC["screening"]["peg_blended_actual_years"] + 1,
-                )
-                stock_dict["pl_history"] = get_historical_items(conn, code, "pl", n_periods=n_pl_periods)
-
-                result[code] = {
-                    "price": price,
-                    "net_cash_ratio": metrics.get("net_cash_ratio"),
-                    "per_actual": metrics.get("per_actual"),
-                    "per": metrics.get("per"),
-                    "per_next": metrics.get("per_next"),
-                    "equity_ratio": metrics.get("equity_ratio"),
-                    "fcf_yield_avg": fcf_yield_avg(stock_dict),
-                    "croic": croic(stock_dict),
-                    "peg_trailing_5": peg_trailing(stock_dict, 5),
-                    "peg_blended_5y_actual_2f": peg_blended_2f(stock_dict, 5),
-                    "market_cap": metrics.get("market_cap"),
-                    "has_preferred_shares": preferred_share_flag(stock_dict),
-                }
-            except (KeyError, ValueError, ZeroDivisionError, TypeError):
-                continue
-
-        return result
-    finally:
-        if own_conn:
-            conn.close()
+    return _compute_all_stock_metrics(str(STOCKS_DB_PATH))
 
 
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
@@ -115,6 +54,12 @@ def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
         Dict mapping route paths to handler callables.
     """
     payload: list[dict] = [_serialize_stock(s) for s in stocks]
+
+    return {"/api/screening": json_route(lambda _params: payload)}
+
+
+def create_screening_payload_api(payload: list[dict]) -> dict[str, ApiHandler]:
+    """Create API routes from an already serialized Rust payload."""
 
     return {"/api/screening": json_route(lambda _params: payload)}
 
@@ -145,11 +90,38 @@ def serve_screening(
     )
 
 
+def serve_screening_payload(
+    payload: list[dict],
+    *,
+    server_config: ServerConfig | None = None,
+) -> None:
+    """Start the web UI server from an already serialized Rust payload."""
+
+    _serve(
+        static_root=_STATIC_ROOT,
+        index_page=IndexPage(
+            title="Formula Screening",
+            loading_message="スクリーニング結果を読み込み中です。",
+            tab_aria_label="タブ切替",
+        ),
+        server_config=server_config,
+        api_routes=create_screening_payload_api(payload),
+        yazi_base_dir=_HANDBOOK_DATA_DIR,
+    )
+
+
 def save_screening_json(stocks: list[dict], path: Path) -> None:
     """Save screening results as a static JSON file for GitHub Pages."""
     import json
 
     payload = [_serialize_stock(s) for s in stocks]
+    save_screening_payload_json(payload, path)
+
+
+def save_screening_payload_json(payload: list[dict], path: Path) -> None:
+    """Save an already serialized Rust payload as static JSON."""
+    import json
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 

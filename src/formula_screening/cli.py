@@ -71,8 +71,8 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
 
 
 def _cmd_screen(args: argparse.Namespace) -> None:
-    from formula_screening.screener import load_strategy, run_screening
-    from formula_screening.web import serve_screening
+    from formula_screening._core import run_screening_payload_py
+    from formula_screening.web import save_screening_payload_json, serve_screening_payload
 
     strategy_path = Path(args.strategy)
     if not strategy_path.exists():
@@ -108,33 +108,27 @@ def _cmd_screen(args: argparse.Namespace) -> None:
                 specific_tickers = args.ticker
 
         start: float = time.monotonic()
-        stocks: list[dict] = run_screening(
-            conn, strategy_path, workers=args.workers, tickers=specific_tickers,
-            return_all=args.show_all,
+        payload: list[dict] = run_screening_payload_py(
+            str(strategy_path),
+            str(STOCKS_DB_PATH),
+            specific_tickers,
+            args.show_all,
         )
         elapsed: float = time.monotonic() - start
 
-        if not stocks:
+        if not payload:
             print("No stocks matched the screening criteria.")
             return
 
-        sort_key_fn = getattr(load_strategy(strategy_path), "sort_key", None)
-        if sort_key_fn is not None:
-            stocks.sort(key=sort_key_fn, reverse=True)
-        else:
-            stocks.sort(key=lambda s: s["metrics"].get("net_cash_ratio") or 0, reverse=True)
-
-        print(f"{len(stocks)} stocks matched ({elapsed:.1f}s)", flush=True)
-
-        from formula_screening.web import save_screening_json
-        save_screening_json(stocks, _GH_PAGES_JSON)
+        print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
+        save_screening_payload_json(payload, _GH_PAGES_JSON)
 
         if args.json:
-            save_screening_json(stocks, Path(args.json))
+            save_screening_payload_json(payload, Path(args.json))
             print(f"Saved to {args.json}")
             return
 
-        serve_screening(stocks)
+        serve_screening_payload(payload)
     finally:
         conn.close()
 
@@ -151,7 +145,7 @@ def main() -> None:
 
     # screen
     p_screen = sub.add_parser("screen", help="Run a screening strategy")
-    p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .py file")
+    p_screen.add_argument("--strategy", "-s", required=True, help="Path to strategy .toml file")
     p_screen.add_argument(
         "--ticker", "-t", type=str, nargs="+", default=None,
         help="Ticker(s) to screen: codes (7203 6758), 'all', a range (1000-2000), or csv:path.csv",

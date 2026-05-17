@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-"""PostToolUse hook (Edit|Write): strategies/*.py の宣言的フォーマットを強制.
+"""PostToolUse hook (Edit|Write): strategies/*.toml の宣言的フォーマットを強制.
 
 検証ルール:
-  - FILTERS がモジュールレベルに定義されていること
-  - def screen() / sort_key() / columns() が定義されていないこと
+  - filters が1件以上あること
+  - filter / column が source を持つこと
 """
 
-import ast
 import json
 import os
 import sys
-
-_FORBIDDEN_FNS: frozenset[str] = frozenset({"screen", "sort_key", "columns"})
+import tomllib
 
 
 def _is_strategy_file(file_path: str) -> bool:
     project_dir: str = os.environ.get("CLAUDE_PROJECT_DIR", "")
     strategies_dir: str = os.path.join(project_dir, "strategies")
-    if not file_path.endswith(".py"):
+    if not file_path.endswith(".toml"):
         return False
     if os.path.basename(file_path).startswith("__"):
         return False
@@ -28,32 +26,26 @@ def _is_strategy_file(file_path: str) -> bool:
         return False
 
 
-def _validate(source: str) -> list[str]:
+def _validate(source: bytes) -> list[str]:
     try:
-        tree: ast.Module = ast.parse(source)
-    except SyntaxError as exc:
-        print(f"syntax error in source: {exc}", file=sys.stderr)
-        return []
+        data = tomllib.loads(source.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        return [f"TOML parse error: {exc}"]
 
     errors: list[str] = []
-    has_filters: bool = False
+    filters = data.get("filters")
+    if not isinstance(filters, list) or not filters:
+        errors.append("filters が定義されていません")
+    else:
+        for index, item in enumerate(filters):
+            if not isinstance(item, dict) or "source" not in item:
+                errors.append(f"filters[{index}] に source がありません")
 
-    for node in ast.iter_child_nodes(tree):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "FILTERS":
-                    has_filters = True
-        elif isinstance(node, ast.AnnAssign):
-            if isinstance(node.target, ast.Name) and node.target.id == "FILTERS":
-                has_filters = True
-        elif isinstance(node, ast.FunctionDef) and node.name in _FORBIDDEN_FNS:
-            errors.append(
-                f"L{node.lineno}: def {node.name}() は禁止。"
-                "FILTERS/SORT/COLUMNS を使ってください"
-            )
-
-    if not has_filters:
-        errors.insert(0, "FILTERS が定義されていません")
+    columns = data.get("columns", [])
+    if isinstance(columns, list):
+        for index, item in enumerate(columns):
+            if not isinstance(item, dict) or "source" not in item:
+                errors.append(f"columns[{index}] に source がありません")
 
     return errors
 
@@ -69,8 +61,8 @@ def main() -> None:
     if not os.path.isfile(file_path):
         return
 
-    with open(file_path, encoding="utf-8") as f:
-        source: str = f.read()
+    with open(file_path, "rb") as f:
+        source: bytes = f.read()
 
     errors: list[str] = _validate(source)
     if not errors:
@@ -82,7 +74,7 @@ def main() -> None:
             "decision": "stop",
             "reason": (
                 f"strategies/ は宣言的フォーマット必須です:\n{detail}\n"
-                "FILTERS リストを定義し、screen()/sort_key()/columns() は使わないでください。"
+                "TOML の filters / columns で定義してください。"
             ),
         },
         sys.stdout,

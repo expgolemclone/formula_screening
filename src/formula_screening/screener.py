@@ -1,17 +1,18 @@
-"""Screening engine: load strategies, build stock dicts, apply filters."""
+"""Screening engine: load TOML strategies, build stock dicts, apply filters."""
 
 from __future__ import annotations
 
-import importlib.util
 import logging
 import operator
 import sqlite3
-import sys
+import tomllib
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
 
 from formula_screening.config import MAGIC
+from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
+from formula_screening.preferred_shares import preferred_share_label
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import get_financial_dict, get_historical_items
@@ -34,125 +35,220 @@ _OPS: dict[str, Callable[[float, float], bool]] = {
 }
 
 MetricValue = int | float
-FilterSource = str | Callable[[dict], MetricValue | None]
+FilterSource = str
 FilterThreshold = MetricValue | tuple[MetricValue, MetricValue]
 ColumnSourceValue = MetricValue | str | None
-ColumnSource = str | Callable[[dict], ColumnSourceValue]
+ColumnSource = str
 ColumnsFn = Callable[[dict], list[ScreenColumn]]
+
+
+def _peg_trailing_5(stock: dict) -> float | None:
+    return peg_trailing(stock, MAGIC["screening"]["peg_trailing_years"])
+
+
+def _peg_blended_5y_actual_2f(stock: dict) -> float | None:
+    return peg_blended_2f(stock, MAGIC["screening"]["peg_blended_actual_years"])
+
+
+_DERIVED_SOURCES: dict[str, Callable[[dict], ColumnSourceValue]] = {
+    "fcf_yield_avg": fcf_yield_avg,
+    "croic": croic,
+    "peg_trailing_5": _peg_trailing_5,
+    "peg_blended_5y_actual_2f": _peg_blended_5y_actual_2f,
+    "preferred_share_label": preferred_share_label,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class Strategy:
+    required_sources: tuple[str, ...]
+    filters: tuple[tuple[FilterSource, str, FilterThreshold], ...]
+    sort: FilterSource | None
+    column_specs: tuple[tuple[str, ColumnSource, str], ...]
+
+    def screen(self, stock: dict) -> bool:
+        return _screen(self.filters, stock)
+
+    def sort_key(self, stock: dict) -> float:
+        if self.sort is None:
+            return float("-inf")
+        value = _resolve_numeric_value(self.sort, stock)
+        return value if value is not None else float("-inf")
+
+    def columns(self, stock: dict) -> list[ScreenColumn]:
+        base_columns: list[ScreenColumn] = _build_columns(self.column_specs, stock)
+        common_columns: list[ScreenColumn] = build_common_link_columns(stock)
+        return merge_screen_columns(base_columns, common_columns)
 
 
 def _resolve_value(
     source: FilterSource,
     stock: dict,
-) -> MetricValue | None:
-    if callable(source):
-        return source(stock)
+) -> ColumnSourceValue:
+    resolver = _DERIVED_SOURCES.get(source)
+    if resolver is not None:
+        return resolver(stock)
     return stock["metrics"].get(source)
 
 
-def _build_screen_fn(
-    filters: list[tuple[FilterSource, str, FilterThreshold]],
-) -> Callable[[dict], bool]:
-    def screen(stock: dict) -> bool:
-        for source, op, threshold in filters:
-            value: MetricValue | None = _resolve_value(source, stock)
-            if value is None:
+def _resolve_numeric_value(
+    source: FilterSource,
+    stock: dict,
+) -> MetricValue | None:
+    value = _resolve_value(source, stock)
+    if value is None:
+        return None
+    if not isinstance(value, (int, float)):
+        msg = f"Strategy source {source!r} must resolve to a numeric value"
+        raise TypeError(msg)
+    return value
+
+
+def _screen(
+    filters: tuple[tuple[FilterSource, str, FilterThreshold], ...],
+    stock: dict,
+) -> bool:
+    for source, op, threshold in filters:
+        value: MetricValue | None = _resolve_numeric_value(source, stock)
+        if value is None:
+            return False
+        if op == "between":
+            if not isinstance(threshold, tuple):
+                msg = f"between filter requires a tuple threshold: {threshold!r}"
+                raise TypeError(msg)
+            lo: MetricValue = threshold[0]
+            hi: MetricValue = threshold[1]
+            if not (lo < value < hi):
                 return False
-            if op == "between":
-                if not isinstance(threshold, tuple):
-                    msg = f"between filter requires a tuple threshold: {threshold!r}"
-                    raise TypeError(msg)
-                lo: MetricValue = threshold[0]
-                hi: MetricValue = threshold[1]
-                if not (lo < value < hi):
-                    return False
-            else:
-                cmp: Callable[[float, float], bool] = _OPS[op]
-                if isinstance(threshold, tuple):
-                    msg = f"non-between filter requires a scalar threshold: {threshold!r}"
-                    raise TypeError(msg)
-                if not cmp(value, threshold):
-                    return False
-        return True
-
-    return screen
+        else:
+            cmp: Callable[[float, float], bool] = _OPS[op]
+            if isinstance(threshold, tuple):
+                msg = f"non-between filter requires a scalar threshold: {threshold!r}"
+                raise TypeError(msg)
+            if not cmp(value, threshold):
+                return False
+    return True
 
 
-def _build_sort_key_fn(
-    sort_spec: FilterSource,
-) -> Callable[[dict], float]:
-    def sort_key(stock: dict) -> float:
-        value: MetricValue | None = _resolve_value(sort_spec, stock)
-        return value if value is not None else float("-inf")
-
-    return sort_key
-
-
-def _build_columns_fn(
-    columns_spec: list[tuple[str, ColumnSource, str]],
-) -> ColumnsFn:
-    def columns(stock: dict) -> list[ScreenColumn]:
-        result: list[ScreenColumn] = []
-        for header, source, fmt in columns_spec:
-            value: ColumnSourceValue
-            if callable(source):
-                value = source(stock)
-            else:
-                value = stock["metrics"].get(source)
-            formatted: str = fmt.format(value) if value is not None else "-"
-            result.append((header, formatted))
-        return result
-
-    return columns
+def _build_columns(
+    columns_spec: tuple[tuple[str, ColumnSource, str], ...],
+    stock: dict,
+) -> list[ScreenColumn]:
+    result: list[ScreenColumn] = []
+    for header, source, fmt in columns_spec:
+        value = _resolve_value(source, stock)
+        formatted: str = fmt.format(value) if value is not None else "-"
+        result.append((header, formatted))
+    return result
 
 
-def _build_combined_columns_fn(base_columns_fn: ColumnsFn | None) -> ColumnsFn:
-    def columns(stock: dict) -> list[ScreenColumn]:
-        base_columns: list[ScreenColumn] = [] if base_columns_fn is None else base_columns_fn(stock)
-        common_columns: list[ScreenColumn] = build_common_link_columns(stock)
-        return merge_screen_columns(base_columns, common_columns)
+def _load_filter(raw_filter: dict) -> tuple[FilterSource, str, FilterThreshold]:
+    source = _require_source(raw_filter["source"])
+    op = raw_filter["operator"]
+    if op not in {*_OPS, "between"}:
+        msg = f"Unsupported strategy operator: {op!r}"
+        raise ValueError(msg)
 
-    return columns
+    threshold = raw_filter["threshold"]
+    if op == "between":
+        if not (
+            isinstance(threshold, list)
+            and len(threshold) == 2
+            and all(isinstance(value, (int, float)) for value in threshold)
+        ):
+            msg = f"between filter requires two numeric thresholds: {threshold!r}"
+            raise TypeError(msg)
+        return source, op, (threshold[0], threshold[1])
+
+    if not isinstance(threshold, (int, float)):
+        msg = f"non-between filter requires a numeric threshold: {threshold!r}"
+        raise TypeError(msg)
+    return source, op, threshold
 
 
-def load_strategy(path: Path) -> ModuleType:
-    """Dynamically load a strategy .py file and return the module.
+def _load_column(raw_column: dict) -> tuple[str, ColumnSource, str]:
+    header = raw_column["header"]
+    source = _require_source(raw_column["source"])
+    fmt = raw_column["format"]
+    if not all(isinstance(value, str) for value in (header, fmt)):
+        msg = f"Strategy column values must be strings: {raw_column!r}"
+        raise TypeError(msg)
+    return header, source, fmt
 
-    Supports two formats:
-    - Declarative: module-level ``FILTERS`` list (and optional ``SORT``, ``COLUMNS``)
-    - Function-based: ``screen(stock: dict) -> bool`` function
-    """
-    spec = importlib.util.spec_from_file_location("strategy", path)
-    if spec is None or spec.loader is None:
-        msg = f"Cannot load strategy from {path}"
-        raise ImportError(msg)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[f"strategy_{path.stem}"] = mod
-    spec.loader.exec_module(mod)
 
-    filters: list[tuple[FilterSource, str, FilterThreshold]] | None = getattr(mod, "FILTERS", None)
-    if filters is not None:
-        mod.screen = _build_screen_fn(filters)
-    elif not (hasattr(mod, "screen") and callable(mod.screen)):
-        msg = f"Strategy {path} must define FILTERS or a 'screen(stock) -> bool' function"
-        raise ImportError(msg)
+def _require_source(source: object) -> str:
+    if not isinstance(source, str):
+        msg = f"Strategy source must be a string: {source!r}"
+        raise TypeError(msg)
+    if source not in _DERIVED_SOURCES and source not in _KNOWN_METRIC_SOURCES:
+        msg = f"Unknown strategy source: {source!r}"
+        raise ValueError(msg)
+    return source
 
-    sort_spec: FilterSource | None = getattr(mod, "SORT", None)
-    if sort_spec is not None and not hasattr(mod, "sort_key"):
-        mod.sort_key = _build_sort_key_fn(sort_spec)
 
-    base_columns_fn: ColumnsFn | None = None
-    columns_attr = getattr(mod, "columns", None)
-    if callable(columns_attr):
-        base_columns_fn = columns_attr
-    else:
-        columns_spec: list[tuple[str, ColumnSource, str]] | None = getattr(mod, "COLUMNS", None)
-        if columns_spec is not None:
-            base_columns_fn = _build_columns_fn(columns_spec)
+_KNOWN_METRIC_SOURCES: frozenset[str] = frozenset(
+    {
+        "market_cap",
+        "per",
+        "per_next",
+        "per_actual",
+        "pbr",
+        "dividend_yield",
+        "gross_margin",
+        "operating_margin",
+        "ordinary_margin",
+        "net_income_margin",
+        "roe",
+        "roa",
+        "equity_ratio",
+        "debt_equity_ratio",
+        "operating_cf_margin",
+        "free_cf",
+        "free_cf_ratio",
+        "total_liabilities",
+        "interest_bearing_debt",
+        "net_cash",
+        "net_cash_ratio",
+    }
+)
 
-    mod.columns = _build_combined_columns_fn(base_columns_fn)
 
-    return mod
+def load_strategy(path: Path) -> Strategy:
+    """Load a TOML strategy definition."""
+
+    if path.suffix != ".toml":
+        msg = f"Strategy files must be TOML: {path}"
+        raise ValueError(msg)
+
+    with path.open("rb") as f:
+        raw = tomllib.load(f)
+
+    filters_raw = raw.get("filters")
+    if not isinstance(filters_raw, list) or not filters_raw:
+        msg = f"Strategy {path} must define at least one [[filters]] entry"
+        raise ValueError(msg)
+
+    required_sources_raw = raw.get("required_sources", [])
+    if not isinstance(required_sources_raw, list) or not all(
+        isinstance(value, str) for value in required_sources_raw
+    ):
+        msg = f"Strategy required_sources must be a list of strings: {required_sources_raw!r}"
+        raise TypeError(msg)
+
+    sort_raw = raw.get("sort")
+    sort = None if sort_raw is None else _require_source(sort_raw)
+
+    columns_raw = raw.get("columns", [])
+    if not isinstance(columns_raw, list):
+        msg = f"Strategy columns must be a list: {columns_raw!r}"
+        raise TypeError(msg)
+
+    return Strategy(
+        required_sources=tuple(required_sources_raw),
+        filters=tuple(_load_filter(raw_filter) for raw_filter in filters_raw),
+        sort=sort,
+        column_specs=tuple(_load_column(raw_column) for raw_column in columns_raw),
+    )
 
 
 def screen_single(
@@ -164,7 +260,7 @@ def screen_single(
 
     Returns (stock_dict, passed).
     """
-    mod: ModuleType = load_strategy(strategy_path)
+    mod: Strategy = load_strategy(strategy_path)
     names: dict[str, str] = get_stock_names(conn)
     stock: dict = build_stock_dict(conn, ticker, names.get(ticker, ""))
     passed: bool = mod.screen(stock)
@@ -258,7 +354,7 @@ def run_screening(
     """
     import concurrent.futures
 
-    mod: ModuleType = load_strategy(strategy_path)
+    mod: Strategy = load_strategy(strategy_path)
     screen_fn: Callable[[dict], bool] = mod.screen
 
     if tickers is None:
