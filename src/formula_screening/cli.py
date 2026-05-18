@@ -21,6 +21,7 @@ from stock_db.sources.stooq import StooqDailyPriceUpdateError
 from stock_db.storage.connection import get_connection
 
 _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
+_GH_PAGES_STOCK_PRICE_META_JSON = _GH_PAGES_JSON.with_name("stock-price-meta.json")
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -72,7 +73,11 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
 
 def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening._core import run_screening_payload_with_diagnostics_py
-    from formula_screening.web import save_screening_payload_json, serve_screening_payload
+    from formula_screening.web import (
+        save_screening_payload_json,
+        save_stock_price_metadata_json,
+        serve_screening_payload,
+    )
 
     strategy_path = Path(args.strategy)
     if not strategy_path.exists():
@@ -116,23 +121,39 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         )
         payload: list[dict] = result["payload"]
         for diagnostic in result["diagnostics"]:
-            logger.error(
-                "Missing screening fields for %s (%s): %s",
-                diagnostic["code"],
-                diagnostic["name"],
-                ", ".join(diagnostic["missing_fields"]),
-            )
+            missing_fields = diagnostic.get("missing_fields", [])
+            if missing_fields:
+                logger.error(
+                    "Missing screening fields for %s (%s): %s",
+                    diagnostic["code"],
+                    diagnostic["name"],
+                    ", ".join(missing_fields),
+                )
+            unavailable_fields = diagnostic.get("unavailable_fields", [])
+            if unavailable_fields:
+                details = ", ".join(
+                    f"{item['field']} ({item['reason']})" for item in unavailable_fields
+                )
+                logger.error(
+                    "Unavailable screening fields for %s (%s): %s",
+                    diagnostic["code"],
+                    diagnostic["name"],
+                    details,
+                )
         elapsed: float = time.monotonic() - start
+
+        save_screening_payload_json(payload, _GH_PAGES_JSON)
+        save_stock_price_metadata_json(_GH_PAGES_STOCK_PRICE_META_JSON, db_path=STOCKS_DB_PATH)
+        if args.json:
+            save_screening_payload_json(payload, Path(args.json))
 
         if not payload:
             print("No stocks matched the screening criteria.")
             return
 
         print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
-        save_screening_payload_json(payload, _GH_PAGES_JSON)
 
         if args.json:
-            save_screening_payload_json(payload, Path(args.json))
             print(f"Saved to {args.json}")
             return
 

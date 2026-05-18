@@ -153,7 +153,9 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
         "fcf_yield_avg",
         "croic",
         "peg_trailing_5",
+        "peg_trailing_5_status",
         "peg_blended_5y_actual_2f",
+        "peg_blended_5y_actual_2f_status",
         "has_preferred_shares",
     }
     assert set(row["metrics"]) == {
@@ -179,7 +181,9 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
     assert row["fcf_yield_avg"] is not None
     assert row["croic"] is not None
     assert row["peg_trailing_5"] is not None
+    assert row["peg_trailing_5_status"] == "ok"
     assert row["peg_blended_5y_actual_2f"] is not None
+    assert row["peg_blended_5y_actual_2f_status"] == "ok"
     assert row["has_preferred_shares"] is True
 
     all_payload = run_screening_payload_py(
@@ -226,5 +230,127 @@ def test_rust_payload_diagnostics_cover_all_screened_stocks(tmp_path: Path) -> N
             "code": "2222",
             "name": "fail stock",
             "missing_fields": ["metrics.dividend_yield"],
+            "unavailable_fields": [],
+        }
+    ]
+
+
+def test_invalid_preferred_share_flag_on_non_hit_does_not_abort_payload(tmp_path: Path) -> None:
+    db_path = tmp_path / "stocks.db"
+    conn = get_connection(db_path)
+    try:
+        init_db(conn)
+        _insert_screening_stock(
+            conn,
+            ticker="1111",
+            name="pass stock",
+            forecast_net_income_current=2_000.0,
+        )
+        _insert_screening_stock(
+            conn,
+            ticker="2222",
+            name="fail stock",
+            forecast_net_income_current=400.0,
+        )
+        conn.execute(
+            """
+            UPDATE financial_items
+            SET value = 2.0
+            WHERE ticker = '2222'
+              AND statement = 'bs'
+              AND item_name = 'has_preferred_shares'
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = run_screening_payload_with_diagnostics_py(
+        str(_STRATEGY_PATH),
+        str(db_path),
+        ["1111", "2222"],
+        False,
+    )
+
+    assert [row["code"] for row in result["payload"]] == ["1111"]
+    assert any(
+        diagnostic["code"] == "2222"
+        and {
+            "field": "has_preferred_shares",
+            "reason": "invalid_input",
+        }
+        in diagnostic["unavailable_fields"]
+        for diagnostic in result["diagnostics"]
+    )
+
+
+def test_rust_payload_marks_negative_peg_growth_separately(tmp_path: Path) -> None:
+    db_path = tmp_path / "stocks.db"
+    conn = get_connection(db_path)
+    try:
+        init_db(conn)
+        _insert_screening_stock(
+            conn,
+            ticker="3333",
+            name="negative peg stock",
+            forecast_net_income_current=2_000.0,
+        )
+        for period, eps in {
+            "2025-03": 80.0,
+            "2024-03": 90.0,
+            "2023-03": 100.0,
+            "2022-03": 110.0,
+            "2021-03": 120.0,
+            "2020-03": 130.0,
+        }.items():
+            conn.execute(
+                """
+                UPDATE financial_items
+                SET value = ?
+                WHERE ticker = '3333'
+                  AND period = ?
+                  AND statement = 'pl'
+                  AND item_name = 'eps'
+                """,
+                (eps, period),
+            )
+        conn.execute(
+            """
+            UPDATE financial_items
+            SET value = CASE item_name
+                WHEN 'eps_current' THEN 70.0
+                WHEN 'eps_next' THEN 60.0
+                ELSE value
+            END
+            WHERE ticker = '3333'
+              AND statement = 'forecast'
+              AND item_name IN ('eps_current', 'eps_next')
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = run_screening_payload_with_diagnostics_py(
+        str(_STRATEGY_PATH),
+        str(db_path),
+        ["3333"],
+        False,
+    )
+
+    row = result["payload"][0]
+    assert row["peg_trailing_5"] is None
+    assert row["peg_trailing_5_status"] == "non_positive_growth"
+    assert row["peg_blended_5y_actual_2f"] is None
+    assert row["peg_blended_5y_actual_2f_status"] == "non_positive_growth"
+    assert result["diagnostics"] == [
+        {
+            "code": "3333",
+            "name": "negative peg stock",
+            "missing_fields": [],
+            "unavailable_fields": [
+                {"field": "peg_trailing_5", "reason": "non_positive_growth"},
+                {"field": "peg_blended_5y_actual_2f", "reason": "non_positive_growth"},
+            ],
         }
     ]

@@ -118,6 +118,7 @@ function bootstrap() {
     StockTable.init({
         defaultTitle: "Formula Screening",
         dataUrl: IS_GITHUB_PAGES ? "assets/screening.json" : "/api/screening",
+        metadataUrl: IS_GITHUB_PAGES ? "assets/stock-price-meta.json" : "/api/stock-price-meta",
         columns: COLUMNS,
         metricThresholds: METRIC_THRESHOLDS,
         defaultSortKey: "net_cash_ratio",

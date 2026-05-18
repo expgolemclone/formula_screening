@@ -2,9 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use formula_screening_core::{build_stock, load_strategy, run_strategy, serialize_stock};
+use formula_screening_core::run_screening_payload;
 use serde_json::Value;
-use stock_db_core::screening::load_screening_stocks;
 use stock_web_ui_core::{BrowserEntry, IndexPage, ServeConfig, ServerConfig};
 
 #[derive(Debug, Parser)]
@@ -39,15 +38,8 @@ fn main() -> Result<(), String> {
 }
 
 fn run_screen(args: ScreenArgs) -> Result<(), String> {
-    let strategy = load_strategy(&args.strategy)?;
     let tickers = resolve_ticker_args(&args.ticker)?;
-    let raw_stocks = load_screening_stocks(&args.db_path, tickers.as_deref(), 10, 6)?;
-    let stocks = raw_stocks.into_iter().map(build_stock).collect::<Vec<_>>();
-    let hits = run_strategy(&strategy, stocks);
-    let payload = hits
-        .iter()
-        .map(serialize_stock)
-        .collect::<Result<Vec<_>, _>>()?;
+    let payload = run_screening_payload(&args.strategy, &args.db_path, tickers.as_deref(), false)?;
     println!("{} stocks matched", payload.len());
 
     let default_json = PathBuf::from("docs/assets/screening.json");

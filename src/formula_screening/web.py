@@ -9,42 +9,69 @@ from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
-from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
+from formula_screening.indicators import (
+    croic,
+    fcf_yield_avg,
+    peg_blended_2f_with_status,
+    peg_trailing_with_status,
+)
 from formula_screening.preferred_shares import preferred_share_flag
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 _STATIC_ROOT: Path = _DOCS_DIR / "assets"
+_STOCK_PRICE_META_JSON: Path = _STATIC_ROOT / "stock-price-meta.json"
 _HANDBOOK_DATA_DIR: Path = _PROJECT_ROOT.parent / "japan_company_handbook" / "data"
 
-StockMetricValue = float | bool | None
+StockMetricValue = float | bool | str | None
+StockPriceMetadata = dict[str, str | None]
 
 
 def compute_all_stock_metrics(
-    conn: object | None = None,
+    db_path: str | Path | None = None,
 ) -> dict[str, dict[str, StockMetricValue]]:
     """Compute enriched metrics for all tickers via the Rust-backed public API.
 
     This is the single entry-point for external projects that need per-ticker
     screening metrics. Callers should use this instead of importing internal
-    modules directly. ``conn`` is retained only to fail loudly for old callers;
-    connection injection is no longer part of the public API.
+    modules directly. ``db_path`` lets downstream projects keep all reads on
+    the same explicit stock DB.
 
     Returns:
         ``{ticker: {"price", "net_cash_ratio", "per_actual", "per", "per_next",
                      "equity_ratio", "fcf_yield_avg", "croic", "peg_trailing_5",
-                     "peg_blended_5y_actual_2f", "market_cap", "has_preferred_shares"}}``
+                     "peg_trailing_5_status", "peg_blended_5y_actual_2f",
+                     "peg_blended_5y_actual_2f_status", "market_cap",
+                     "has_preferred_shares"}}``
     """
-    if conn is not None:
-        msg = "compute_all_stock_metrics no longer accepts sqlite connections"
+    if db_path is not None and not isinstance(db_path, (str, Path)):
+        msg = "compute_all_stock_metrics no longer accepts sqlite connections; pass db_path"
         raise TypeError(msg)
 
     from formula_screening._core import compute_all_stock_metrics as _compute_all_stock_metrics
 
-    return _compute_all_stock_metrics(str(STOCKS_DB_PATH))
+    resolved_db_path = Path(db_path) if db_path is not None else STOCKS_DB_PATH
+    return _compute_all_stock_metrics(str(resolved_db_path))
 
 
-def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
+def build_stock_price_metadata(db_path: str | Path | None = None) -> StockPriceMetadata:
+    from stock_db.storage.connection import get_connection
+    from stock_db.storage.prices import get_latest_price_date
+
+    resolved_db_path = Path(db_path) if db_path is not None else STOCKS_DB_PATH
+    conn = get_connection(resolved_db_path)
+    try:
+        latest_price_date = get_latest_price_date(conn)
+    finally:
+        conn.close()
+    return {"price_date": latest_price_date.isoformat() if latest_price_date else None}
+
+
+def create_screening_api(
+    stocks: list[dict],
+    *,
+    stock_price_metadata: StockPriceMetadata | None = None,
+) -> dict[str, ApiHandler]:
     """Create API routes that expose screening results as JSON.
 
     Args:
@@ -55,13 +82,25 @@ def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
     """
     payload: list[dict] = [_serialize_stock(s) for s in stocks]
 
-    return {"/api/screening": json_route(lambda _params: payload)}
+    metadata = stock_price_metadata or {"price_date": None}
+    return {
+        "/api/screening": json_route(lambda _params: payload),
+        "/api/stock-price-meta": json_route(lambda _params: metadata),
+    }
 
 
-def create_screening_payload_api(payload: list[dict]) -> dict[str, ApiHandler]:
+def create_screening_payload_api(
+    payload: list[dict],
+    *,
+    stock_price_metadata: StockPriceMetadata | None = None,
+) -> dict[str, ApiHandler]:
     """Create API routes from an already serialized Rust payload."""
 
-    return {"/api/screening": json_route(lambda _params: payload)}
+    metadata = stock_price_metadata or {"price_date": None}
+    return {
+        "/api/screening": json_route(lambda _params: payload),
+        "/api/stock-price-meta": json_route(lambda _params: metadata),
+    }
 
 
 def serve_screening(
@@ -75,7 +114,10 @@ def serve_screening(
         stocks: Screening results to display.
         server_config: Server host/port (loads default if omitted).
     """
-    api_routes = create_screening_api(stocks)
+    api_routes = create_screening_api(
+        stocks,
+        stock_price_metadata=build_stock_price_metadata(),
+    )
 
     _serve(
         static_root=_STATIC_ROOT,
@@ -105,7 +147,10 @@ def serve_screening_payload(
             tab_aria_label="タブ切替",
         ),
         server_config=server_config,
-        api_routes=create_screening_payload_api(payload),
+        api_routes=create_screening_payload_api(
+            payload,
+            stock_price_metadata=build_stock_price_metadata(),
+        ),
         yazi_base_dir=_HANDBOOK_DATA_DIR,
     )
 
@@ -126,14 +171,28 @@ def save_screening_payload_json(payload: list[dict], path: Path) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def save_stock_price_metadata_json(
+    path: Path = _STOCK_PRICE_META_JSON,
+    *,
+    db_path: str | Path | None = None,
+) -> None:
+    import json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(build_stock_price_metadata(db_path), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def _serialize_stock(stock: dict) -> dict:
     """Convert a screener stock dict to the JSON shape expected by app.js."""
     metrics = stock.get("metrics", {})
 
     fcf_value = fcf_yield_avg(stock)
     croic_value = croic(stock)
-    peg_trailing_5_value = peg_trailing(stock, 5)
-    peg_blended_value = peg_blended_2f(stock, 5)
+    peg_trailing_5_result = peg_trailing_with_status(stock, 5)
+    peg_blended_result = peg_blended_2f_with_status(stock, 5)
 
     return {
         "code": stock.get("ticker", ""),
@@ -151,7 +210,9 @@ def _serialize_stock(stock: dict) -> dict:
         },
         "fcf_yield_avg": fcf_value,
         "croic": croic_value,
-        "peg_trailing_5": peg_trailing_5_value,
-        "peg_blended_5y_actual_2f": peg_blended_value,
+        "peg_trailing_5": peg_trailing_5_result.value,
+        "peg_trailing_5_status": peg_trailing_5_result.status,
+        "peg_blended_5y_actual_2f": peg_blended_result.value,
+        "peg_blended_5y_actual_2f_status": peg_blended_result.status,
         "has_preferred_shares": preferred_share_flag(stock),
     }
