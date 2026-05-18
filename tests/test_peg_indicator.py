@@ -4,7 +4,15 @@ import math
 
 import pytest
 
-from formula_screening.indicators.peg import peg_blended_2f, peg_trailing
+from formula_screening.indicators.peg import (
+    PEG_STATUS_MISSING_INPUT,
+    PEG_STATUS_NON_POSITIVE_GROWTH,
+    PEG_STATUS_OK,
+    peg_blended_2f,
+    peg_blended_2f_with_status,
+    peg_trailing,
+    peg_trailing_with_status,
+)
 
 
 def _build_stock(
@@ -44,6 +52,7 @@ def test_peg_trailing_uses_actual_per_divided_by_eps_cagr_percent() -> None:
     expected_cagr = (200.0 / 100.0) ** (1 / 5) - 1
     expected_peg = 10.0 / (expected_cagr * 100)
     assert value == pytest.approx(expected_peg)
+    assert peg_trailing_with_status(_build_stock(), 5).status == PEG_STATUS_OK
 
 
 def test_peg_trailing_needs_years_plus_1_data_points() -> None:
@@ -74,6 +83,19 @@ def test_peg_trailing_returns_none_for_invalid_inputs(
     assert value is None
 
 
+def test_peg_trailing_distinguishes_negative_growth_from_missing_input() -> None:
+    negative_growth = peg_trailing_with_status(
+        _build_stock(eps_values=[80.0, 90.0, 100.0, 110.0, 120.0, 130.0]),
+        5,
+    )
+    missing_input = peg_trailing_with_status(_build_stock(per_actual=None), 5)
+
+    assert negative_growth.value is None
+    assert negative_growth.status == PEG_STATUS_NON_POSITIVE_GROWTH
+    assert missing_input.value is None
+    assert missing_input.status == PEG_STATUS_MISSING_INPUT
+
+
 # --- peg_blended_2f ---
 
 
@@ -86,6 +108,7 @@ def test_peg_blended_2f_uses_per_next_divided_by_blended_cagr() -> None:
     expected_cagr = (240.0 / 100.0) ** (1 / 7) - 1
     expected_peg = 8.0 / (expected_cagr * 100)
     assert value == pytest.approx(expected_peg)
+    assert peg_blended_2f_with_status(stock, 5).status == PEG_STATUS_OK
 
 
 def test_peg_blended_2f_returns_none_when_actual_years_less_than_1() -> None:

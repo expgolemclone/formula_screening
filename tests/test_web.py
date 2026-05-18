@@ -70,7 +70,9 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
     expected_cagr = (200.0 / 100.0) ** (1 / 5) - 1
     expected_peg = 10.0 / (expected_cagr * 100)
     assert payload["peg_trailing_5"] == pytest.approx(expected_peg)
+    assert payload["peg_trailing_5_status"] == "ok"
     assert payload["peg_blended_5y_actual_2f"] is not None
+    assert payload["peg_blended_5y_actual_2f_status"] == "ok"
     assert payload["metrics"]["per_actual"] == 10.0
     assert payload["metrics"]["per_next"] == 6.0
     assert payload["has_preferred_shares"] is True

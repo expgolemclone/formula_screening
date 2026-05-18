@@ -9,7 +9,12 @@ from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
-from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
+from formula_screening.indicators import (
+    croic,
+    fcf_yield_avg,
+    peg_blended_2f_with_status,
+    peg_trailing_with_status,
+)
 from formula_screening.preferred_shares import preferred_share_flag
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
@@ -17,7 +22,7 @@ _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
 _STATIC_ROOT: Path = _DOCS_DIR / "assets"
 _HANDBOOK_DATA_DIR: Path = _PROJECT_ROOT.parent / "japan_company_handbook" / "data"
 
-StockMetricValue = float | bool | None
+StockMetricValue = float | bool | str | None
 
 
 def compute_all_stock_metrics(
@@ -33,7 +38,9 @@ def compute_all_stock_metrics(
     Returns:
         ``{ticker: {"price", "net_cash_ratio", "per_actual", "per", "per_next",
                      "equity_ratio", "fcf_yield_avg", "croic", "peg_trailing_5",
-                     "peg_blended_5y_actual_2f", "market_cap", "has_preferred_shares"}}``
+                     "peg_trailing_5_status", "peg_blended_5y_actual_2f",
+                     "peg_blended_5y_actual_2f_status", "market_cap",
+                     "has_preferred_shares"}}``
     """
     if conn is not None:
         msg = "compute_all_stock_metrics no longer accepts sqlite connections"
@@ -132,8 +139,8 @@ def _serialize_stock(stock: dict) -> dict:
 
     fcf_value = fcf_yield_avg(stock)
     croic_value = croic(stock)
-    peg_trailing_5_value = peg_trailing(stock, 5)
-    peg_blended_value = peg_blended_2f(stock, 5)
+    peg_trailing_5_result = peg_trailing_with_status(stock, 5)
+    peg_blended_result = peg_blended_2f_with_status(stock, 5)
 
     return {
         "code": stock.get("ticker", ""),
@@ -151,7 +158,9 @@ def _serialize_stock(stock: dict) -> dict:
         },
         "fcf_yield_avg": fcf_value,
         "croic": croic_value,
-        "peg_trailing_5": peg_trailing_5_value,
-        "peg_blended_5y_actual_2f": peg_blended_value,
+        "peg_trailing_5": peg_trailing_5_result.value,
+        "peg_trailing_5_status": peg_trailing_5_result.status,
+        "peg_blended_5y_actual_2f": peg_blended_result.value,
+        "peg_blended_5y_actual_2f_status": peg_blended_result.status,
         "has_preferred_shares": preferred_share_flag(stock),
     }

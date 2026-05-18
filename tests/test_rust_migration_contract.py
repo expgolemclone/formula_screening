@@ -153,7 +153,9 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
         "fcf_yield_avg",
         "croic",
         "peg_trailing_5",
+        "peg_trailing_5_status",
         "peg_blended_5y_actual_2f",
+        "peg_blended_5y_actual_2f_status",
         "has_preferred_shares",
     }
     assert set(row["metrics"]) == {
@@ -178,6 +180,8 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
     assert row["metrics"]["equity_ratio"] == pytest.approx(60.0)
     assert row["fcf_yield_avg"] is not None
     assert row["croic"] is not None
+    assert row["peg_trailing_5_status"] == "ok"
+    assert row["peg_blended_5y_actual_2f_status"] == "ok"
     assert row["peg_trailing_5"] is not None
     assert row["peg_blended_5y_actual_2f"] is not None
     assert row["has_preferred_shares"] is True
