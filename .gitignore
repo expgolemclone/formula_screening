@@ -5,6 +5,8 @@
 !.gitattributes
 !.gitignore
 !*.md
+!Cargo.lock
+!Cargo.toml
 !pyproject.toml
 !uv.lock
 !flake.nix
@@ -17,8 +19,6 @@
 src/formula_screening/_core*.so
 src/formula_screening/_core*.pyd
 !rust/
-!rust/Cargo.lock
-!rust/Cargo.toml
 !rust/src/
 !rust/src/**
 !strategies/

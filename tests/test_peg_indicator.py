@@ -4,7 +4,12 @@ import math
 
 import pytest
 
-from formula_screening.indicators.peg import peg_blended_2f, peg_trailing
+from formula_screening.indicators.peg import (
+    peg_blended_2f,
+    peg_blended_2f_with_status,
+    peg_trailing,
+    peg_trailing_with_status,
+)
 
 
 def _build_stock(
@@ -74,6 +79,39 @@ def test_peg_trailing_returns_none_for_invalid_inputs(
     assert value is None
 
 
+@pytest.mark.parametrize(
+    ("stock", "years", "status"),
+    [
+        (_build_stock(per_actual=None), 5, "missing_input"),
+        (_build_stock(per_actual=0.0), 5, "non_positive_per"),
+        (_build_stock(eps_values=[200.0, 180.0, 160.0, 140.0, 120.0]), 5, "insufficient_history"),
+        (
+            _build_stock(eps_values=[200.0, 180.0, 160.0, 140.0, None, 100.0]),
+            5,
+            "missing_input",
+        ),
+        (
+            _build_stock(eps_values=[200.0, 180.0, 160.0, 140.0, 0.0, 100.0]),
+            5,
+            "non_positive_eps",
+        ),
+        (
+            _build_stock(eps_values=[100.0, 100.0, 100.0, 100.0, 100.0, 100.0]),
+            5,
+            "non_positive_growth",
+        ),
+    ],
+)
+def test_peg_trailing_with_status_reports_unavailable_reason(
+    stock: dict,
+    years: int,
+    status: str,
+) -> None:
+    result = peg_trailing_with_status(stock, years)
+    assert result.value is None
+    assert result.status == status
+
+
 # --- peg_blended_2f ---
 
 
@@ -125,3 +163,35 @@ def test_peg_blended_2f_returns_none_when_cagr_negative() -> None:
     # eps_next < oldest_eps → negative CAGR
     stock = _build_stock(eps_next=50.0)
     assert peg_blended_2f(stock, 5) is None
+
+
+@pytest.mark.parametrize(
+    ("stock", "actual_years", "status"),
+    [
+        (_build_stock(), 0, "insufficient_history"),
+        (_build_stock(per_next=None), 5, "missing_input"),
+        (_build_stock(per_next=0.0), 5, "non_positive_per"),
+        (_build_stock(eps_current=None), 5, "missing_input"),
+        (_build_stock(eps_next=0.0), 5, "non_positive_eps"),
+        (_build_stock(eps_values=[200.0, 180.0, 160.0, 140.0, 120.0]), 5, "insufficient_history"),
+        (
+            _build_stock(eps_values=[200.0, 180.0, 160.0, 140.0, None, 100.0]),
+            5,
+            "missing_input",
+        ),
+        (
+            _build_stock(eps_values=[200.0, 180.0, 160.0, 140.0, 0.0, 100.0]),
+            5,
+            "non_positive_eps",
+        ),
+        (_build_stock(eps_next=50.0), 5, "non_positive_growth"),
+    ],
+)
+def test_peg_blended_2f_with_status_reports_unavailable_reason(
+    stock: dict,
+    actual_years: int,
+    status: str,
+) -> None:
+    result = peg_blended_2f_with_status(stock, actual_years)
+    assert result.value is None
+    assert result.status == status

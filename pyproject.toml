@@ -26,6 +26,6 @@ requires = ["maturin>=1.0,<2"]
 build-backend = "maturin"
 
 [tool.maturin]
-manifest-dir = "rust"
 module-name = "formula_screening._core"
+python-source = "src"
 python-packages = ["src/formula_screening"]

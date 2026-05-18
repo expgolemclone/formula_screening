@@ -57,11 +57,11 @@
 
 - `formula_screening`
   - `uv run pytest -q` -> 50 passed
-  - `cargo test --manifest-path rust/Cargo.toml` -> 4 passed
+  - `cargo test` -> 4 passed
   - `npx tsc --noEmit` -> passed
 - `stock_db` 関連契約
   - `uv run pytest -q tests/storage/test_prices.py tests/test_market_calendar.py` -> 22 passed
-  - `cargo test --manifest-path rust/Cargo.toml screening` -> 0 tests matched
+  - `cargo test screening` -> 0 tests matched
 - `stock_web_ui` 関連契約
   - `uv run pytest -q tests/test_serve.py tests/test_page.py tests/test_handler.py` -> 12 passed
   - `npm run typecheck` -> passed

@@ -63,9 +63,11 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
     db_path = tmp_path / "stocks.db"
     json_path = tmp_path / "screening.json"
     gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
+    gh_pages_meta_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
     payload = [{"code": "1301", "metrics": {"net_cash_ratio": 1.0}}]
     captured_core: dict[str, object] = {}
     saved: list[tuple[list[dict], Path]] = []
+    saved_meta: list[tuple[Path, Path]] = []
 
     class FakeConnection:
         def close(self) -> None:
@@ -97,9 +99,15 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
     monkeypatch.setattr(cli_module, "STOCKS_DB_PATH", db_path)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_STOCK_PRICE_META_JSON", gh_pages_meta_json)
     monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
     monkeypatch.setattr(cli_module, "ensure_stooq_prices_fresh", lambda **_kwargs: None)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
+    monkeypatch.setattr(
+        web_mod,
+        "save_stock_price_metadata_json",
+        lambda path, *, db_path: saved_meta.append((path, db_path)),
+    )
 
     args = argparse.Namespace(
         strategy=str(strategy_path),
@@ -118,6 +126,7 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
         "return_all": True,
     }
     assert saved == [(payload, gh_pages_json), (payload, json_path)]
+    assert saved_meta == [(gh_pages_meta_json, db_path)]
 
 
 def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
@@ -136,15 +145,18 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
     db_path = tmp_path / "stocks.db"
     json_path = tmp_path / "screening.json"
     gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
+    gh_pages_meta_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
     payload = [{"code": "1301", "metrics": {"net_cash_ratio": None}}]
     diagnostics = [
         {
             "code": "1301",
             "name": "test stock",
             "missing_fields": ["metrics.net_cash_ratio", "fcf_yield_avg"],
+            "unavailable_fields": [],
         }
     ]
     saved: list[tuple[list[dict], Path]] = []
+    saved_meta: list[tuple[Path, Path]] = []
 
     class FakeConnection:
         def close(self) -> None:
@@ -161,9 +173,15 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
     monkeypatch.setattr(cli_module, "STOCKS_DB_PATH", db_path)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_STOCK_PRICE_META_JSON", gh_pages_meta_json)
     monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
     monkeypatch.setattr(cli_module, "ensure_stooq_prices_fresh", lambda **_kwargs: None)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
+    monkeypatch.setattr(
+        web_mod,
+        "save_stock_price_metadata_json",
+        lambda path, *, db_path: saved_meta.append((path, db_path)),
+    )
 
     args = argparse.Namespace(
         strategy=str(strategy_path),
@@ -178,3 +196,139 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
 
     assert "Missing screening fields for 1301 (test stock): metrics.net_cash_ratio, fcf_yield_avg" in caplog.text
     assert saved == [(payload, gh_pages_json), (payload, json_path)]
+    assert saved_meta == [(gh_pages_meta_json, db_path)]
+
+
+def test_cmd_screen_logs_unavailable_fields_with_reasons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    strategy_path = tmp_path / "strategy.toml"
+    strategy_path.write_text(
+        "[[filters]]\n"
+        'source = "net_cash_ratio"\n'
+        'operator = ">="\n'
+        "threshold = -1.0\n",
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "stocks.db"
+    json_path = tmp_path / "screening.json"
+    gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
+    gh_pages_meta_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
+    payload = [{"code": "1999", "peg_trailing_5_status": "non_positive_growth"}]
+    diagnostics = [
+        {
+            "code": "1999",
+            "name": "negative peg stock",
+            "missing_fields": [],
+            "unavailable_fields": [
+                {"field": "peg_trailing_5", "reason": "non_positive_growth"},
+            ],
+        }
+    ]
+    saved: list[tuple[list[dict], Path]] = []
+    saved_meta: list[tuple[Path, Path]] = []
+
+    class FakeConnection:
+        def close(self) -> None:
+            pass
+
+    fake_core = types.ModuleType("formula_screening._core")
+    fake_core.run_screening_payload_with_diagnostics_py = lambda *_args: {
+        "payload": payload,
+        "diagnostics": diagnostics,
+    }
+    monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
+    monkeypatch.setattr(cli_module, "STOCKS_DB_PATH", db_path)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_STOCK_PRICE_META_JSON", gh_pages_meta_json)
+    monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
+    monkeypatch.setattr(cli_module, "ensure_stooq_prices_fresh", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        web_mod,
+        "save_screening_payload_json",
+        lambda rows, path: saved.append((rows, path)),
+    )
+    monkeypatch.setattr(
+        web_mod,
+        "save_stock_price_metadata_json",
+        lambda path, *, db_path: saved_meta.append((path, db_path)),
+    )
+
+    args = argparse.Namespace(
+        strategy=str(strategy_path),
+        ticker=["1999"],
+        workers=1,
+        show_all=False,
+        json=str(json_path),
+    )
+
+    with caplog.at_level("ERROR", logger="formula_screening.cli"):
+        cli_module._cmd_screen(args)
+
+    assert (
+        "Unavailable screening fields for 1999 (negative peg stock): "
+        "peg_trailing_5 (non_positive_growth)"
+    ) in caplog.text
+    assert saved == [(payload, gh_pages_json), (payload, json_path)]
+    assert saved_meta == [(gh_pages_meta_json, db_path)]
+
+
+def test_cmd_screen_writes_empty_payloads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    strategy_path = tmp_path / "strategy.toml"
+    strategy_path.write_text(
+        "[[filters]]\n"
+        'source = "net_cash_ratio"\n'
+        'operator = ">="\n'
+        "threshold = -1.0\n",
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "stocks.db"
+    json_path = tmp_path / "screening.json"
+    gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
+    gh_pages_meta_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
+    saved: list[tuple[list[dict], Path]] = []
+    saved_meta: list[tuple[Path, Path]] = []
+
+    class FakeConnection:
+        def close(self) -> None:
+            pass
+
+    fake_core = types.ModuleType("formula_screening._core")
+    fake_core.run_screening_payload_with_diagnostics_py = lambda *_args: {
+        "payload": [],
+        "diagnostics": [],
+    }
+    monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
+    monkeypatch.setattr(cli_module, "STOCKS_DB_PATH", db_path)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_STOCK_PRICE_META_JSON", gh_pages_meta_json)
+    monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
+    monkeypatch.setattr(cli_module, "ensure_stooq_prices_fresh", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        web_mod,
+        "save_screening_payload_json",
+        lambda rows, path: saved.append((rows, path)),
+    )
+    monkeypatch.setattr(
+        web_mod,
+        "save_stock_price_metadata_json",
+        lambda path, *, db_path: saved_meta.append((path, db_path)),
+    )
+
+    args = argparse.Namespace(
+        strategy=str(strategy_path),
+        ticker=["1301"],
+        workers=1,
+        show_all=False,
+        json=str(json_path),
+    )
+
+    cli_module._cmd_screen(args)
+
+    assert saved == [([], gh_pages_json), ([], json_path)]
+    assert saved_meta == [(gh_pages_meta_json, db_path)]
