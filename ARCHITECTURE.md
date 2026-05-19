@@ -58,6 +58,8 @@ uv run python -m formula_screening screen \
   -s strategies/net_cash_fcf.toml -t all --json docs/assets/screening.json
 ```
 
+この出力は DB と最新株価に依存するスナップショットであり、再生成時は通過銘柄数、並び順、各指標値の差分が `docs/assets/screening.json` に集約されます。
+
 ## モジュール責務
 
 ### `src/formula_screening/cli.py`
