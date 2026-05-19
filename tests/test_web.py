@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import types
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 from stock_web_ui.config import ServerConfig
@@ -116,3 +117,48 @@ def test_compute_all_stock_metrics_exposes_preferred_share_flag(
 def test_compute_all_stock_metrics_rejects_connection_objects() -> None:
     with pytest.raises(TypeError, match="no longer accepts sqlite connections"):
         web_mod.compute_all_stock_metrics(object())
+
+
+def test_run_screening_strategy_payload_uses_public_rust_payload_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    strategy_path = tmp_path / "strategy.toml"
+    db_path = tmp_path / "stocks.db"
+    expected_payload = [{"code": "1301"}]
+    captured: dict[str, object] = {}
+
+    def fake_run_screening_payload_py(
+        strategy: str,
+        database: str,
+        tickers: list[str] | None,
+        return_all: bool,
+    ) -> list[dict]:
+        captured.update(
+            {
+                "strategy": strategy,
+                "database": database,
+                "tickers": tickers,
+                "return_all": return_all,
+            }
+        )
+        return expected_payload
+
+    fake_core = types.ModuleType("formula_screening._core")
+    fake_core.run_screening_payload_py = fake_run_screening_payload_py
+    monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
+    monkeypatch.setattr(web_mod, "STOCKS_DB_PATH", db_path)
+
+    payload = web_mod.run_screening_strategy_payload(
+        strategy_path,
+        tickers=("1301", "7203"),
+        return_all=True,
+    )
+
+    assert payload == expected_payload
+    assert captured == {
+        "strategy": str(strategy_path),
+        "database": str(db_path),
+        "tickers": ["1301", "7203"],
+        "return_all": True,
+    }

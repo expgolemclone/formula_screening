@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from stock_db.paths import STOCKS_DB_PATH
@@ -49,6 +50,30 @@ def compute_all_stock_metrics(
     from formula_screening._core import compute_all_stock_metrics as _compute_all_stock_metrics
 
     return _compute_all_stock_metrics(str(STOCKS_DB_PATH))
+
+
+def run_screening_strategy_payload(
+    strategy_path: Path | str,
+    *,
+    tickers: Sequence[str] | None = None,
+    return_all: bool = False,
+) -> list[dict]:
+    """Run a TOML strategy and return the Rust-backed public screening payload.
+
+    External projects should use this API instead of importing ``_core``
+    directly. ``formula_screening`` owns strategy execution; downstream
+    projects can pass candidate tickers and merge the returned payload with
+    their own domain data.
+    """
+    from formula_screening._core import run_screening_payload_py
+
+    ticker_list = None if tickers is None else [str(ticker) for ticker in tickers]
+    return run_screening_payload_py(
+        str(Path(strategy_path)),
+        str(STOCKS_DB_PATH),
+        ticker_list,
+        return_all,
+    )
 
 
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
