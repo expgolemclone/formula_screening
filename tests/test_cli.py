@@ -9,10 +9,10 @@ import pytest
 
 import formula_screening.cli as cli_module
 import formula_screening.web as web_mod
-from stock_db.sources.stooq import StooqDailyPriceUpdateError
+from stock_db.sources.price_refresh import PriceRefreshError
 
 
-def test_cmd_screen_stops_when_stooq_update_fails(
+def test_cmd_screen_stops_when_price_update_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -26,11 +26,11 @@ def test_cmd_screen_stops_when_stooq_update_fails(
         encoding="utf-8",
     )
 
-    def fake_ensure_stooq_prices_fresh(**kwargs: object) -> object:
+    def fake_ensure_prices_fresh(**kwargs: object) -> object:
         del kwargs
-        raise StooqDailyPriceUpdateError("Unauthorized")
+        raise PriceRefreshError("Yahoo failed")
 
-    monkeypatch.setattr(cli_module, "ensure_stooq_prices_fresh", fake_ensure_stooq_prices_fresh)
+    monkeypatch.setattr(cli_module, "ensure_prices_fresh", fake_ensure_prices_fresh)
 
     args = argparse.Namespace(
         strategy=str(strategy_path),
@@ -45,7 +45,7 @@ def test_cmd_screen_stops_when_stooq_update_fails(
 
     output = capsys.readouterr()
     assert exc_info.value.code == 1
-    assert "Failed to update Stooq prices: Unauthorized" in output.err
+    assert "Failed to update stock prices: Yahoo failed" in output.err
 
 
 def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
@@ -104,7 +104,7 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_METADATA_JSON", gh_pages_metadata_json)
     monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
-    monkeypatch.setattr(cli_module, "ensure_stooq_prices_fresh", lambda **_kwargs: None)
+    monkeypatch.setattr(cli_module, "ensure_prices_fresh", lambda **_kwargs: None)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
     monkeypatch.setattr(web_mod, "save_stock_price_metadata_json", fake_save_stock_price_metadata_json)
 
@@ -176,7 +176,7 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_METADATA_JSON", gh_pages_metadata_json)
     monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
-    monkeypatch.setattr(cli_module, "ensure_stooq_prices_fresh", lambda **_kwargs: None)
+    monkeypatch.setattr(cli_module, "ensure_prices_fresh", lambda **_kwargs: None)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
     monkeypatch.setattr(web_mod, "save_stock_price_metadata_json", fake_save_stock_price_metadata_json)
 

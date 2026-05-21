@@ -15,9 +15,9 @@ from collections.abc import Callable
 
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.log import setup_logging
-from formula_screening.price_updates import ensure_stooq_prices_fresh
+from formula_screening.price_updates import ensure_prices_fresh
 from stock_db.paths import STOCKS_DB_PATH
-from stock_db.sources.stooq import StooqDailyPriceUpdateError
+from stock_db.sources.price_refresh import PriceRefreshError
 from stock_db.storage.connection import get_connection
 
 _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
@@ -87,16 +87,16 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        update_result = ensure_stooq_prices_fresh(db_path=STOCKS_DB_PATH)
-    except (StooqDailyPriceUpdateError, ValueError) as exc:
-        print(f"Failed to update Stooq prices: {exc}", file=sys.stderr)
+        update_result = ensure_prices_fresh(db_path=STOCKS_DB_PATH)
+    except (PriceRefreshError, ValueError) as exc:
+        print(f"Failed to update stock prices: {exc}", file=sys.stderr)
         sys.exit(1)
 
     if update_result is not None:
         update_message = (update_result.stderr or update_result.stdout).strip()
         suffix = f": {update_message}" if update_message else ""
         print(
-            f"Updated Stooq prices{suffix}",
+            f"Updated stock prices{suffix}",
             file=sys.stderr,
         )
 
