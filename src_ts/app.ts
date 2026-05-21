@@ -76,24 +76,10 @@ const COLUMNS: ColumnDef[] = [
   C.buildMetricCol(C.PER_A_SPEC, metricsAccessor("per_actual")),
   C.buildMetricCol(C.PER_C_SPEC, metricsAccessor("per")),
   C.buildMetricCol(C.PER_N_SPEC, metricsAccessor("per_next")),
+  C.fcfYCol,
+  C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
   C.peg5yCol,
   C.peg5y2fCol,
-  {
-    key: "pbr",
-    header: "pbr",
-    type: "num",
-    title: "price book value ratio",
-    toggleable: true,
-    render: (row): string => {
-      const metrics = row.metrics as Record<string, unknown> | undefined;
-      const v = metrics?.pbr as number | null | undefined;
-      return v !== null && v !== undefined ? v.toFixed(2) : "-";
-    },
-    sortValue: (row): number | null => {
-      const metrics = row.metrics as Record<string, unknown> | undefined;
-      return (metrics?.pbr as number) ?? null;
-    },
-  },
   {
     key: "dividend_yield",
     header: "div%",
@@ -137,9 +123,23 @@ const COLUMNS: ColumnDef[] = [
       return null;
     },
   },
-  C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
-  C.fcfYCol,
   C.croicCol,
+  {
+    key: "pbr",
+    header: "pbr",
+    type: "num",
+    title: "price book value ratio",
+    toggleable: true,
+    render: (row): string => {
+      const metrics = row.metrics as Record<string, unknown> | undefined;
+      const v = metrics?.pbr as number | null | undefined;
+      return v !== null && v !== undefined ? v.toFixed(2) : "-";
+    },
+    sortValue: (row): number | null => {
+      const metrics = row.metrics as Record<string, unknown> | undefined;
+      return (metrics?.pbr as number) ?? null;
+    },
+  },
 ];
 
 const METRIC_THRESHOLDS: Record<string, MetricThreshold> = {

@@ -41,24 +41,10 @@ const COLUMNS = [
     C.buildMetricCol(C.PER_A_SPEC, metricsAccessor("per_actual")),
     C.buildMetricCol(C.PER_C_SPEC, metricsAccessor("per")),
     C.buildMetricCol(C.PER_N_SPEC, metricsAccessor("per_next")),
+    C.fcfYCol,
+    C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
     C.peg5yCol,
     C.peg5y2fCol,
-    {
-        key: "pbr",
-        header: "pbr",
-        type: "num",
-        title: "price book value ratio",
-        toggleable: true,
-        render: (row) => {
-            const metrics = row.metrics;
-            const v = metrics?.pbr;
-            return v !== null && v !== undefined ? v.toFixed(2) : "-";
-        },
-        sortValue: (row) => {
-            const metrics = row.metrics;
-            return metrics?.pbr ?? null;
-        },
-    },
     {
         key: "dividend_yield",
         header: "div%",
@@ -102,9 +88,23 @@ const COLUMNS = [
             return null;
         },
     },
-    C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
-    C.fcfYCol,
     C.croicCol,
+    {
+        key: "pbr",
+        header: "pbr",
+        type: "num",
+        title: "price book value ratio",
+        toggleable: true,
+        render: (row) => {
+            const metrics = row.metrics;
+            const v = metrics?.pbr;
+            return v !== null && v !== undefined ? v.toFixed(2) : "-";
+        },
+        sortValue: (row) => {
+            const metrics = row.metrics;
+            return metrics?.pbr ?? null;
+        },
+    },
 ];
 const METRIC_THRESHOLDS = {
     ...C.COMMON_THRESHOLDS,

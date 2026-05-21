@@ -60,12 +60,12 @@ pub struct ScreeningPayload {
     pub price_date: Option<String>,
     pub metrics: PublicMetrics,
     pub fcf_yield_avg: Option<f64>,
-    pub croic: Option<f64>,
     pub peg_trailing_5: Option<f64>,
     pub peg_trailing_5_status: String,
     pub peg_blended_5y_actual_2f: Option<f64>,
     pub peg_blended_5y_actual_2f_status: String,
     pub has_preferred_shares: Option<bool>,
+    pub croic: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -87,9 +87,9 @@ pub struct PublicMetrics {
     pub per_actual: Option<f64>,
     pub per: Option<f64>,
     pub per_next: Option<f64>,
-    pub pbr: Option<f64>,
-    pub dividend_yield: Option<f64>,
     pub equity_ratio: Option<f64>,
+    pub dividend_yield: Option<f64>,
+    pub pbr: Option<f64>,
     pub market_cap: Option<f64>,
 }
 
@@ -223,18 +223,18 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
             per_actual: metric(stock, "per_actual"),
             per: metric(stock, "per"),
             per_next: metric(stock, "per_next"),
-            pbr: metric(stock, "pbr"),
-            dividend_yield: metric(stock, "dividend_yield"),
             equity_ratio: metric(stock, "equity_ratio"),
+            dividend_yield: metric(stock, "dividend_yield"),
+            pbr: metric(stock, "pbr"),
             market_cap: metric(stock, "market_cap"),
         },
         fcf_yield_avg: fcf_yield_avg(stock, 10),
-        croic: croic(stock),
         peg_trailing_5: peg_trailing.value,
         peg_trailing_5_status: peg_trailing.status.as_str().to_string(),
         peg_blended_5y_actual_2f: peg_blended.value,
         peg_blended_5y_actual_2f_status: peg_blended.status.as_str().to_string(),
         has_preferred_shares: preferred_share_flag(stock)?,
+        croic: croic(stock),
     })
 }
 
@@ -253,14 +253,11 @@ pub fn collect_missing_metric_diagnostics(
                 ("metrics.per_actual", metric(stock, "per_actual")),
                 ("metrics.per", metric(stock, "per")),
                 ("metrics.per_next", metric(stock, "per_next")),
-                ("metrics.pbr", metric(stock, "pbr")),
-                ("metrics.dividend_yield", metric(stock, "dividend_yield")),
-                ("metrics.equity_ratio", metric(stock, "equity_ratio")),
-                ("metrics.market_cap", metric(stock, "market_cap")),
                 ("fcf_yield_avg", fcf_yield_avg(stock, 10)),
-                ("croic", croic(stock)),
+                ("metrics.equity_ratio", metric(stock, "equity_ratio")),
                 ("peg_trailing_5", peg_trailing(stock, 5)),
                 ("peg_blended_5y_actual_2f", peg_blended_2f(stock, 5)),
+                ("metrics.dividend_yield", metric(stock, "dividend_yield")),
             ] {
                 if value.is_none() {
                     missing_fields.push(field.to_string());
@@ -268,6 +265,15 @@ pub fn collect_missing_metric_diagnostics(
             }
             if preferred_share_flag(stock)?.is_none() {
                 missing_fields.push("has_preferred_shares".to_string());
+            }
+            for (field, value) in [
+                ("croic", croic(stock)),
+                ("metrics.pbr", metric(stock, "pbr")),
+                ("metrics.market_cap", metric(stock, "market_cap")),
+            ] {
+                if value.is_none() {
+                    missing_fields.push(field.to_string());
+                }
             }
             Ok(MissingMetricDiagnostic {
                 code: stock.ticker.clone(),
@@ -319,14 +325,13 @@ pub fn compute_all_metrics(
                     metric_value(metric(&stock, "per_next")),
                 ),
                 (
-                    "equity_ratio".to_string(),
-                    metric_value(metric(&stock, "equity_ratio")),
-                ),
-                (
                     "fcf_yield_avg".to_string(),
                     metric_value(fcf_yield_avg(&stock, 10)),
                 ),
-                ("croic".to_string(), metric_value(croic(&stock))),
+                (
+                    "equity_ratio".to_string(),
+                    metric_value(metric(&stock, "equity_ratio")),
+                ),
                 (
                     "peg_trailing_5".to_string(),
                     metric_value(peg_trailing.value),
@@ -348,10 +353,16 @@ pub fn compute_all_metrics(
                     )),
                 ),
                 (
+                    "dividend_yield".to_string(),
+                    metric_value(metric(&stock, "dividend_yield")),
+                ),
+                ("has_preferred_shares".to_string(), preferred_share_value),
+                ("croic".to_string(), metric_value(croic(&stock))),
+                ("pbr".to_string(), metric_value(metric(&stock, "pbr"))),
+                (
                     "market_cap".to_string(),
                     metric_value(metric(&stock, "market_cap")),
                 ),
-                ("has_preferred_shares".to_string(), preferred_share_value),
             ]),
         );
     }
@@ -364,6 +375,26 @@ pub enum PublicMetricValue {
     Bool(bool),
     Text(String),
 }
+
+const PUBLIC_METRIC_PY_ORDER: [&str; 17] = [
+    "price",
+    "price_date",
+    "net_cash_ratio",
+    "per_actual",
+    "per",
+    "per_next",
+    "fcf_yield_avg",
+    "equity_ratio",
+    "peg_trailing_5",
+    "peg_trailing_5_status",
+    "peg_blended_5y_actual_2f",
+    "peg_blended_5y_actual_2f_status",
+    "dividend_yield",
+    "has_preferred_shares",
+    "croic",
+    "pbr",
+    "market_cap",
+];
 
 fn metric_value(value: Option<f64>) -> Option<PublicMetricValue> {
     value.map(PublicMetricValue::Float)
@@ -840,7 +871,12 @@ fn metrics_to_py(
     let outer = pyo3::types::PyDict::new(py);
     for (ticker, values) in metrics {
         let inner = pyo3::types::PyDict::new(py);
-        for (key, value) in values {
+        for key in PUBLIC_METRIC_PY_ORDER {
+            let value = values.get(key).ok_or_else(|| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "missing public metric key: {key}"
+                ))
+            })?;
             match value {
                 Some(PublicMetricValue::Float(number)) => inner.set_item(key, number)?,
                 Some(PublicMetricValue::Bool(flag)) => inner.set_item(key, flag)?,
@@ -875,19 +911,18 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
         set_optional_float(py, &metrics, "per_actual", payload.metrics.per_actual)?;
         set_optional_float(py, &metrics, "per", payload.metrics.per)?;
         set_optional_float(py, &metrics, "per_next", payload.metrics.per_next)?;
-        set_optional_float(py, &metrics, "pbr", payload.metrics.pbr)?;
+        set_optional_float(py, &metrics, "equity_ratio", payload.metrics.equity_ratio)?;
         set_optional_float(
             py,
             &metrics,
             "dividend_yield",
             payload.metrics.dividend_yield,
         )?;
-        set_optional_float(py, &metrics, "equity_ratio", payload.metrics.equity_ratio)?;
+        set_optional_float(py, &metrics, "pbr", payload.metrics.pbr)?;
         set_optional_float(py, &metrics, "market_cap", payload.metrics.market_cap)?;
         row.set_item("metrics", metrics)?;
 
         set_optional_float(py, &row, "fcf_yield_avg", payload.fcf_yield_avg)?;
-        set_optional_float(py, &row, "croic", payload.croic)?;
         set_optional_float(py, &row, "peg_trailing_5", payload.peg_trailing_5)?;
         row.set_item("peg_trailing_5_status", &payload.peg_trailing_5_status)?;
         set_optional_float(
@@ -904,6 +939,7 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
             Some(value) => row.set_item("has_preferred_shares", value)?,
             None => row.set_item("has_preferred_shares", py.None())?,
         }
+        set_optional_float(py, &row, "croic", payload.croic)?;
         rows.append(row)?;
     }
     Ok(rows.into())

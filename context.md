@@ -1,0 +1,12 @@
+price
+per_a
+per_c
+per_n
+fcf_10y%
+equity%
+peg_5y
+peg_5y2f
+div%
+pref
+croic%
+pbr

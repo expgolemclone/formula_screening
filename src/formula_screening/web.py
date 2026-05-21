@@ -41,10 +41,10 @@ def compute_all_stock_metrics(
 
     Returns:
         ``{ticker: {"price", "price_date", "net_cash_ratio", "per_actual", "per", "per_next",
-                     "equity_ratio", "fcf_yield_avg", "croic", "peg_trailing_5",
+                     "fcf_yield_avg", "equity_ratio", "peg_trailing_5",
                      "peg_trailing_5_status", "peg_blended_5y_actual_2f",
-                     "peg_blended_5y_actual_2f_status", "market_cap",
-                     "has_preferred_shares"}}``
+                     "peg_blended_5y_actual_2f_status", "dividend_yield",
+                     "has_preferred_shares", "croic", "pbr", "market_cap"}}``
     """
     if conn is not None:
         msg = "compute_all_stock_metrics no longer accepts sqlite connections"
@@ -210,16 +210,16 @@ def _serialize_stock(stock: dict) -> dict:
             "per_actual": metrics.get("per_actual"),
             "per": metrics.get("per"),
             "per_next": metrics.get("per_next"),
-            "pbr": metrics.get("pbr"),
-            "dividend_yield": metrics.get("dividend_yield"),
             "equity_ratio": metrics.get("equity_ratio"),
+            "dividend_yield": metrics.get("dividend_yield"),
+            "pbr": metrics.get("pbr"),
             "market_cap": metrics.get("market_cap"),
         },
         "fcf_yield_avg": fcf_value,
-        "croic": croic_value,
         "peg_trailing_5": peg_trailing_5_result.value,
         "peg_trailing_5_status": peg_trailing_5_result.status,
         "peg_blended_5y_actual_2f": peg_blended_result.value,
         "peg_blended_5y_actual_2f_status": peg_blended_result.status,
         "has_preferred_shares": preferred_share_flag(stock),
+        "croic": croic_value,
     }
