@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import sys
 import types
 from collections.abc import Mapping
@@ -20,6 +21,7 @@ def test_serve_screening_passes_handbook_dir_to_stock_web_ui(
         captured.update(kwargs)
 
     monkeypatch.setattr(web_mod, "_serve", fake_serve)
+    monkeypatch.setattr(web_mod, "build_stock_price_metadata", lambda: {"price_date": "2026-05-20"})
 
     server_config = ServerConfig(host="127.0.0.1", port=8080)
     web_mod.serve_screening([], server_config=server_config)
@@ -28,9 +30,31 @@ def test_serve_screening_passes_handbook_dir_to_stock_web_ui(
 
     assert captured["static_root"] == web_mod._STATIC_ROOT
     assert isinstance(api_routes, Mapping)
-    assert set(api_routes) == {"/api/screening"}
+    assert set(api_routes) == {"/api/screening", "/api/stock-price-meta"}
     assert captured["server_config"] == server_config
     assert captured["yazi_base_dir"] == web_mod._HANDBOOK_DATA_DIR
+
+
+def test_build_stock_price_metadata_uses_latest_price_date(tmp_path: Path) -> None:
+    db_path = tmp_path / "stocks.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE prices (ticker TEXT, date TEXT, close REAL)")
+        conn.execute("INSERT INTO prices VALUES ('1301', '2026-05-17', 100.0)")
+        conn.execute("INSERT INTO prices VALUES ('7203', '2026-05-20', 200.0)")
+
+    assert web_mod.build_stock_price_metadata(db_path) == {"price_date": "2026-05-20"}
+
+
+def test_save_stock_price_metadata_json_writes_price_date(tmp_path: Path) -> None:
+    db_path = tmp_path / "stocks.db"
+    output_path = tmp_path / "assets" / "stock-price-meta.json"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE prices (ticker TEXT, date TEXT, close REAL)")
+        conn.execute("INSERT INTO prices VALUES ('1301', '2026-05-20', 100.0)")
+
+    web_mod.save_stock_price_metadata_json(output_path, db_path)
+
+    assert output_path.read_text(encoding="utf-8") == '{\n  "price_date": "2026-05-20"\n}'
 
 
 def test_serialize_stock_includes_peg_trailing_5() -> None:

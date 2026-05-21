@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 
 from stock_db.paths import STOCKS_DB_PATH
@@ -24,6 +26,7 @@ _STATIC_ROOT: Path = _DOCS_DIR / "assets"
 _HANDBOOK_DATA_DIR: Path = _PROJECT_ROOT.parent / "japan_company_handbook" / "data"
 
 StockMetricValue = float | bool | str | None
+StockPriceMetadata = dict[str, str | None]
 
 
 def compute_all_stock_metrics(
@@ -76,6 +79,18 @@ def run_screening_strategy_payload(
     )
 
 
+def build_stock_price_metadata(db_path: Path | str | None = None) -> StockPriceMetadata:
+    """Return the latest stock price business date for UI status display."""
+
+    from stock_db.storage.connection import get_connection
+    from stock_db.storage.prices import get_latest_price_date
+
+    resolved_db_path: Path = Path(db_path) if db_path is not None else STOCKS_DB_PATH
+    with get_connection(resolved_db_path) as conn:
+        price_date: date | None = get_latest_price_date(conn)
+    return {"price_date": price_date.isoformat() if price_date is not None else None}
+
+
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
     """Create API routes that expose screening results as JSON.
 
@@ -86,14 +101,22 @@ def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
         Dict mapping route paths to handler callables.
     """
     payload: list[dict] = [_serialize_stock(s) for s in stocks]
+    metadata: StockPriceMetadata = build_stock_price_metadata()
 
-    return {"/api/screening": json_route(lambda _params: payload)}
+    return {
+        "/api/screening": json_route(lambda _params: payload),
+        "/api/stock-price-meta": json_route(lambda _params: metadata),
+    }
 
 
 def create_screening_payload_api(payload: list[dict]) -> dict[str, ApiHandler]:
     """Create API routes from an already serialized Rust payload."""
 
-    return {"/api/screening": json_route(lambda _params: payload)}
+    metadata: StockPriceMetadata = build_stock_price_metadata()
+    return {
+        "/api/screening": json_route(lambda _params: payload),
+        "/api/stock-price-meta": json_route(lambda _params: metadata),
+    }
 
 
 def serve_screening(
@@ -144,7 +167,6 @@ def serve_screening_payload(
 
 def save_screening_json(stocks: list[dict], path: Path) -> None:
     """Save screening results as a static JSON file for GitHub Pages."""
-    import json
 
     payload = [_serialize_stock(s) for s in stocks]
     save_screening_payload_json(payload, path)
@@ -152,10 +174,17 @@ def save_screening_json(stocks: list[dict], path: Path) -> None:
 
 def save_screening_payload_json(payload: list[dict], path: Path) -> None:
     """Save an already serialized Rust payload as static JSON."""
-    import json
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_stock_price_metadata_json(path: Path, db_path: Path | str | None = None) -> None:
+    """Save the latest stock price date metadata as static JSON."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    metadata: StockPriceMetadata = build_stock_price_metadata(db_path)
+    path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _serialize_stock(stock: dict) -> dict:

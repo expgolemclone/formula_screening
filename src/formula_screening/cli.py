@@ -21,6 +21,9 @@ from stock_db.sources.stooq import StooqDailyPriceUpdateError
 from stock_db.storage.connection import get_connection
 
 _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
+_GH_PAGES_METADATA_JSON = (
+    Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "stock-price-meta.json"
+)
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -72,7 +75,11 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
 
 def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening._core import run_screening_payload_with_diagnostics_py
-    from formula_screening.web import save_screening_payload_json, serve_screening_payload
+    from formula_screening.web import (
+        save_screening_payload_json,
+        save_stock_price_metadata_json,
+        serve_screening_payload,
+    )
 
     strategy_path = Path(args.strategy)
     if not strategy_path.exists():
@@ -130,6 +137,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
 
         print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
         save_screening_payload_json(payload, _GH_PAGES_JSON)
+        save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON, STOCKS_DB_PATH)
 
         if args.json:
             save_screening_payload_json(payload, Path(args.json))

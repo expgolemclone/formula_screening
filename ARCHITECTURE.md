@@ -114,14 +114,17 @@ current_assets - inventories + investment_securities * 0.7
 ### `src/formula_screening/web.py`
 
 - `/api/screening` を返す API ルートを作る
+- `/api/stock-price-meta` で `stock_db.prices.date` の最大値を `{ "price_date": "YYYY-MM-DD" }` として返す
 - `stock_web_ui` の `serve()` に `docs/assets`、`IndexPage`、API ルートを渡す
 - handbook 参照用に `../japan_company_handbook/data` を `yazi_base_dir` として渡す
 - 外部利用向けの `compute_all_stock_metrics()` は Rust binding `formula_screening._core` を呼び、`has_preferred_shares` も返す
 - Python `stock` 辞書向けの `create_screening_api()` / `save_screening_json()` と、Rust payload 向けの `create_screening_payload_api()` / `save_screening_payload_json()` を持つ
+- GitHub Pages 用に `docs/assets/stock-price-meta.json` も生成する
 
 ### CLI 出力挙動
 
 - `screen` サブコマンドはスクリーニング実行後、常に `docs/assets/screening.json`（GitHub Pages 用）を自動生成する
+- 同時に `docs/assets/stock-price-meta.json` を生成し、UI のステータス欄に株価基準日を表示できるようにする
 - `screen` サブコマンドは実行前に Stooq 株価の最新日付を確認する。最新価格日の翌日から実行日までに JPX 営業日が1日以上ある場合だけ、`stock_db.sources.stooq.run_stooq_price_update_command(db_path=STOCKS_DB_PATH)` 経由で Stooq 更新を実行する。JPX 休日定義は `stock_db` 側の `config/jpx_market_holidays.toml` を使う
 - `--json <path>` オプションで追加の JSON 保存先を指定できる（Web サーバーを起動しない）
 - `--json` 未指定時は従来どおり Web サーバーを起動する
@@ -130,6 +133,7 @@ current_assets - inventories + investment_securities * 0.7
 
 - `stock_web_ui` の `StockTable` ランタイムを読み込む
 - ローカル時は `/api/screening`、GitHub Pages 時は `assets/screening.json` を fetch する
+- `metadataUrl` としてローカル時は `/api/stock-price-meta`、GitHub Pages 時は `assets/stock-price-meta.json` を渡す
 - 表示カラム、ソート、`peg_trailing_5` / `peg_blended_5y_actual_2f` を含む追加列、閾値色分けをここで定義する
 
 ## 戦略インターフェース
