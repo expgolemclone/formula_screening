@@ -3,10 +3,12 @@ from __future__ import annotations
 import sqlite3
 import sys
 import types
+import json
 from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
+from stock_db.storage.prices import get_previous_jpx_business_day
 from stock_web_ui.config import ServerConfig
 
 import formula_screening.web as web_mod
@@ -21,7 +23,11 @@ def test_serve_screening_passes_handbook_dir_to_stock_web_ui(
         captured.update(kwargs)
 
     monkeypatch.setattr(web_mod, "_serve", fake_serve)
-    monkeypatch.setattr(web_mod, "build_stock_price_metadata", lambda: {"price_date": "2026-05-20"})
+    monkeypatch.setattr(
+        web_mod,
+        "build_stock_price_metadata",
+        lambda: {"price_date": "2026-05-20", "target_price_date": "2026-05-20"},
+    )
 
     server_config = ServerConfig(host="127.0.0.1", port=8080)
     web_mod.serve_screening([], server_config=server_config)
@@ -42,7 +48,10 @@ def test_build_stock_price_metadata_uses_latest_price_date(tmp_path: Path) -> No
         conn.execute("INSERT INTO prices VALUES ('1301', '2026-05-17', 100.0)")
         conn.execute("INSERT INTO prices VALUES ('7203', '2026-05-20', 200.0)")
 
-    assert web_mod.build_stock_price_metadata(db_path) == {"price_date": "2026-05-20"}
+    assert web_mod.build_stock_price_metadata(db_path) == {
+        "price_date": "2026-05-20",
+        "target_price_date": get_previous_jpx_business_day().isoformat(),
+    }
 
 
 def test_save_stock_price_metadata_json_writes_price_date(tmp_path: Path) -> None:
@@ -54,7 +63,11 @@ def test_save_stock_price_metadata_json_writes_price_date(tmp_path: Path) -> Non
 
     web_mod.save_stock_price_metadata_json(output_path, db_path)
 
-    assert output_path.read_text(encoding="utf-8") == '{\n  "price_date": "2026-05-20"\n}'
+    metadata = json.loads(output_path.read_text(encoding="utf-8"))
+    assert metadata == {
+        "price_date": "2026-05-20",
+        "target_price_date": get_previous_jpx_business_day().isoformat(),
+    }
 
 
 def test_serialize_stock_includes_peg_trailing_5() -> None:
@@ -63,6 +76,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
             "ticker": "1301",
             "name": "test",
             "price": 1000.0,
+            "price_date": "2026-05-20",
             "metrics": {
                 "net_cash_ratio": 1.0,
                 "per_actual": 10.0,
@@ -100,6 +114,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
     assert payload["peg_blended_5y_actual_2f_status"] == "ok"
     assert payload["metrics"]["per_actual"] == 10.0
     assert payload["metrics"]["per_next"] == 6.0
+    assert payload["price_date"] == "2026-05-20"
     assert payload["has_preferred_shares"] is True
 
 

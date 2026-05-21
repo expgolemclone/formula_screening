@@ -40,7 +40,7 @@ def compute_all_stock_metrics(
     connection injection is no longer part of the public API.
 
     Returns:
-        ``{ticker: {"price", "net_cash_ratio", "per_actual", "per", "per_next",
+        ``{ticker: {"price", "price_date", "net_cash_ratio", "per_actual", "per", "per_next",
                      "equity_ratio", "fcf_yield_avg", "croic", "peg_trailing_5",
                      "peg_trailing_5_status", "peg_blended_5y_actual_2f",
                      "peg_blended_5y_actual_2f_status", "market_cap",
@@ -80,15 +80,19 @@ def run_screening_strategy_payload(
 
 
 def build_stock_price_metadata(db_path: Path | str | None = None) -> StockPriceMetadata:
-    """Return the latest stock price business date for UI status display."""
+    """Return stock price dates for UI status and stale-row display."""
 
     from stock_db.storage.connection import get_connection
-    from stock_db.storage.prices import get_latest_price_date
+    from stock_db.storage.prices import get_latest_price_date, get_previous_jpx_business_day
 
     resolved_db_path: Path = Path(db_path) if db_path is not None else STOCKS_DB_PATH
     with get_connection(resolved_db_path) as conn:
         price_date: date | None = get_latest_price_date(conn)
-    return {"price_date": price_date.isoformat() if price_date is not None else None}
+    target_price_date = get_previous_jpx_business_day()
+    return {
+        "price_date": price_date.isoformat() if price_date is not None else None,
+        "target_price_date": target_price_date.isoformat(),
+    }
 
 
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
@@ -200,6 +204,7 @@ def _serialize_stock(stock: dict) -> dict:
         "code": stock.get("ticker", ""),
         "name": stock.get("name", ""),
         "price": stock.get("price"),
+        "price_date": stock.get("price_date"),
         "metrics": {
             "net_cash_ratio": metrics.get("net_cash_ratio"),
             "per_actual": metrics.get("per_actual"),

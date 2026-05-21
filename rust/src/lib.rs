@@ -13,6 +13,7 @@ pub struct Stock {
     pub ticker: String,
     pub name: String,
     pub price: Option<f64>,
+    pub price_date: Option<String>,
     pub shares_outstanding: Option<i64>,
     pub financials: StatementMap,
     pub metrics: MetricMap,
@@ -56,6 +57,7 @@ pub struct ScreeningPayload {
     pub code: String,
     pub name: String,
     pub price: Option<f64>,
+    pub price_date: Option<String>,
     pub metrics: PublicMetrics,
     pub fcf_yield_avg: Option<f64>,
     pub croic: Option<f64>,
@@ -136,6 +138,7 @@ pub fn build_stock(raw: ScreeningStock) -> Stock {
         ticker: raw.ticker,
         name: raw.name,
         price: raw.price,
+        price_date: raw.price_date,
         shares_outstanding: raw.shares_outstanding,
         financials: raw.financials,
         metrics,
@@ -214,6 +217,7 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
         code: stock.ticker.clone(),
         name: stock.name.clone(),
         price: stock.price,
+        price_date: stock.price_date.clone(),
         metrics: PublicMetrics {
             net_cash_ratio: metric(stock, "net_cash_ratio"),
             per_actual: metric(stock, "per_actual"),
@@ -297,6 +301,10 @@ pub fn compute_all_metrics(
             stock.ticker.clone(),
             HashMap::from([
                 ("price".to_string(), metric_value(stock.price)),
+                (
+                    "price_date".to_string(),
+                    stock.price_date.clone().map(PublicMetricValue::Text),
+                ),
                 (
                     "net_cash_ratio".to_string(),
                     metric_value(metric(&stock, "net_cash_ratio")),
@@ -852,6 +860,10 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
         row.set_item("code", &payload.code)?;
         row.set_item("name", &payload.name)?;
         set_optional_float(py, &row, "price", payload.price)?;
+        match &payload.price_date {
+            Some(value) => row.set_item("price_date", value)?,
+            None => row.set_item("price_date", py.None())?,
+        }
 
         let metrics = pyo3::types::PyDict::new(py);
         set_optional_float(
@@ -979,6 +991,7 @@ mod tests {
             ticker: "1301".to_string(),
             name: "test".to_string(),
             price: Some(1000.0),
+            price_date: Some("2026-05-20".to_string()),
             shares_outstanding: Some(10_000_000),
             financials,
             metrics,

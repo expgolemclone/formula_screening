@@ -280,6 +280,7 @@ def build_stock_dict(
     price_data = get_latest_price_with_shares(conn, ticker)
 
     price = price_data["price"]
+    price_date = price_data["price_date"]
     shares = price_data["shares_outstanding"]
 
     metrics = compute_metrics(financials, price, shares)
@@ -295,6 +296,7 @@ def build_stock_dict(
         "ticker": ticker,
         "name": name,
         "price": price,
+        "price_date": price_date,
         "shares_outstanding": shares,
         "pl": financials.get("pl", {}),
         "bs": financials.get("bs", {}),

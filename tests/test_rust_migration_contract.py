@@ -10,7 +10,11 @@ from formula_screening._core import (
 )
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import upsert_financial_item
-from stock_db.storage.prices import upsert_price, upsert_shares_outstanding
+from stock_db.storage.prices import (
+    get_previous_jpx_business_day,
+    upsert_price,
+    upsert_shares_outstanding,
+)
 from stock_db.storage.schema import init_db
 from stock_db.storage.stocks import upsert_stock
 
@@ -39,7 +43,7 @@ def _insert_screening_stock(
 ) -> None:
     upsert_stock(conn, ticker, name, "sector", "market")
     upsert_shares_outstanding(conn, ticker, 1_000)
-    upsert_price(conn, ticker, "2026-05-14", 10.0, 1_000)
+    upsert_price(conn, ticker, get_previous_jpx_business_day().isoformat(), 10.0, 1_000)
 
     _upsert_items(
         conn,
@@ -149,6 +153,7 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
         "code",
         "name",
         "price",
+        "price_date",
         "metrics",
         "fcf_yield_avg",
         "croic",
@@ -170,6 +175,7 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
     }
     assert row["name"] == "pass stock"
     assert row["price"] == pytest.approx(10.0)
+    assert row["price_date"] == get_previous_jpx_business_day().isoformat()
     assert row["metrics"]["market_cap"] == pytest.approx(10_000.0)
     assert row["metrics"]["net_cash_ratio"] == pytest.approx(4.07)
     assert row["metrics"]["per"] == pytest.approx(5.0)
