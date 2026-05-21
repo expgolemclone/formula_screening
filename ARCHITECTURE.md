@@ -59,6 +59,8 @@ uv run python -m formula_screening screen \
 ```
 
 この出力は DB と最新株価に依存するスナップショットであり、再生成時は通過銘柄数、並び順、各指標値の差分が `docs/assets/screening.json` に集約されます。
+GitHub Pages 用の更新をコミットする場合もこの Python CLI 経路を使い、`Saved to docs/assets/screening.json` まで完了した JSON をコミット対象にします。
+公開項目の欠損診断は対象銘柄ごとの `ERROR` ログとして出ますが、これは UI 上で `-` になる項目の可視化であり、コマンドが終了コード 0 で完了した場合はスナップショット生成自体は成功です。
 
 ## モジュール責務
 
