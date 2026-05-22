@@ -13,7 +13,6 @@ from pathlib import Path
 from formula_screening.config import MAGIC
 from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
 from formula_screening.preferred_shares import preferred_share_label
-from stock_db.paths import STOCKS_DB_PATH
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import get_financial_dict, get_historical_items
 from stock_db.storage.prices import get_latest_price_with_shares
@@ -314,6 +313,7 @@ def _screen_chunk(
     names: dict[str, str],
     screen_fn: Callable[[dict], bool],
     strategy_path: Path,
+    db_path: Path,
 ) -> tuple[list[dict], list[dict], int]:
     """Screen a chunk of tickers using a thread-local DB connection.
 
@@ -321,7 +321,7 @@ def _screen_chunk(
     """
     from stock_db.storage.connection import get_connection
 
-    conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
+    conn: sqlite3.Connection = get_connection(db_path)
     all_stocks: list[dict] = []
     hits: list[dict] = []
     errors: int = 0
@@ -347,6 +347,7 @@ def run_screening(
     workers: int = 1,
     tickers: list[str] | None = None,
     return_all: bool = False,
+    db_path: Path | None = None,
 ) -> list[dict]:
     """Run a screening strategy against all stocks in the DB.
 
@@ -364,11 +365,18 @@ def run_screening(
     logger.info("Screening %d stocks with %s (workers=%d)", len(tickers), strategy_path.name, workers)
 
     names: dict[str, str] = get_stock_names(conn)
+    resolved_db_path = db_path or _connection_db_path(conn)
 
     effective_workers: int = min(workers, len(tickers)) or 1
 
     if effective_workers == 1:
-        all_stocks, all_hits, total_errors = _screen_chunk(tickers, names, screen_fn, strategy_path)
+        all_stocks, all_hits, total_errors = _screen_chunk(
+            tickers,
+            names,
+            screen_fn,
+            strategy_path,
+            resolved_db_path,
+        )
     else:
         chunks: list[list[str]] = [[] for _ in range(effective_workers)]
         for i, ticker in enumerate(tickers):
@@ -379,7 +387,14 @@ def run_screening(
         total_errors: int = 0
         with concurrent.futures.ThreadPoolExecutor(max_workers=effective_workers) as executor:
             futures: list[concurrent.futures.Future[tuple[list[dict], list[dict], int]]] = [
-                executor.submit(_screen_chunk, chunk, names, screen_fn, strategy_path)
+                executor.submit(
+                    _screen_chunk,
+                    chunk,
+                    names,
+                    screen_fn,
+                    strategy_path,
+                    resolved_db_path,
+                )
                 for chunk in chunks
             ]
             for future in concurrent.futures.as_completed(futures):
@@ -393,3 +408,14 @@ def run_screening(
         len(all_hits), len(tickers), total_errors,
     )
     return all_stocks if return_all else all_hits
+
+
+def _connection_db_path(conn: sqlite3.Connection) -> Path:
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        name = row[1]
+        path = row[2]
+        if name == "main" and path:
+            return Path(path)
+    msg = "run_screening requires db_path when conn is not backed by a file"
+    raise ValueError(msg)
