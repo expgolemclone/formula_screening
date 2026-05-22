@@ -1069,6 +1069,13 @@ mod tests {
     }
 
     #[test]
+    fn net_cash_ratio_subtracts_current_and_non_current_liabilities() {
+        let stock = sample_stock();
+        assert_eq!(metric(&stock, "net_cash"), Some(7_000_000_000.0));
+        assert_eq!(metric(&stock, "net_cash_ratio"), Some(0.7));
+    }
+
+    #[test]
     fn indicators_and_preferred_share_flag_match_python_contract() {
         let stock = sample_stock();
         assert!(fcf_yield_avg(&stock, 10).is_some());

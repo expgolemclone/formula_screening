@@ -66,3 +66,10 @@ def test_per_next_none_when_only_current() -> None:
     metrics = compute_metrics(financials, price=1000.0, shares_outstanding=10_000_000)
     assert metrics["per"] is not None
     assert metrics["per_next"] is None
+
+
+def test_net_cash_ratio_subtracts_current_and_non_current_liabilities() -> None:
+    metrics = compute_metrics(_base_financials(), price=1000.0, shares_outstanding=10_000_000)
+
+    assert metrics["net_cash"] == pytest.approx(7_000_000_000.0)
+    assert metrics["net_cash_ratio"] == pytest.approx(0.7)
