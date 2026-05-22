@@ -315,6 +315,6 @@ def test_rust_payload_marks_negative_peg_growth_separately(tmp_path: Path, monke
         {
             "code": "3333",
             "name": "negative peg stock",
-            "missing_fields": [],
+            "missing_fields": ["peg_trailing_5", "peg_blended_5y_actual_2f"],
         }
     ]
