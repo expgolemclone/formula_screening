@@ -1,27 +1,21 @@
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 
-from stock_db.paths import STOCKS_DB_PATH
-from stock_db.sources.price_refresh import (
-    PriceRefreshCommandResult,
-    run_price_refresh_command,
-)
+from stock_db.api import ensure_prices_fresh as _stock_db_ensure_prices_fresh
+from stock_db.sources.price_refresh import PriceRefreshCommandResult
 
 
 def ensure_prices_fresh(
     *,
-    db_path: Path = STOCKS_DB_PATH,
     today: date | None = None,
 ) -> PriceRefreshCommandResult | None:
     del today
-    return run_price_refresh_command(db_path=db_path, if_needed=True)
+    return _stock_db_ensure_prices_fresh()
 
 
 def ensure_stooq_prices_fresh(
     *,
-    db_path: Path = STOCKS_DB_PATH,
     today: date | None = None,
 ) -> PriceRefreshCommandResult | None:
-    return ensure_prices_fresh(db_path=db_path, today=today)
+    return ensure_prices_fresh(today=today)

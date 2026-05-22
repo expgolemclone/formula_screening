@@ -60,29 +60,22 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
         "threshold = -1.0\n",
         encoding="utf-8",
     )
-    db_path = tmp_path / "stocks.db"
     json_path = tmp_path / "screening.json"
     gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
     gh_pages_metadata_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
     payload = [{"code": "1301", "metrics": {"net_cash_ratio": 1.0}}]
     captured_core: dict[str, object] = {}
     saved: list[tuple[list[dict], Path]] = []
-    saved_metadata: list[tuple[Path, Path]] = []
-
-    class FakeConnection:
-        def close(self) -> None:
-            pass
+    saved_metadata: list[Path] = []
 
     def fake_run_screening_payload_with_diagnostics_py(
         strategy: str,
-        database: str,
         tickers: list[str] | None,
         return_all: bool,
     ) -> dict[str, list[dict]]:
         captured_core.update(
             {
                 "strategy": strategy,
-                "database": database,
                 "tickers": tickers,
                 "return_all": return_all,
             }
@@ -92,18 +85,16 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
     def fake_save_screening_payload_json(rows: list[dict], path: Path) -> None:
         saved.append((rows, path))
 
-    def fake_save_stock_price_metadata_json(path: Path, db_path: Path) -> None:
-        saved_metadata.append((path, db_path))
+    def fake_save_stock_price_metadata_json(path: Path) -> None:
+        saved_metadata.append(path)
 
     fake_core = types.ModuleType("formula_screening._core")
     fake_core.run_screening_payload_with_diagnostics_py = (
         fake_run_screening_payload_with_diagnostics_py
     )
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
-    monkeypatch.setattr(cli_module, "STOCKS_DB_PATH", db_path)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_METADATA_JSON", gh_pages_metadata_json)
-    monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
     monkeypatch.setattr(cli_module, "ensure_prices_fresh", lambda **_kwargs: None)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
     monkeypatch.setattr(web_mod, "save_stock_price_metadata_json", fake_save_stock_price_metadata_json)
@@ -120,12 +111,11 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
 
     assert captured_core == {
         "strategy": str(strategy_path),
-        "database": str(db_path),
         "tickers": ["1301", "7203"],
         "return_all": True,
     }
     assert saved == [(payload, gh_pages_json), (payload, json_path)]
-    assert saved_metadata == [(gh_pages_metadata_json, db_path)]
+    assert saved_metadata == [gh_pages_metadata_json]
 
 
 def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
@@ -141,7 +131,6 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
         "threshold = -1.0\n",
         encoding="utf-8",
     )
-    db_path = tmp_path / "stocks.db"
     json_path = tmp_path / "screening.json"
     gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
     gh_pages_metadata_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
@@ -154,17 +143,13 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
         }
     ]
     saved: list[tuple[list[dict], Path]] = []
-    saved_metadata: list[tuple[Path, Path]] = []
-
-    class FakeConnection:
-        def close(self) -> None:
-            pass
+    saved_metadata: list[Path] = []
 
     def fake_save_screening_payload_json(rows: list[dict], path: Path) -> None:
         saved.append((rows, path))
 
-    def fake_save_stock_price_metadata_json(path: Path, db_path: Path) -> None:
-        saved_metadata.append((path, db_path))
+    def fake_save_stock_price_metadata_json(path: Path) -> None:
+        saved_metadata.append(path)
 
     fake_core = types.ModuleType("formula_screening._core")
     fake_core.run_screening_payload_with_diagnostics_py = lambda *_args: {
@@ -172,10 +157,8 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
         "diagnostics": diagnostics,
     }
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
-    monkeypatch.setattr(cli_module, "STOCKS_DB_PATH", db_path)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_METADATA_JSON", gh_pages_metadata_json)
-    monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
     monkeypatch.setattr(cli_module, "ensure_prices_fresh", lambda **_kwargs: None)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
     monkeypatch.setattr(web_mod, "save_stock_price_metadata_json", fake_save_stock_price_metadata_json)
@@ -193,4 +176,4 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
 
     assert "Missing screening fields for 1301 (test stock): metrics.net_cash_ratio, fcf_yield_avg" in caplog.text
     assert saved == [(payload, gh_pages_json), (payload, json_path)]
-    assert saved_metadata == [(gh_pages_metadata_json, db_path)]
+    assert saved_metadata == [gh_pages_metadata_json]

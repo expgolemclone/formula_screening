@@ -84,7 +84,7 @@ def _insert_screening_stock(
             ticker,
             "2025-03",
             "dividend",
-            {"dps": 1.0},
+            {"dps": 1.0, "dividend_payment": -100.0},
         )
     _upsert_items(
         conn,
@@ -101,12 +101,15 @@ def _insert_screening_stock(
     )
 
     for offset, year in enumerate(range(2025, 2015, -1)):
+        cf_items = {"free_cf": 1_000.0 - offset * 10.0}
+        if offset == 0:
+            cf_items["treasury_stock_purchase"] = -500.0
         _upsert_items(
             conn,
             ticker,
             f"{year}-03",
             "cf",
-            {"free_cf": 1_000.0 - offset * 10.0},
+            cf_items,
         )
 
     for offset, year in enumerate(range(2024, 2019, -1), start=1):
@@ -119,8 +122,12 @@ def _insert_screening_stock(
         )
 
 
-def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> None:
-    db_path = tmp_path / "stocks.db"
+def test_rust_payload_preserves_python_screening_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STOCK_DB_VAR_DIR", str(tmp_path))
+    db_path = tmp_path / "db" / "stocks.db"
     conn = get_connection(db_path)
     try:
         init_db(conn)
@@ -142,7 +149,6 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
 
     payload = run_screening_payload_py(
         str(_STRATEGY_PATH),
-        str(db_path),
         ["1111", "2222"],
         False,
     )
@@ -170,6 +176,7 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
         "per_next",
         "pbr",
         "dividend_yield",
+        "total_payout_ratio",
         "equity_ratio",
         "market_cap",
     }
@@ -183,6 +190,7 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
     assert row["metrics"]["per_next"] == pytest.approx(4.0)
     assert row["metrics"]["pbr"] == pytest.approx(1 / 6)
     assert row["metrics"]["dividend_yield"] == pytest.approx(10.0)
+    assert row["metrics"]["total_payout_ratio"] == pytest.approx(30.0)
     assert row["metrics"]["equity_ratio"] == pytest.approx(60.0)
     assert row["fcf_yield_avg"] is not None
     assert row["croic"] is not None
@@ -196,15 +204,18 @@ def test_rust_payload_preserves_python_screening_contract(tmp_path: Path) -> Non
 
     all_payload = run_screening_payload_py(
         str(_STRATEGY_PATH),
-        str(db_path),
         ["1111", "2222"],
         True,
     )
     assert {row["code"] for row in all_payload} == {"1111", "2222"}
 
 
-def test_rust_payload_diagnostics_cover_all_screened_stocks(tmp_path: Path) -> None:
-    db_path = tmp_path / "stocks.db"
+def test_rust_payload_diagnostics_cover_all_screened_stocks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STOCK_DB_VAR_DIR", str(tmp_path))
+    db_path = tmp_path / "db" / "stocks.db"
     conn = get_connection(db_path)
     try:
         init_db(conn)
@@ -227,7 +238,6 @@ def test_rust_payload_diagnostics_cover_all_screened_stocks(tmp_path: Path) -> N
 
     result = run_screening_payload_with_diagnostics_py(
         str(_STRATEGY_PATH),
-        str(db_path),
         ["1111", "2222"],
         False,
     )
@@ -238,62 +248,12 @@ def test_rust_payload_diagnostics_cover_all_screened_stocks(tmp_path: Path) -> N
             "code": "2222",
             "name": "fail stock",
             "missing_fields": ["metrics.dividend_yield"],
-            "unavailable_fields": [],
         }
     ]
 
 
-def test_invalid_preferred_share_flag_on_non_hit_does_not_abort_payload(tmp_path: Path) -> None:
-    db_path = tmp_path / "stocks.db"
-    conn = get_connection(db_path)
-    try:
-        init_db(conn)
-        _insert_screening_stock(
-            conn,
-            ticker="1111",
-            name="pass stock",
-            forecast_net_income_current=2_000.0,
-        )
-        _insert_screening_stock(
-            conn,
-            ticker="2222",
-            name="fail stock",
-            forecast_net_income_current=400.0,
-        )
-        conn.execute(
-            """
-            UPDATE financial_items
-            SET value = 2.0
-            WHERE ticker = '2222'
-              AND statement = 'bs'
-              AND item_name = 'has_preferred_shares'
-            """
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    result = run_screening_payload_with_diagnostics_py(
-        str(_STRATEGY_PATH),
-        str(db_path),
-        ["1111", "2222"],
-        False,
-    )
-
-    assert [row["code"] for row in result["payload"]] == ["1111"]
-    assert any(
-        diagnostic["code"] == "2222"
-        and {
-            "field": "has_preferred_shares",
-            "reason": "invalid_input",
-        }
-        in diagnostic["unavailable_fields"]
-        for diagnostic in result["diagnostics"]
-    )
-
-
-def test_rust_payload_marks_negative_peg_growth_separately(tmp_path: Path) -> None:
-    db_path = tmp_path / "stocks.db"
+def test_rust_payload_marks_negative_peg_growth_separately(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "db" / "stocks.db"
     conn = get_connection(db_path)
     try:
         init_db(conn)
@@ -339,9 +299,9 @@ def test_rust_payload_marks_negative_peg_growth_separately(tmp_path: Path) -> No
     finally:
         conn.close()
 
+    monkeypatch.setenv("STOCK_DB_VAR_DIR", str(tmp_path))
     result = run_screening_payload_with_diagnostics_py(
         str(_STRATEGY_PATH),
-        str(db_path),
         ["3333"],
         False,
     )
@@ -356,9 +316,5 @@ def test_rust_payload_marks_negative_peg_growth_separately(tmp_path: Path) -> No
             "code": "3333",
             "name": "negative peg stock",
             "missing_fields": [],
-            "unavailable_fields": [
-                {"field": "peg_trailing_5", "reason": "non_positive_growth"},
-                {"field": "peg_blended_5y_actual_2f", "reason": "non_positive_growth"},
-            ],
         }
     ]

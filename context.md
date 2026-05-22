@@ -7,6 +7,7 @@ equity%
 peg_5y
 peg_5y2f
 div%
+payout%
 pref
 croic%
 pbr

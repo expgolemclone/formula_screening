@@ -14,6 +14,26 @@ def _pct(a: float | None, b: float | None) -> float | None:
     return val * 100 if val is not None else None
 
 
+def _total_payout_ratio(
+    dividend_payment: float | None,
+    treasury_stock_purchase: float | None,
+    net_income: float | None,
+) -> float | None:
+    if net_income is None or net_income <= 0:
+        return None
+
+    payout_total = 0.0
+    has_payout = False
+    for value in (dividend_payment, treasury_stock_purchase):
+        if value is None:
+            continue
+        payout_total += abs(value)
+        has_payout = True
+    if not has_payout:
+        return None
+    return payout_total / net_income * 100
+
+
 def compute_metrics(
     financials: dict[str, dict[str, float | None]],
     price: float | None,
@@ -73,6 +93,11 @@ def compute_metrics(
 
     dps = financials.get("dividend", {}).get("dps")
     metrics["dividend_yield"] = _pct(dps, price)
+    metrics["total_payout_ratio"] = _total_payout_ratio(
+        financials.get("dividend", {}).get("dividend_payment"),
+        cf.get("treasury_stock_purchase"),
+        net_income,
+    )
 
     metrics["gross_margin"] = _pct(gross_profit, revenue)
     metrics["operating_margin"] = _pct(operating_income, revenue)

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from datetime import date
 from pathlib import Path
 
-from stock_db.paths import STOCKS_DB_PATH
+from stock_db.api import get_stock_price_metadata
 from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
@@ -44,7 +43,8 @@ def compute_all_stock_metrics(
                      "fcf_yield_avg", "equity_ratio", "peg_trailing_5",
                      "peg_trailing_5_status", "peg_blended_5y_actual_2f",
                      "peg_blended_5y_actual_2f_status", "dividend_yield",
-                     "has_preferred_shares", "croic", "pbr", "market_cap"}}``
+                     "total_payout_ratio", "has_preferred_shares", "croic",
+                     "pbr", "market_cap"}}``
     """
     if conn is not None:
         msg = "compute_all_stock_metrics no longer accepts sqlite connections"
@@ -52,7 +52,7 @@ def compute_all_stock_metrics(
 
     from formula_screening._core import compute_all_stock_metrics as _compute_all_stock_metrics
 
-    return _compute_all_stock_metrics(str(STOCKS_DB_PATH))
+    return _compute_all_stock_metrics()
 
 
 def run_screening_strategy_payload(
@@ -73,26 +73,15 @@ def run_screening_strategy_payload(
     ticker_list = None if tickers is None else [str(ticker) for ticker in tickers]
     return run_screening_payload_py(
         str(Path(strategy_path)),
-        str(STOCKS_DB_PATH),
         ticker_list,
         return_all,
     )
 
 
-def build_stock_price_metadata(db_path: Path | str | None = None) -> StockPriceMetadata:
+def build_stock_price_metadata() -> StockPriceMetadata:
     """Return stock price dates for UI status and stale-row display."""
 
-    from stock_db.storage.connection import get_connection
-    from stock_db.storage.prices import get_latest_price_date, get_previous_jpx_business_day
-
-    resolved_db_path: Path = Path(db_path) if db_path is not None else STOCKS_DB_PATH
-    with get_connection(resolved_db_path) as conn:
-        price_date: date | None = get_latest_price_date(conn)
-    target_price_date = get_previous_jpx_business_day()
-    return {
-        "price_date": price_date.isoformat() if price_date is not None else None,
-        "target_price_date": target_price_date.isoformat(),
-    }
+    return get_stock_price_metadata()
 
 
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
@@ -183,11 +172,11 @@ def save_screening_payload_json(payload: list[dict], path: Path) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def save_stock_price_metadata_json(path: Path, db_path: Path | str | None = None) -> None:
+def save_stock_price_metadata_json(path: Path) -> None:
     """Save the latest stock price date metadata as static JSON."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    metadata: StockPriceMetadata = build_stock_price_metadata(db_path)
+    metadata: StockPriceMetadata = build_stock_price_metadata()
     path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -212,6 +201,7 @@ def _serialize_stock(stock: dict) -> dict:
             "per_next": metrics.get("per_next"),
             "equity_ratio": metrics.get("equity_ratio"),
             "dividend_yield": metrics.get("dividend_yield"),
+            "total_payout_ratio": metrics.get("total_payout_ratio"),
             "pbr": metrics.get("pbr"),
             "market_cap": metrics.get("market_cap"),
         },

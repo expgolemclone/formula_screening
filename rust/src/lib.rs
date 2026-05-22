@@ -89,6 +89,7 @@ pub struct PublicMetrics {
     pub per_next: Option<f64>,
     pub equity_ratio: Option<f64>,
     pub dividend_yield: Option<f64>,
+    pub total_payout_ratio: Option<f64>,
     pub pbr: Option<f64>,
     pub market_cap: Option<f64>,
 }
@@ -176,12 +177,11 @@ pub fn run_strategy_with_mode(
 
 pub fn run_screening_payload(
     strategy_path: &Path,
-    db_path: &Path,
     tickers: Option<&[String]>,
     return_all: bool,
 ) -> Result<Vec<ScreeningPayload>, String> {
     let strategy = load_strategy(strategy_path)?;
-    let raw_stocks = stock_db_core::screening::load_screening_stocks(db_path, tickers, 10, 6)?;
+    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(tickers, 10, 6)?;
     let stocks = raw_stocks.into_iter().map(build_stock).collect::<Vec<_>>();
     run_strategy_with_mode(&strategy, stocks, return_all)
         .iter()
@@ -191,12 +191,11 @@ pub fn run_screening_payload(
 
 pub fn run_screening_payload_with_diagnostics(
     strategy_path: &Path,
-    db_path: &Path,
     tickers: Option<&[String]>,
     return_all: bool,
 ) -> Result<ScreeningRunResult, String> {
     let strategy = load_strategy(strategy_path)?;
-    let raw_stocks = stock_db_core::screening::load_screening_stocks(db_path, tickers, 10, 6)?;
+    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(tickers, 10, 6)?;
     let stocks = raw_stocks.into_iter().map(build_stock).collect::<Vec<_>>();
     let diagnostics = collect_missing_metric_diagnostics(&stocks)?;
     let payload = run_strategy_with_mode(&strategy, stocks, return_all)
@@ -225,6 +224,7 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
             per_next: metric(stock, "per_next"),
             equity_ratio: metric(stock, "equity_ratio"),
             dividend_yield: metric(stock, "dividend_yield"),
+            total_payout_ratio: metric(stock, "total_payout_ratio"),
             pbr: metric(stock, "pbr"),
             market_cap: metric(stock, "market_cap"),
         },
@@ -258,6 +258,10 @@ pub fn collect_missing_metric_diagnostics(
                 ("peg_trailing_5", peg_trailing(stock, 5)),
                 ("peg_blended_5y_actual_2f", peg_blended_2f(stock, 5)),
                 ("metrics.dividend_yield", metric(stock, "dividend_yield")),
+                (
+                    "metrics.total_payout_ratio",
+                    metric(stock, "total_payout_ratio"),
+                ),
             ] {
                 if value.is_none() {
                     missing_fields.push(field.to_string());
@@ -290,10 +294,9 @@ pub fn collect_missing_metric_diagnostics(
         .collect()
 }
 
-pub fn compute_all_metrics(
-    db_path: &Path,
-) -> Result<HashMap<String, HashMap<String, Option<PublicMetricValue>>>, String> {
-    let raw_stocks = stock_db_core::screening::load_screening_stocks(db_path, None, 10, 6)?;
+pub fn compute_all_metrics()
+-> Result<HashMap<String, HashMap<String, Option<PublicMetricValue>>>, String> {
+    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(None, 10, 6)?;
     let mut result = HashMap::new();
     for raw_stock in raw_stocks {
         if raw_stock.financials.is_empty() {
@@ -356,6 +359,10 @@ pub fn compute_all_metrics(
                     "dividend_yield".to_string(),
                     metric_value(metric(&stock, "dividend_yield")),
                 ),
+                (
+                    "total_payout_ratio".to_string(),
+                    metric_value(metric(&stock, "total_payout_ratio")),
+                ),
                 ("has_preferred_shares".to_string(), preferred_share_value),
                 ("croic".to_string(), metric_value(croic(&stock))),
                 ("pbr".to_string(), metric_value(metric(&stock, "pbr"))),
@@ -376,7 +383,7 @@ pub enum PublicMetricValue {
     Text(String),
 }
 
-const PUBLIC_METRIC_PY_ORDER: [&str; 17] = [
+const PUBLIC_METRIC_PY_ORDER: [&str; 18] = [
     "price",
     "price_date",
     "net_cash_ratio",
@@ -390,6 +397,7 @@ const PUBLIC_METRIC_PY_ORDER: [&str; 17] = [
     "peg_blended_5y_actual_2f",
     "peg_blended_5y_actual_2f_status",
     "dividend_yield",
+    "total_payout_ratio",
     "has_preferred_shares",
     "croic",
     "pbr",
@@ -492,6 +500,14 @@ pub fn compute_metrics(
             "dividend_yield".to_string(),
             pct(item(dividend, "dps"), price),
         ),
+        (
+            "total_payout_ratio".to_string(),
+            total_payout_ratio(
+                item(dividend, "dividend_payment"),
+                item(cf, "treasury_stock_purchase"),
+                net_income,
+            ),
+        ),
         ("gross_margin".to_string(), pct(gross_profit, revenue)),
         (
             "operating_margin".to_string(),
@@ -557,6 +573,7 @@ fn valid_sources() -> HashSet<&'static str> {
         "per_actual",
         "pbr",
         "dividend_yield",
+        "total_payout_ratio",
         "gross_margin",
         "operating_margin",
         "ordinary_margin",
@@ -607,6 +624,28 @@ fn safe_div(left: Option<f64>, right: Option<f64>) -> Option<f64> {
 
 fn pct(left: Option<f64>, right: Option<f64>) -> Option<f64> {
     safe_div(left, right).map(|value| value * 100.0)
+}
+
+fn total_payout_ratio(
+    dividend_payment: Option<f64>,
+    treasury_stock_purchase: Option<f64>,
+    net_income: Option<f64>,
+) -> Option<f64> {
+    let net_income = net_income?;
+    if net_income <= 0.0 {
+        return None;
+    }
+
+    let mut payout_total = 0.0;
+    let mut has_payout = false;
+    for value in [dividend_payment, treasury_stock_purchase]
+        .into_iter()
+        .flatten()
+    {
+        payout_total += value.abs();
+        has_payout = true;
+    }
+    has_payout.then_some(payout_total / net_income * 100.0)
 }
 
 fn resolve_free_cf(items: &ItemMap) -> Option<f64> {
@@ -800,43 +839,34 @@ pub fn preferred_share_flag(stock: &Stock) -> Result<Option<bool>, String> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (db_path=None))]
-fn compute_all_stock_metrics(py: Python<'_>, db_path: Option<String>) -> PyResult<PyObject> {
-    let resolved_path = db_path.unwrap_or_else(|| "../stock_db/var/db/stocks.db".to_string());
+fn compute_all_stock_metrics(py: Python<'_>) -> PyResult<PyObject> {
     let metrics = py
-        .allow_threads(|| compute_all_metrics(Path::new(&resolved_path)))
+        .allow_threads(compute_all_metrics)
         .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
     metrics_to_py(py, &metrics)
 }
 
 #[pyfunction]
-#[pyo3(signature = (strategy_path, db_path, tickers=None, return_all=false))]
+#[pyo3(signature = (strategy_path, tickers=None, return_all=false))]
 fn run_screening_payload_py(
     py: Python<'_>,
     strategy_path: String,
-    db_path: String,
     tickers: Option<Vec<String>>,
     return_all: bool,
 ) -> PyResult<PyObject> {
     let payload = py
         .allow_threads(|| {
-            run_screening_payload(
-                Path::new(&strategy_path),
-                Path::new(&db_path),
-                tickers.as_deref(),
-                return_all,
-            )
+            run_screening_payload(Path::new(&strategy_path), tickers.as_deref(), return_all)
         })
         .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
     payloads_to_py(py, &payload)
 }
 
 #[pyfunction]
-#[pyo3(signature = (strategy_path, db_path, tickers=None, return_all=false))]
+#[pyo3(signature = (strategy_path, tickers=None, return_all=false))]
 fn run_screening_payload_with_diagnostics_py(
     py: Python<'_>,
     strategy_path: String,
-    db_path: String,
     tickers: Option<Vec<String>>,
     return_all: bool,
 ) -> PyResult<PyObject> {
@@ -844,7 +874,6 @@ fn run_screening_payload_with_diagnostics_py(
         .allow_threads(|| {
             run_screening_payload_with_diagnostics(
                 Path::new(&strategy_path),
-                Path::new(&db_path),
                 tickers.as_deref(),
                 return_all,
             )
@@ -917,6 +946,12 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
             &metrics,
             "dividend_yield",
             payload.metrics.dividend_yield,
+        )?;
+        set_optional_float(
+            py,
+            &metrics,
+            "total_payout_ratio",
+            payload.metrics.total_payout_ratio,
         )?;
         set_optional_float(py, &metrics, "pbr", payload.metrics.pbr)?;
         set_optional_float(py, &metrics, "market_cap", payload.metrics.market_cap)?;
@@ -1006,11 +1041,18 @@ mod tests {
                 HashMap::from([
                     ("operating_cf".to_string(), Some(8_000_000_000.0)),
                     ("investing_cf".to_string(), Some(-3_000_000_000.0)),
+                    (
+                        "treasury_stock_purchase".to_string(),
+                        Some(-1_000_000_000.0),
+                    ),
                 ]),
             ),
             (
                 "dividend".to_string(),
-                HashMap::from([("dps".to_string(), Some(50.0))]),
+                HashMap::from([
+                    ("dps".to_string(), Some(50.0)),
+                    ("dividend_payment".to_string(), Some(-2_000_000_000.0)),
+                ]),
             ),
             (
                 "forecast".to_string(),
@@ -1073,6 +1115,12 @@ mod tests {
         let stock = sample_stock();
         assert_eq!(metric(&stock, "net_cash"), Some(7_000_000_000.0));
         assert_eq!(metric(&stock, "net_cash_ratio"), Some(0.7));
+    }
+
+    #[test]
+    fn total_payout_ratio_uses_dividends_and_treasury_stock_purchase() {
+        let stock = sample_stock();
+        assert_eq!(metric(&stock, "total_payout_ratio"), Some(50.0));
     }
 
     #[test]

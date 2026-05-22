@@ -6,7 +6,6 @@ import argparse
 import csv
 import logging
 import re
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -16,9 +15,8 @@ from collections.abc import Callable
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.log import setup_logging
 from formula_screening.price_updates import ensure_prices_fresh
-from stock_db.paths import STOCKS_DB_PATH
+from stock_db.api import get_all_tickers
 from stock_db.sources.price_refresh import PriceRefreshError
-from stock_db.storage.connection import get_connection
 
 _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
 _GH_PAGES_METADATA_JSON = (
@@ -31,7 +29,7 @@ logger = logging.getLogger("formula_screening.cli")
 _RANGE_RE = re.compile(r"^(\d+)-(\d+)$")
 
 
-def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
+def _parse_ticker_spec(spec: str) -> list[str]:
     """Resolve ``--ticker`` value into a concrete list of ticker strings.
 
     Supported formats::
@@ -42,8 +40,7 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
         csv:path.csv  → tickers read from the first column of *path.csv*
     """
     if spec == "all":
-        from stock_db.storage.stocks import get_all_tickers
-        return get_all_tickers(conn)
+        return get_all_tickers()
 
     if spec.startswith("csv:"):
         csv_path = Path(spec[4:])
@@ -64,9 +61,8 @@ def _parse_ticker_spec(spec: str, conn: sqlite3.Connection) -> list[str]:
 
     m = _RANGE_RE.match(spec)
     if m:
-        from stock_db.storage.stocks import get_all_tickers
         lo, hi = int(m.group(1)), int(m.group(2))
-        all_tickers = get_all_tickers(conn)
+        all_tickers = get_all_tickers()
         return [t for t in all_tickers if t.isdigit() and lo <= int(t) <= hi]
 
     # bare value → single ticker
@@ -87,7 +83,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        update_result = ensure_prices_fresh(db_path=STOCKS_DB_PATH)
+        update_result = ensure_prices_fresh()
     except (PriceRefreshError, ValueError) as exc:
         print(f"Failed to update stock prices: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -100,53 +96,47 @@ def _cmd_screen(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
 
-    conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
-    try:
-        # Determine which tickers to screen
-        specific_tickers: list[str] | None = None
-        if args.ticker:
-            if len(args.ticker) == 1 and (
-                args.ticker[0] == "all"
-                or _RANGE_RE.match(args.ticker[0])
-                or args.ticker[0].startswith("csv:")
-            ):
-                specific_tickers = _parse_ticker_spec(args.ticker[0], conn)
-            else:
-                specific_tickers = args.ticker
+    specific_tickers: list[str] | None = None
+    if args.ticker:
+        if len(args.ticker) == 1 and (
+            args.ticker[0] == "all"
+            or _RANGE_RE.match(args.ticker[0])
+            or args.ticker[0].startswith("csv:")
+        ):
+            specific_tickers = _parse_ticker_spec(args.ticker[0])
+        else:
+            specific_tickers = args.ticker
 
-        start: float = time.monotonic()
-        result: dict[str, list[dict]] = run_screening_payload_with_diagnostics_py(
-            str(strategy_path),
-            str(STOCKS_DB_PATH),
-            specific_tickers,
-            args.show_all,
+    start: float = time.monotonic()
+    result: dict[str, list[dict]] = run_screening_payload_with_diagnostics_py(
+        str(strategy_path),
+        specific_tickers,
+        args.show_all,
+    )
+    payload: list[dict] = result["payload"]
+    for diagnostic in result["diagnostics"]:
+        logger.error(
+            "Missing screening fields for %s (%s): %s",
+            diagnostic["code"],
+            diagnostic["name"],
+            ", ".join(diagnostic["missing_fields"]),
         )
-        payload: list[dict] = result["payload"]
-        for diagnostic in result["diagnostics"]:
-            logger.error(
-                "Missing screening fields for %s (%s): %s",
-                diagnostic["code"],
-                diagnostic["name"],
-                ", ".join(diagnostic["missing_fields"]),
-            )
-        elapsed: float = time.monotonic() - start
+    elapsed: float = time.monotonic() - start
 
-        if not payload:
-            print("No stocks matched the screening criteria.")
-            return
+    if not payload:
+        print("No stocks matched the screening criteria.")
+        return
 
-        print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
-        save_screening_payload_json(payload, _GH_PAGES_JSON)
-        save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON, STOCKS_DB_PATH)
+    print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
+    save_screening_payload_json(payload, _GH_PAGES_JSON)
+    save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON)
 
-        if args.json:
-            save_screening_payload_json(payload, Path(args.json))
-            print(f"Saved to {args.json}")
-            return
+    if args.json:
+        save_screening_payload_json(payload, Path(args.json))
+        print(f"Saved to {args.json}")
+        return
 
-        serve_screening_payload(payload)
-    finally:
-        conn.close()
+    serve_screening_payload(payload)
 
 
 def main() -> None:

@@ -52,6 +52,13 @@ function getStockColumns(): StockColumnsApi {
 const StockTable: StockTableApi = getStockTable();
 const C: StockColumnsApi = getStockColumns();
 const IS_GITHUB_PAGES: boolean = location.hostname === "expgolemclone.github.io";
+const PAYOUT_SPEC: MetricColSpec = {
+  key: "total_payout_ratio",
+  header: "payout%",
+  title: "総還元額 / 実績純利益 * 100",
+  decimals: 1,
+  suffix: "%",
+};
 
 /* ------------------------------------------------------------------ */
 /*  Metrics accessor (nested under row.metrics)                        */
@@ -96,6 +103,7 @@ const COLUMNS: ColumnDef[] = [
       return (metrics?.dividend_yield as number) ?? null;
     },
   },
+  C.buildMetricCol(PAYOUT_SPEC, metricsAccessor("total_payout_ratio")),
   {
     key: "has_preferred_shares",
     header: "pref",

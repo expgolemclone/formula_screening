@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import operator
-import sqlite3
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -13,10 +12,7 @@ from pathlib import Path
 from formula_screening.config import MAGIC
 from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
 from formula_screening.preferred_shares import preferred_share_label
-from stock_db.storage.connection import get_connection
-from stock_db.storage.financials import get_financial_dict, get_historical_items
-from stock_db.storage.prices import get_latest_price_with_shares
-from stock_db.storage.stocks import get_all_tickers, get_stock_names
+import stock_db.api as stock_db_api
 from formula_screening.metrics import compute_metrics
 from formula_screening.screen_output import (
     ScreenColumn,
@@ -193,6 +189,7 @@ _KNOWN_METRIC_SOURCES: frozenset[str] = frozenset(
         "per_actual",
         "pbr",
         "dividend_yield",
+        "total_payout_ratio",
         "gross_margin",
         "operating_margin",
         "ordinary_margin",
@@ -251,7 +248,7 @@ def load_strategy(path: Path) -> Strategy:
 
 
 def screen_single(
-    conn: sqlite3.Connection,
+    conn: object | None,
     strategy_path: Path,
     ticker: str,
 ) -> tuple[dict, bool]:
@@ -259,41 +256,44 @@ def screen_single(
 
     Returns (stock_dict, passed).
     """
+    _reject_connection(conn)
     mod: Strategy = load_strategy(strategy_path)
-    names: dict[str, str] = get_stock_names(conn)
-    stock: dict = build_stock_dict(conn, ticker, names.get(ticker, ""))
+    stock: dict = build_stock_dict(None, ticker, "")
     passed: bool = mod.screen(stock)
     return stock, passed
 
 
 def build_stock_dict(
-    conn: sqlite3.Connection,
+    conn: object | None,
     ticker: str,
     name: str,
 ) -> dict:
     """Build the nested dict passed to the user's screen() function.
 
-    Fetches cached financials and prices from the DB.
+    Fetches cached financials and prices through the stock_db public API.
     """
-    financials = get_financial_dict(conn, ticker)
-    price_data = get_latest_price_with_shares(conn, ticker)
+    _reject_connection(conn)
+    records = stock_db_api.load_screening_stocks([ticker])
+    if not records:
+        raise ValueError(f"ticker not found in stock_db API: {ticker}")
+    stock = _stock_dict_from_api(records[0])
+    if name and not stock["name"]:
+        stock["name"] = name
+    return stock
 
-    price = price_data["price"]
-    price_date = price_data["price_date"]
-    shares = price_data["shares_outstanding"]
+
+def _stock_dict_from_api(record: stock_db_api.ScreeningStock) -> dict:
+    financials = record["financials"]
+
+    price = record["price"]
+    price_date = record["price_date"]
+    shares = record["shares_outstanding"]
 
     metrics = compute_metrics(financials, price, shares)
 
-    cf_history = get_historical_items(conn, ticker, "cf", n_periods=MAGIC["screening"]["fcf_years"])
-    n_pl_periods = max(
-        MAGIC["screening"]["peg_trailing_years"] + 1,
-        MAGIC["screening"]["peg_blended_actual_years"] + 1,
-    )
-    pl_history = get_historical_items(conn, ticker, "pl", n_periods=n_pl_periods)
-
     return {
-        "ticker": ticker,
-        "name": name,
+        "ticker": record["ticker"],
+        "name": record["name"],
         "price": price,
         "price_date": price_date,
         "shares_outstanding": shares,
@@ -303,8 +303,8 @@ def build_stock_dict(
         "dividend": financials.get("dividend", {}),
         "forecast": financials.get("forecast", {}),
         "metrics": metrics,
-        "cf_history": cf_history,
-        "pl_history": pl_history,
+        "cf_history": record["cf_history"],
+        "pl_history": record["pl_history"],
     }
 
 
@@ -313,41 +313,41 @@ def _screen_chunk(
     names: dict[str, str],
     screen_fn: Callable[[dict], bool],
     strategy_path: Path,
-    db_path: Path,
 ) -> tuple[list[dict], list[dict], int]:
-    """Screen a chunk of tickers using a thread-local DB connection.
+    """Screen a chunk of tickers using the stock_db public API.
 
     Returns (all_stocks, hits, errors).
     """
-    from stock_db.storage.connection import get_connection
-
-    conn: sqlite3.Connection = get_connection(db_path)
     all_stocks: list[dict] = []
     hits: list[dict] = []
     errors: int = 0
-    try:
-        for ticker in tickers:
-            try:
-                stock: dict = build_stock_dict(conn, ticker, names.get(ticker, ""))
-                all_stocks.append(stock)
-                if screen_fn(stock):
-                    hits.append(stock)
-            except (sqlite3.Error, ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
-                errors += 1
-                logger.debug("Error screening %s: %s", ticker, exc, exc_info=True)
-    finally:
-        conn.close()
+    del names, strategy_path
+    for record in stock_db_api.load_screening_stocks(
+        tickers,
+        fcf_periods=MAGIC["screening"]["fcf_years"],
+        pl_periods=max(
+            MAGIC["screening"]["peg_trailing_years"] + 1,
+            MAGIC["screening"]["peg_blended_actual_years"] + 1,
+        ),
+    ):
+        try:
+            stock: dict = _stock_dict_from_api(record)
+            all_stocks.append(stock)
+            if screen_fn(stock):
+                hits.append(stock)
+        except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
+            errors += 1
+            logger.debug("Error screening %s: %s", record["ticker"], exc, exc_info=True)
     return all_stocks, hits, errors
 
 
 def run_screening(
-    conn: sqlite3.Connection,
+    conn: object | None,
     strategy_path: Path,
     *,
     workers: int = 1,
     tickers: list[str] | None = None,
     return_all: bool = False,
-    db_path: Path | None = None,
 ) -> list[dict]:
     """Run a screening strategy against all stocks in the DB.
 
@@ -355,28 +355,22 @@ def run_screening(
         If return_all is True, all screened stock dicts.
         Otherwise, only stock dicts that passed the screen() filter.
     """
+    _reject_connection(conn)
     import concurrent.futures
 
     mod: Strategy = load_strategy(strategy_path)
     screen_fn: Callable[[dict], bool] = mod.screen
 
     if tickers is None:
-        tickers = get_all_tickers(conn)
+        tickers = stock_db_api.get_all_tickers()
     logger.info("Screening %d stocks with %s (workers=%d)", len(tickers), strategy_path.name, workers)
 
-    names: dict[str, str] = get_stock_names(conn)
-    resolved_db_path = db_path or _connection_db_path(conn)
+    names: dict[str, str] = stock_db_api.get_stock_names()
 
     effective_workers: int = min(workers, len(tickers)) or 1
 
     if effective_workers == 1:
-        all_stocks, all_hits, total_errors = _screen_chunk(
-            tickers,
-            names,
-            screen_fn,
-            strategy_path,
-            resolved_db_path,
-        )
+        all_stocks, all_hits, total_errors = _screen_chunk(tickers, names, screen_fn, strategy_path)
     else:
         chunks: list[list[str]] = [[] for _ in range(effective_workers)]
         for i, ticker in enumerate(tickers):
@@ -387,14 +381,7 @@ def run_screening(
         total_errors: int = 0
         with concurrent.futures.ThreadPoolExecutor(max_workers=effective_workers) as executor:
             futures: list[concurrent.futures.Future[tuple[list[dict], list[dict], int]]] = [
-                executor.submit(
-                    _screen_chunk,
-                    chunk,
-                    names,
-                    screen_fn,
-                    strategy_path,
-                    resolved_db_path,
-                )
+                executor.submit(_screen_chunk, chunk, names, screen_fn, strategy_path)
                 for chunk in chunks
             ]
             for future in concurrent.futures.as_completed(futures):
@@ -410,12 +397,7 @@ def run_screening(
     return all_stocks if return_all else all_hits
 
 
-def _connection_db_path(conn: sqlite3.Connection) -> Path:
-    rows = conn.execute("PRAGMA database_list").fetchall()
-    for row in rows:
-        name = row[1]
-        path = row[2]
-        if name == "main" and path:
-            return Path(path)
-    msg = "run_screening requires db_path when conn is not backed by a file"
-    raise ValueError(msg)
+def _reject_connection(conn: object | None) -> None:
+    if conn is not None:
+        msg = "formula_screening.screener no longer accepts sqlite connections"
+        raise TypeError(msg)

@@ -25,8 +25,9 @@ def _base_financials() -> dict:
         "cf": {
             "operating_cf": 8_000_000_000.0,
             "investing_cf": -3_000_000_000.0,
+            "treasury_stock_purchase": -1_000_000_000.0,
         },
-        "dividend": {"dps": 50.0},
+        "dividend": {"dps": 50.0, "dividend_payment": -2_000_000_000.0},
         "forecast": {
             "net_income_current": 7_000_000_000.0,
             "net_income_next": 8_000_000_000.0,
@@ -73,3 +74,29 @@ def test_net_cash_ratio_subtracts_current_and_non_current_liabilities() -> None:
 
     assert metrics["net_cash"] == pytest.approx(7_000_000_000.0)
     assert metrics["net_cash_ratio"] == pytest.approx(0.7)
+
+
+def test_total_payout_ratio_uses_dividends_and_treasury_stock_purchase() -> None:
+    metrics = compute_metrics(_base_financials(), price=1000.0, shares_outstanding=10_000_000)
+
+    assert metrics["total_payout_ratio"] == pytest.approx(50.0)
+
+
+def test_total_payout_ratio_allows_single_payout_source() -> None:
+    financials = _base_financials()
+    del financials["cf"]["treasury_stock_purchase"]
+
+    metrics = compute_metrics(financials, price=1000.0, shares_outstanding=10_000_000)
+
+    assert metrics["total_payout_ratio"] == pytest.approx(
+        2_000_000_000.0 / 6_000_000_000.0 * 100
+    )
+
+
+def test_total_payout_ratio_none_without_positive_net_income() -> None:
+    financials = _base_financials()
+    financials["pl"]["net_income"] = 0.0
+
+    metrics = compute_metrics(financials, price=1000.0, shares_outstanding=10_000_000)
+
+    assert metrics["total_payout_ratio"] is None

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import sys
 import types
 import json
@@ -8,7 +7,6 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
-from stock_db.storage.prices import get_previous_jpx_business_day
 from stock_web_ui.config import ServerConfig
 
 import formula_screening.web as web_mod
@@ -41,32 +39,30 @@ def test_serve_screening_passes_handbook_dir_to_stock_web_ui(
     assert captured["yazi_base_dir"] == web_mod._HANDBOOK_DATA_DIR
 
 
-def test_build_stock_price_metadata_uses_latest_price_date(tmp_path: Path) -> None:
-    db_path = tmp_path / "stocks.db"
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("CREATE TABLE prices (ticker TEXT, date TEXT, close REAL)")
-        conn.execute("INSERT INTO prices VALUES ('1301', '2026-05-17', 100.0)")
-        conn.execute("INSERT INTO prices VALUES ('7203', '2026-05-20', 200.0)")
+def test_build_stock_price_metadata_uses_stock_db_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected = {"price_date": "2026-05-20", "target_price_date": "2026-05-20"}
+    monkeypatch.setattr(web_mod, "get_stock_price_metadata", lambda: expected)
 
-    assert web_mod.build_stock_price_metadata(db_path) == {
-        "price_date": "2026-05-20",
-        "target_price_date": get_previous_jpx_business_day().isoformat(),
-    }
+    assert web_mod.build_stock_price_metadata() == expected
 
 
-def test_save_stock_price_metadata_json_writes_price_date(tmp_path: Path) -> None:
-    db_path = tmp_path / "stocks.db"
+def test_save_stock_price_metadata_json_writes_price_date(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     output_path = tmp_path / "assets" / "stock-price-meta.json"
-    with sqlite3.connect(db_path) as conn:
-        conn.execute("CREATE TABLE prices (ticker TEXT, date TEXT, close REAL)")
-        conn.execute("INSERT INTO prices VALUES ('1301', '2026-05-20', 100.0)")
+    monkeypatch.setattr(
+        web_mod,
+        "get_stock_price_metadata",
+        lambda: {"price_date": "2026-05-20", "target_price_date": "2026-05-20"},
+    )
 
-    web_mod.save_stock_price_metadata_json(output_path, db_path)
+    web_mod.save_stock_price_metadata_json(output_path)
 
     metadata = json.loads(output_path.read_text(encoding="utf-8"))
     assert metadata == {
         "price_date": "2026-05-20",
-        "target_price_date": get_previous_jpx_business_day().isoformat(),
+        "target_price_date": "2026-05-20",
     }
 
 
@@ -84,6 +80,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
                 "per_next": 6.0,
                 "pbr": 0.5,
                 "dividend_yield": 2.0,
+                "total_payout_ratio": 30.0,
                 "equity_ratio": 60.0,
                 "market_cap": 10000.0,
                 "free_cf": 10.0,
@@ -114,6 +111,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
     assert payload["peg_blended_5y_actual_2f_status"] == "ok"
     assert payload["metrics"]["per_actual"] == 10.0
     assert payload["metrics"]["per_next"] == 6.0
+    assert payload["metrics"]["total_payout_ratio"] == 30.0
     assert payload["price_date"] == "2026-05-20"
     assert payload["has_preferred_shares"] is True
 
@@ -143,9 +141,7 @@ def test_compute_all_stock_metrics_exposes_preferred_share_flag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_core = types.ModuleType("formula_screening._core")
-    fake_core.compute_all_stock_metrics = lambda _db_path: {
-        "1301": {"has_preferred_shares": True}
-    }
+    fake_core.compute_all_stock_metrics = lambda: {"1301": {"has_preferred_shares": True}}
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
 
     metrics = web_mod.compute_all_stock_metrics()
@@ -163,20 +159,17 @@ def test_run_screening_strategy_payload_uses_public_rust_payload_api(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     strategy_path = tmp_path / "strategy.toml"
-    db_path = tmp_path / "stocks.db"
     expected_payload = [{"code": "1301"}]
     captured: dict[str, object] = {}
 
     def fake_run_screening_payload_py(
         strategy: str,
-        database: str,
         tickers: list[str] | None,
         return_all: bool,
     ) -> list[dict]:
         captured.update(
             {
                 "strategy": strategy,
-                "database": database,
                 "tickers": tickers,
                 "return_all": return_all,
             }
@@ -186,7 +179,6 @@ def test_run_screening_strategy_payload_uses_public_rust_payload_api(
     fake_core = types.ModuleType("formula_screening._core")
     fake_core.run_screening_payload_py = fake_run_screening_payload_py
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
-    monkeypatch.setattr(web_mod, "STOCKS_DB_PATH", db_path)
 
     payload = web_mod.run_screening_strategy_payload(
         strategy_path,
@@ -197,7 +189,6 @@ def test_run_screening_strategy_payload_uses_public_rust_payload_api(
     assert payload == expected_payload
     assert captured == {
         "strategy": str(strategy_path),
-        "database": str(db_path),
         "tickers": ["1301", "7203"],
         "return_all": True,
     }

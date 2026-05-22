@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 
-from stock_db.storage.financials import get_items_by_source
-from stock_db.storage.stocks import get_validation_targets as _stock_db_get_validation_targets
+import stock_db.api as stock_db_api
 
 from formula_screening.net_cash import compute_net_cash_metrics
 
@@ -27,16 +25,17 @@ class NetCashSnapshot:
 
 
 def select_validation_targets(
-    conn: sqlite3.Connection,
+    conn: object | None,
     limit: int,
 ) -> list[ValidationTarget]:
-    rows = _stock_db_get_validation_targets(conn, limit)
+    _reject_connection(conn)
+    rows = stock_db_api.get_validation_targets(limit)
     return [
         ValidationTarget(
             ticker=row["ticker"],
             name=row["name"],
             securities_report_url=row["securities_report_url"],
-            price=float(row["close"]),
+            price=float(row["price"]),
             shares_outstanding=int(row["shares_outstanding"]),
         )
         for row in rows
@@ -44,27 +43,12 @@ def select_validation_targets(
 
 
 def load_latest_bs(
-    conn: sqlite3.Connection,
+    conn: object | None,
     ticker: str,
 ) -> tuple[str | None, dict[str, float | None], str | None]:
     """Load the latest balance sheet rows stored from EDINET XBRL."""
-    rows = get_items_by_source(conn, ticker, "edinet_xbrl")
-    if not rows:
-        return None, {}, "scrape_missing"
-
-    status_rows = [row for row in rows if row["statement"] == "_status"]
-    data_rows = [row for row in rows if row["statement"] == "bs"]
-    if data_rows:
-        latest_period = max(row["period"] for row in data_rows)
-        bs = {
-            row["item_name"]: row["value"]
-            for row in data_rows
-            if row["period"] == latest_period
-        }
-        return latest_period, bs, None
-    if status_rows:
-        return None, {}, f"scrape_{status_rows[0]['item_name']}"
-    return None, {}, "scrape_missing"
+    _reject_connection(conn)
+    return stock_db_api.get_latest_balance_sheet(ticker)
 
 
 def build_net_cash_snapshot(
@@ -80,3 +64,9 @@ def build_net_cash_snapshot(
         net_cash=metrics["net_cash"],
         net_cash_ratio=metrics["net_cash_ratio"],
     )
+
+
+def _reject_connection(conn: object | None) -> None:
+    if conn is not None:
+        msg = "formula_screening.validation no longer accepts sqlite connections"
+        raise TypeError(msg)
