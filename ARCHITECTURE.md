@@ -134,6 +134,7 @@ current_assets - inventories + investment_securities * 0.7
 - `screen` サブコマンドは実行前に前営業日終値が揃っているか確認する。古い銘柄があれば `stock_db.api.ensure_prices_fresh()` 経由で Stooq 更新と Yahoo Finance JP 補完を実行する。JPX 休日定義は `stock_db` 側の `config/jpx_market_holidays.toml` を使う。補完後も古い株価が残る場合は `price_date` 付きの行として出力し、共通 UI が目立ちにくい表示にする
 - `--json <path>` オプションで追加の JSON 保存先を指定できる（Web サーバーを起動しない）
 - `--json` 未指定時は従来どおり Web サーバーを起動する
+- JSON 保存後に `_auto_push_json()` が `jj diff` で変更を検知し、`jj commit` + `jj git push` で JSON のみを自動コミット・プッシュする
 
 ### `src_ts/app.ts`
 

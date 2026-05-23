@@ -15,8 +15,7 @@ from collections.abc import Callable
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.log import setup_logging
 from formula_screening.price_updates import ensure_prices_fresh
-from stock_db.api import get_all_tickers
-from stock_db.sources.price_refresh import PriceRefreshError
+from stock_db.api import PriceRefreshError, get_all_tickers
 
 _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
 _GH_PAGES_METADATA_JSON = (
@@ -25,6 +24,26 @@ _GH_PAGES_METADATA_JSON = (
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
+
+
+def _auto_push_json(paths: list[Path], message: str) -> None:
+    """Commit and push only the specified JSON files if they have changes."""
+    import subprocess
+
+    repo_root = paths[0].resolve().parent.parent.parent
+    str_paths = [str(p) for p in paths]
+    diff = subprocess.run(
+        ["jj", "diff", "--stat", "--"] + str_paths,
+        capture_output=True, text=True, cwd=str(repo_root),
+    )
+    if not diff.stdout.strip():
+        return
+    subprocess.run(
+        ["jj", "commit", "-m", message, "--"] + str_paths,
+        check=True, cwd=str(repo_root),
+    )
+    subprocess.run(["jj", "git", "push"], check=True, cwd=str(repo_root))
+
 
 _RANGE_RE = re.compile(r"^(\d+)-(\d+)$")
 
@@ -130,6 +149,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
     save_screening_payload_json(payload, _GH_PAGES_JSON)
     save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON)
+    _auto_push_json([_GH_PAGES_JSON, _GH_PAGES_METADATA_JSON], "Update screening data")
 
     if args.json:
         save_screening_payload_json(payload, Path(args.json))

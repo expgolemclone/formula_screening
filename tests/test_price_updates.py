@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 
 import formula_screening.price_updates as price_updates
-from stock_db.sources.price_refresh import PriceRefreshCommandResult, PriceRefreshError
+from stock_db.api import PriceRefreshCommandResult, PriceRefreshError
 
 
 def test_ensure_prices_fresh_runs_stock_db_refresh_command(

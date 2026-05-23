@@ -9,6 +9,7 @@ def test_runtime_code_uses_stock_db_public_api() -> None:
         "STOCKS_DB_PATH",
         "stock_db.paths",
         "stock_db.storage",
+        "stock_db.sources.price_refresh",
         "sqlite3.connect",
         "var/db/stocks.db",
         "../stock_db/var/db/stocks.db",
