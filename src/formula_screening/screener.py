@@ -189,7 +189,7 @@ _KNOWN_METRIC_SOURCES: frozenset[str] = frozenset(
         "per_actual",
         "pbr",
         "dividend_yield",
-        "tprr",
+        "total_payout_ratio",
         "gross_margin",
         "operating_margin",
         "ordinary_margin",

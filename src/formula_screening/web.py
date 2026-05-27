@@ -43,7 +43,7 @@ def compute_all_stock_metrics(
                      "fcf_yield_avg", "equity_ratio", "peg_trailing_5",
                      "peg_trailing_5_status", "peg_blended_5y_actual_2f",
                      "peg_blended_5y_actual_2f_status", "dividend_yield",
-                     "tprr", "has_preferred_shares", "croic",
+                     "total_payout_ratio", "has_preferred_shares", "croic",
                      "pbr", "market_cap"}}``
     """
     if conn is not None:
@@ -201,7 +201,7 @@ def _serialize_stock(stock: dict) -> dict:
             "per_next": metrics.get("per_next"),
             "equity_ratio": metrics.get("equity_ratio"),
             "dividend_yield": metrics.get("dividend_yield"),
-            "tprr": metrics.get("tprr"),
+            "total_payout_ratio": metrics.get("total_payout_ratio"),
             "pbr": metrics.get("pbr"),
             "market_cap": metrics.get("market_cap"),
         },

@@ -14,7 +14,7 @@ def _pct(a: float | None, b: float | None) -> float | None:
     return val * 100 if val is not None else None
 
 
-def _total_payout_return_ratio(
+def _total_payout_ratio(
     dividend_payment: float | None,
     treasury_stock_purchase: float | None,
     market_cap: float | None,
@@ -93,7 +93,7 @@ def compute_metrics(
 
     dps = financials.get("dividend", {}).get("dps")
     metrics["dividend_yield"] = _pct(dps, price)
-    metrics["tprr"] = _total_payout_return_ratio(
+    metrics["total_payout_ratio"] = _total_payout_ratio(
         financials.get("dividend", {}).get("dividend_payment"),
         cf.get("treasury_stock_purchase"),
         market_cap,
