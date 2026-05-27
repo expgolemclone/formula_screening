@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from stock_db.api import (
+from formula_screening.stock_db_compat import (
     PriceRefreshCommandResult,
     ensure_prices_fresh as _stock_db_ensure_prices_fresh,
 )

@@ -89,7 +89,7 @@ pub struct PublicMetrics {
     pub per_next: Option<f64>,
     pub equity_ratio: Option<f64>,
     pub dividend_yield: Option<f64>,
-    pub total_payout_ratio: Option<f64>,
+    pub tprr: Option<f64>,
     pub pbr: Option<f64>,
     pub market_cap: Option<f64>,
 }
@@ -224,7 +224,7 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
             per_next: metric(stock, "per_next"),
             equity_ratio: metric(stock, "equity_ratio"),
             dividend_yield: metric(stock, "dividend_yield"),
-            total_payout_ratio: metric(stock, "total_payout_ratio"),
+            tprr: metric(stock, "tprr"),
             pbr: metric(stock, "pbr"),
             market_cap: metric(stock, "market_cap"),
         },
@@ -258,10 +258,7 @@ pub fn collect_missing_metric_diagnostics(
                 ("peg_trailing_5", peg_trailing(stock, 5)),
                 ("peg_blended_5y_actual_2f", peg_blended_2f(stock, 5)),
                 ("metrics.dividend_yield", metric(stock, "dividend_yield")),
-                (
-                    "metrics.total_payout_ratio",
-                    metric(stock, "total_payout_ratio"),
-                ),
+                ("metrics.tprr", metric(stock, "tprr")),
             ] {
                 if value.is_none() {
                     missing_fields.push(field.to_string());
@@ -359,10 +356,7 @@ pub fn compute_all_metrics()
                     "dividend_yield".to_string(),
                     metric_value(metric(&stock, "dividend_yield")),
                 ),
-                (
-                    "total_payout_ratio".to_string(),
-                    metric_value(metric(&stock, "total_payout_ratio")),
-                ),
+                ("tprr".to_string(), metric_value(metric(&stock, "tprr"))),
                 ("has_preferred_shares".to_string(), preferred_share_value),
                 ("croic".to_string(), metric_value(croic(&stock))),
                 ("pbr".to_string(), metric_value(metric(&stock, "pbr"))),
@@ -397,7 +391,7 @@ const PUBLIC_METRIC_PY_ORDER: [&str; 18] = [
     "peg_blended_5y_actual_2f",
     "peg_blended_5y_actual_2f_status",
     "dividend_yield",
-    "total_payout_ratio",
+    "tprr",
     "has_preferred_shares",
     "croic",
     "pbr",
@@ -501,11 +495,11 @@ pub fn compute_metrics(
             pct(item(dividend, "dps"), price),
         ),
         (
-            "total_payout_ratio".to_string(),
-            total_payout_ratio(
+            "tprr".to_string(),
+            total_payout_return_ratio(
                 item(dividend, "dividend_payment"),
                 item(cf, "treasury_stock_purchase"),
-                net_income,
+                market_cap,
             ),
         ),
         ("gross_margin".to_string(), pct(gross_profit, revenue)),
@@ -573,7 +567,7 @@ fn valid_sources() -> HashSet<&'static str> {
         "per_actual",
         "pbr",
         "dividend_yield",
-        "total_payout_ratio",
+        "tprr",
         "gross_margin",
         "operating_margin",
         "ordinary_margin",
@@ -626,13 +620,13 @@ fn pct(left: Option<f64>, right: Option<f64>) -> Option<f64> {
     safe_div(left, right).map(|value| value * 100.0)
 }
 
-fn total_payout_ratio(
+fn total_payout_return_ratio(
     dividend_payment: Option<f64>,
     treasury_stock_purchase: Option<f64>,
-    net_income: Option<f64>,
+    market_cap: Option<f64>,
 ) -> Option<f64> {
-    let net_income = net_income?;
-    if net_income <= 0.0 {
+    let market_cap = market_cap?;
+    if market_cap <= 0.0 {
         return None;
     }
 
@@ -645,7 +639,7 @@ fn total_payout_ratio(
         payout_total += value.abs();
         has_payout = true;
     }
-    has_payout.then_some(payout_total / net_income * 100.0)
+    has_payout.then_some(payout_total / market_cap * 100.0)
 }
 
 fn resolve_free_cf(items: &ItemMap) -> Option<f64> {
@@ -947,12 +941,7 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
             "dividend_yield",
             payload.metrics.dividend_yield,
         )?;
-        set_optional_float(
-            py,
-            &metrics,
-            "total_payout_ratio",
-            payload.metrics.total_payout_ratio,
-        )?;
+        set_optional_float(py, &metrics, "tprr", payload.metrics.tprr)?;
         set_optional_float(py, &metrics, "pbr", payload.metrics.pbr)?;
         set_optional_float(py, &metrics, "market_cap", payload.metrics.market_cap)?;
         row.set_item("metrics", metrics)?;
@@ -1118,9 +1107,9 @@ mod tests {
     }
 
     #[test]
-    fn total_payout_ratio_uses_dividends_and_treasury_stock_purchase() {
+    fn tprr_uses_dividends_and_treasury_stock_purchase() {
         let stock = sample_stock();
-        assert_eq!(metric(&stock, "total_payout_ratio"), Some(50.0));
+        assert_eq!(metric(&stock, "tprr"), Some(30.0));
     }
 
     #[test]

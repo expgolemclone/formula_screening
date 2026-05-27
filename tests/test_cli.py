@@ -9,7 +9,7 @@ import pytest
 
 import formula_screening.cli as cli_module
 import formula_screening.web as web_mod
-from stock_db.api import PriceRefreshError
+from formula_screening.stock_db_compat import PriceRefreshError
 
 
 def test_cmd_screen_stops_when_price_update_fails(

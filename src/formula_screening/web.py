@@ -6,11 +6,11 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from stock_db.api import get_stock_price_metadata
 from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
+from formula_screening.stock_db_compat import get_stock_price_metadata
 from formula_screening.indicators import (
     croic,
     fcf_yield_avg,
@@ -43,7 +43,7 @@ def compute_all_stock_metrics(
                      "fcf_yield_avg", "equity_ratio", "peg_trailing_5",
                      "peg_trailing_5_status", "peg_blended_5y_actual_2f",
                      "peg_blended_5y_actual_2f_status", "dividend_yield",
-                     "total_payout_ratio", "has_preferred_shares", "croic",
+                     "tprr", "has_preferred_shares", "croic",
                      "pbr", "market_cap"}}``
     """
     if conn is not None:
@@ -201,7 +201,7 @@ def _serialize_stock(stock: dict) -> dict:
             "per_next": metrics.get("per_next"),
             "equity_ratio": metrics.get("equity_ratio"),
             "dividend_yield": metrics.get("dividend_yield"),
-            "total_payout_ratio": metrics.get("total_payout_ratio"),
+            "tprr": metrics.get("tprr"),
             "pbr": metrics.get("pbr"),
             "market_cap": metrics.get("market_cap"),
         },

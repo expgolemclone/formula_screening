@@ -12,7 +12,7 @@ from pathlib import Path
 from formula_screening.config import MAGIC
 from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
 from formula_screening.preferred_shares import preferred_share_label
-import stock_db.api as stock_db_api
+import formula_screening.stock_db_compat as stock_db_api
 from formula_screening.metrics import compute_metrics
 from formula_screening.screen_output import (
     ScreenColumn,
@@ -189,7 +189,7 @@ _KNOWN_METRIC_SOURCES: frozenset[str] = frozenset(
         "per_actual",
         "pbr",
         "dividend_yield",
-        "total_payout_ratio",
+        "tprr",
         "gross_margin",
         "operating_margin",
         "ordinary_margin",

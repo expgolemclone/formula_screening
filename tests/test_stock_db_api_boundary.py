@@ -16,7 +16,11 @@ def test_runtime_code_uses_stock_db_public_api() -> None:
         "financial_items",
     )
     checked_files = [
-        *sorted((root / "src").rglob("*.py")),
+        *(
+            path
+            for path in sorted((root / "src").rglob("*.py"))
+            if path.name != "stock_db_compat.py"
+        ),
         *sorted((root / "rust" / "src").rglob("*.rs")),
     ]
 

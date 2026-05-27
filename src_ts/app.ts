@@ -52,10 +52,10 @@ function getStockColumns(): StockColumnsApi {
 const StockTable: StockTableApi = getStockTable();
 const C: StockColumnsApi = getStockColumns();
 const IS_GITHUB_PAGES: boolean = location.hostname === "expgolemclone.github.io";
-const PAYOUT_SPEC: MetricColSpec = {
-  key: "total_payout_ratio",
-  header: "payout%",
-  title: "総還元額 / 実績純利益 * 100",
+const TPRR_SPEC: MetricColSpec = {
+  key: "tprr",
+  header: "tprr%",
+  title: "TPRR (Total Payout Return Ratio): 総還元額 / 時価総額 * 100",
   decimals: 1,
   suffix: "%",
 };
@@ -103,7 +103,7 @@ const COLUMNS: ColumnDef[] = [
       return (metrics?.dividend_yield as number) ?? null;
     },
   },
-  C.buildMetricCol(PAYOUT_SPEC, metricsAccessor("total_payout_ratio")),
+  C.buildMetricCol(TPRR_SPEC, metricsAccessor("tprr")),
   {
     key: "has_preferred_shares",
     header: "pref",

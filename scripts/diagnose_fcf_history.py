@@ -7,14 +7,13 @@ import argparse
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-import stock_db.api as stock_db_api
-
 from formula_screening.config import MAGIC
 from formula_screening.fcf_history_diagnostics import (
     diagnose_records,
     format_summary,
     write_diagnostics_csv,
 )
+import formula_screening.stock_db_compat as stock_db_api
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -55,7 +54,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "tickers",
         nargs="*",
-        help="Optional ticker list. Defaults to stock_db.api.get_screening_tickers().",
+        help="Optional ticker list. Defaults to formula_screening.stock_db_compat.get_screening_tickers().",
     )
     parser.add_argument(
         "--years",

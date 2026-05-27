@@ -15,7 +15,7 @@ from collections.abc import Callable
 from formula_screening.config import CLI_DEFAULTS, MAGIC
 from formula_screening.log import setup_logging
 from formula_screening.price_updates import ensure_prices_fresh
-from stock_db.api import PriceRefreshError, get_all_tickers
+from formula_screening.stock_db_compat import PriceRefreshError, get_all_tickers
 
 _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
 _GH_PAGES_METADATA_JSON = (

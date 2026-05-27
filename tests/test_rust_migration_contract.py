@@ -176,7 +176,7 @@ def test_rust_payload_preserves_python_screening_contract(
         "per_next",
         "pbr",
         "dividend_yield",
-        "total_payout_ratio",
+        "tprr",
         "equity_ratio",
         "market_cap",
     }
@@ -190,7 +190,7 @@ def test_rust_payload_preserves_python_screening_contract(
     assert row["metrics"]["per_next"] == pytest.approx(4.0)
     assert row["metrics"]["pbr"] == pytest.approx(1 / 6)
     assert row["metrics"]["dividend_yield"] == pytest.approx(10.0)
-    assert row["metrics"]["total_payout_ratio"] == pytest.approx(30.0)
+    assert row["metrics"]["tprr"] == pytest.approx(6.0)
     assert row["metrics"]["equity_ratio"] == pytest.approx(60.0)
     assert row["fcf_yield_avg"] is not None
     assert row["croic"] is not None

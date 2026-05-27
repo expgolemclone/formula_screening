@@ -80,7 +80,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
                 "per_next": 6.0,
                 "pbr": 0.5,
                 "dividend_yield": 2.0,
-                "total_payout_ratio": 30.0,
+                "tprr": 30.0,
                 "equity_ratio": 60.0,
                 "market_cap": 10000.0,
                 "free_cf": 10.0,
@@ -111,7 +111,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
     assert payload["peg_blended_5y_actual_2f_status"] == "ok"
     assert payload["metrics"]["per_actual"] == 10.0
     assert payload["metrics"]["per_next"] == 6.0
-    assert payload["metrics"]["total_payout_ratio"] == 30.0
+    assert payload["metrics"]["tprr"] == 30.0
     assert payload["price_date"] == "2026-05-20"
     assert payload["has_preferred_shares"] is True
 

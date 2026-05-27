@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import stock_db.api as stock_db_api
+import formula_screening.stock_db_compat as stock_db_api
 
 from formula_screening.net_cash import compute_net_cash_metrics
 
