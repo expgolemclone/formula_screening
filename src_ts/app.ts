@@ -55,7 +55,7 @@ const IS_GITHUB_PAGES: boolean = location.hostname === "expgolemclone.github.io"
 const PAYOUT_SPEC: MetricColSpec = {
   key: "total_payout_ratio",
   header: "payout%",
-  title: "総還元額 / 時価総額 * 100",
+  title: "(|配当支払額| + |自己株式取得額|) / 時価総額 * 100",
   decimals: 1,
   suffix: "%",
 };
@@ -91,7 +91,7 @@ const COLUMNS: ColumnDef[] = [
     key: "dividend_yield",
     header: "div%",
     type: "num",
-    title: "dividend yield",
+    title: "1株配当 / 株価 * 100",
     toggleable: true,
     render: (row): string => {
       const metrics = row.metrics as Record<string, unknown> | undefined;
@@ -136,7 +136,7 @@ const COLUMNS: ColumnDef[] = [
     key: "pbr",
     header: "pbr",
     type: "num",
-    title: "price book value ratio",
+    title: "時価総額 / 純資産",
     toggleable: true,
     render: (row): string => {
       const metrics = row.metrics as Record<string, unknown> | undefined;
