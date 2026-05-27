@@ -78,8 +78,8 @@ function metricsAccessor(key: string): (row: Record<string, unknown>) => number 
 const COLUMNS: ColumnDef[] = [
   C.codeCol,
   C.nameCol,
-  C.priceCol,
   C.buildMetricCol(C.NCR_SPEC, metricsAccessor("net_cash_ratio")),
+  C.priceCol,
   C.buildMetricCol(C.PER_A_SPEC, metricsAccessor("per_actual")),
   C.buildMetricCol(C.PER_C_SPEC, metricsAccessor("per")),
   C.buildMetricCol(C.PER_N_SPEC, metricsAccessor("per_next")),

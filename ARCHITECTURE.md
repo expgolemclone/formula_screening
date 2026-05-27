@@ -224,7 +224,7 @@ PyO3 の互換 API として `run_screening_payload_py()` は従来どおり pay
 - `docs/assets/app.js`: ビルド済みフロントエンド
 - `src_ts/app.ts`: TypeScript ソース
 
-`app.ts` は共通カラム定義を `stock_web_ui` の `columns.ts`（`globalThis.StockColumns`）から取得し、プロジェクト固有の `metrics` accessor と組み合わせてカラム配列を構築します。既定ソートは `net_cash_ratio` 降順です。指標カラムは `context.md` の順序に合わせ、`context.md` にない `ncr` は `price` 直後に残します。表示順は `ncr`, `per_a`, `per_c`, `per_n`, `fcf_10y%`, `equity%`, `peg_5y`, `peg_5y2f`, `div%`, `payout%`, `pref`, `croic%`, `pbr` です。PEG 列は未算出理由を `missing_input -> miss`, `insufficient_history -> hist`, `non_positive_per -> per-`, `non_positive_eps -> eps-`, `non_positive_growth -> growth-` と表示し、未知 status / status なしは `-` を表示します。PER、PBR、配当利回り、自己資本比率、FCF Yield、CROIC に閾値ベースの色付けを行います。共通閾値は `COMMON_THRESHOLDS` を利用し、`pbr` と `div%` のみプロジェクト固有で追加しています。
+`app.ts` は共通カラム定義を `stock_web_ui` の `columns.ts`（`globalThis.StockColumns`）から取得し、プロジェクト固有の `metrics` accessor と組み合わせてカラム配列を構築します。既定ソートは `net_cash_ratio` 降順です。指標カラムは `context.md` の順序に合わせ、`context.md` にない `ncr` は `price` 直前に置きます。表示順は `ncr`, `price`, `per_a`, `per_c`, `per_n`, `fcf_10y%`, `equity%`, `peg_5y`, `peg_5y2f`, `div%`, `payout%`, `pref`, `croic%`, `pbr` です。PEG 列は未算出理由を `missing_input -> miss`, `insufficient_history -> hist`, `non_positive_per -> per-`, `non_positive_eps -> eps-`, `non_positive_growth -> growth-` と表示し、未知 status / status なしは `-` を表示します。PER、PBR、配当利回り、自己資本比率、FCF Yield、CROIC に閾値ベースの色付けを行います。共通閾値は `COMMON_THRESHOLDS` を利用し、`pbr` と `div%` のみプロジェクト固有で追加しています。
 
 ## 移行漏れ検知
 
