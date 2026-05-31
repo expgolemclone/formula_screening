@@ -73,6 +73,12 @@ pub struct Column {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CfHistoryEntry {
+    pub period: String,
+    pub items: HashMap<String, Option<f64>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ScreeningPayload {
     pub code: String,
     pub name: String,
@@ -89,6 +95,7 @@ pub struct ScreeningPayload {
     pub fcf_cagr: Option<f64>,
     pub fcf_cagr_r2: Option<f64>,
     pub fcf_sma_cagr: Option<f64>,
+    pub cf_history: Vec<CfHistoryEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -270,6 +277,14 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
         fcf_cagr: fcf_cagr(stock, 10),
         fcf_cagr_r2: fcf_cagr_r2(stock, 10),
         fcf_sma_cagr: fcf_sma_cagr(stock, 10, 3),
+        cf_history: stock
+            .cf_history
+            .iter()
+            .map(|h| CfHistoryEntry {
+                period: h.period.clone(),
+                items: h.items.clone(),
+            })
+            .collect(),
     })
 }
 
@@ -1149,6 +1164,23 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
         set_optional_float(py, &row, "fcf_cagr", payload.fcf_cagr)?;
         set_optional_float(py, &row, "fcf_cagr_r2", payload.fcf_cagr_r2)?;
         set_optional_float(py, &row, "fcf_sma_cagr", payload.fcf_sma_cagr)?;
+
+        let cf_list = pyo3::types::PyList::empty(py);
+        for entry in &payload.cf_history {
+            let item = pyo3::types::PyDict::new(py);
+            item.set_item("period", &entry.period)?;
+            let items_dict = pyo3::types::PyDict::new(py);
+            for (k, v) in &entry.items {
+                match v {
+                    Some(val) => items_dict.set_item(k, *val)?,
+                    None => items_dict.set_item(k, py.None())?,
+                }
+            }
+            item.set_item("items", items_dict)?;
+            cf_list.append(item)?;
+        }
+        row.set_item("cf_history", cf_list)?;
+
         rows.append(row)?;
     }
     Ok(rows.into())
