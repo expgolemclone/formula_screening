@@ -9,12 +9,34 @@ from formula_screening.screener import load_strategy
 _STRATEGY_PATH = Path(__file__).resolve().parent.parent / "strategies" / "net_cash_fcf.toml"
 
 
-def _build_stock(net_cash_ratio: float, *, has_preferred_shares: float | None = None) -> dict:
+def _build_stock(
+    net_cash_ratio: float,
+    *,
+    fcf_values: list[float] | None = None,
+    has_preferred_shares: float | None = None,
+) -> dict:
     bs = {
         "stockholders_equity": 100.0,
     }
     if has_preferred_shares is not None:
         bs["has_preferred_shares"] = has_preferred_shares
+    cf_history = [
+        ("2025-03", {"free_cf": 10.0}),
+        ("2024-03", {"free_cf": 9.0}),
+        ("2023-03", {"free_cf": 8.0}),
+        ("2022-03", {"free_cf": 7.0}),
+        ("2021-03", {"free_cf": 6.0}),
+        ("2020-03", {"free_cf": 5.0}),
+        ("2019-03", {"free_cf": 4.0}),
+        ("2018-03", {"free_cf": 3.0}),
+        ("2017-03", {"free_cf": 2.0}),
+        ("2016-03", {"free_cf": 1.0}),
+    ]
+    if fcf_values is not None:
+        cf_history = [
+            (f"{2025 - idx}-03", {"free_cf": value})
+            for idx, value in enumerate(fcf_values)
+        ]
 
     return {
         "bs": bs,
@@ -40,26 +62,22 @@ def _build_stock(net_cash_ratio: float, *, has_preferred_shares: float | None = 
             "eps_current": 220.0,
             "eps_next": 240.0,
         },
-        "cf_history": [
-            ("2025-03", {"free_cf": 10.0}),
-            ("2024-03", {"free_cf": 9.0}),
-            ("2023-03", {"free_cf": 8.0}),
-            ("2022-03", {"free_cf": 7.0}),
-            ("2021-03", {"free_cf": 6.0}),
-            ("2020-03", {"free_cf": 5.0}),
-            ("2019-03", {"free_cf": 4.0}),
-            ("2018-03", {"free_cf": 3.0}),
-            ("2017-03", {"free_cf": 2.0}),
-            ("2016-03", {"free_cf": 1.0}),
-        ],
+        "cf_history": cf_history,
     }
 
 
-def test_net_cash_fcf_allows_ncr_down_to_minus_one() -> None:
+def test_net_cash_fcf_requires_net_cash_ratio_at_least_seventy_percent() -> None:
     strategy = load_strategy(_STRATEGY_PATH)
 
-    assert strategy.screen(_build_stock(-1.0))
-    assert not strategy.screen(_build_stock(-1.01))
+    assert strategy.screen(_build_stock(0.7))
+    assert not strategy.screen(_build_stock(0.699))
+
+
+def test_net_cash_fcf_requires_fcf_yield_at_least_five_percent() -> None:
+    strategy = load_strategy(_STRATEGY_PATH)
+
+    assert strategy.screen(_build_stock(0.7, fcf_values=[5.0] * 10))
+    assert not strategy.screen(_build_stock(0.7, fcf_values=[4.99] * 10))
 
 
 def test_net_cash_fcf_columns_include_peg_trailing_5() -> None:

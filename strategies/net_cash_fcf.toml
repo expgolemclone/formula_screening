@@ -18,8 +18,8 @@ threshold = 50.0
 
 [[filters]]
 source = "fcf_yield_avg"
-operator = ">"
-threshold = 0.0
+operator = ">="
+threshold = 0.05
 
 [[columns]]
 header = "FCF_10Y%"

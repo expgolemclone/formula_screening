@@ -39,6 +39,7 @@ def _insert_screening_stock(
     ticker: str,
     name: str,
     forecast_net_income_current: float,
+    fcf_start: float = 1_000.0,
     include_dividend: bool = True,
 ) -> None:
     upsert_stock(conn, ticker, name, "sector", "market")
@@ -101,7 +102,7 @@ def _insert_screening_stock(
     )
 
     for offset, year in enumerate(range(2025, 2015, -1)):
-        cf_items = {"free_cf": 1_000.0 - offset * 10.0}
+        cf_items = {"free_cf": fcf_start - offset * 10.0}
         if offset == 0:
             cf_items["treasury_stock_purchase"] = -500.0
         _upsert_items(
@@ -142,6 +143,7 @@ def test_rust_payload_preserves_python_screening_contract(
             ticker="2222",
             name="fail stock",
             forecast_net_income_current=400.0,
+            fcf_start=400.0,
         )
         conn.commit()
     finally:
@@ -230,6 +232,7 @@ def test_rust_payload_diagnostics_cover_all_screened_stocks(
             ticker="2222",
             name="fail stock",
             forecast_net_income_current=400.0,
+            fcf_start=400.0,
             include_dividend=False,
         )
         conn.commit()
