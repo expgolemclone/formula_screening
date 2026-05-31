@@ -13,11 +13,11 @@
     "header": "ncr",
     "source": "net_cash_ratio",
     "type": "metric_num",
-    "metric_key": "net_cash_ratio",
     "format": "{:.2f}",
     "decimals": 2,
     "title": "(流動資産 - 棚卸資産 + 有価証券 * 0.7 - 流動負債 - 固定負債) / 時価総額",
-    "toggleable": false
+    "toggleable": false,
+    "metric_key": "net_cash_ratio"
   },
   {
     "header": "fcf_10y%",
@@ -34,12 +34,12 @@
     "header": "payout%",
     "source": "total_payout_ratio",
     "type": "metric_num",
-    "metric_key": "total_payout_ratio",
     "format": "{:.1f}",
     "decimals": 1,
     "suffix": "%",
     "title": "(|配当支払額| + |自己株式取得額|) / 時価総額 * 100",
-    "toggleable": true
+    "toggleable": true,
+    "metric_key": "total_payout_ratio"
   },
   {
     "header": "peg_5y",
