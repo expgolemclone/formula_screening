@@ -67,6 +67,8 @@ pub struct Column {
     pub status_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metric_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stock_link: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

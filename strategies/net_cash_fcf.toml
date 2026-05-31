@@ -37,6 +37,7 @@ type = "metric_num"
 metric_key = "net_cash_ratio"
 decimals = 2
 title = "(流動資産 - 棚卸資産 + 有価証券 * 0.7 - 流動負債 - 固定負債) / 時価総額"
+stock_link = "shikiho"
 toggleable = false
 
 [[columns]]
@@ -48,6 +49,7 @@ decimals = 2
 scale = 100
 suffix = "%"
 title = "平均(過去10期の各期FCF / 現在の時価総額) * 100"
+stock_link = "buffett_code"
 toggleable = true
 
 [[columns]]

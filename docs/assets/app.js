@@ -56,7 +56,7 @@ function buildNumCol(cfg) {
     const scale = cfg.scale ?? 1;
     const decimals = cfg.decimals ?? 1;
     const suffix = cfg.suffix ?? "";
-    return {
+    const col = {
         key: source,
         header: cfg.header ?? source,
         type: "num",
@@ -74,13 +74,17 @@ function buildNumCol(cfg) {
             return raw !== null ? raw * scale : null;
         },
     };
+    if (cfg.stock_link) {
+        col.stockLink = cfg.stock_link;
+    }
+    return col;
 }
 function buildMetricNumCol(cfg) {
     const metricKey = cfg.metric_key ?? cfg.source;
     const scale = cfg.scale ?? 1;
     const decimals = cfg.decimals ?? 1;
     const suffix = cfg.suffix ?? "";
-    return {
+    const col = {
         key: cfg.source,
         header: cfg.header ?? cfg.source,
         type: "num",
@@ -98,6 +102,10 @@ function buildMetricNumCol(cfg) {
             return raw !== null ? raw * scale : null;
         },
     };
+    if (cfg.stock_link) {
+        col.stockLink = cfg.stock_link;
+    }
+    return col;
 }
 function buildPegCol(cfg) {
     const source = cfg.source;
