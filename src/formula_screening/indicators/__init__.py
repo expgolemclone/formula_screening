@@ -2,6 +2,7 @@
 
 from formula_screening.indicators.croic import croic
 from formula_screening.indicators.fcf import fcf_yield_avg
+from formula_screening.indicators.fcf_growth import fcf_cagr, fcf_cagr_r2, fcf_sma_cagr
 from formula_screening.indicators.peg import (
     peg_blended_2f,
     peg_blended_2f_with_status,
@@ -11,6 +12,9 @@ from formula_screening.indicators.peg import (
 
 __all__: list[str] = [
     "croic",
+    "fcf_cagr",
+    "fcf_cagr_r2",
+    "fcf_sma_cagr",
     "fcf_yield_avg",
     "peg_trailing",
     "peg_trailing_with_status",

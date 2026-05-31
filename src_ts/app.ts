@@ -143,6 +143,42 @@ const COLUMNS: ColumnDef[] = [
     },
   },
   C.croicCol,
+  {
+    key: "fcf_cagr",
+    header: "fcf_cagr%",
+    type: "num",
+    title: "指数回帰によるFCF年平均成長率（%）",
+    toggleable: true,
+    render: (row): string => {
+      const v = row.fcf_cagr as number | null | undefined;
+      return v !== null && v !== undefined ? v.toFixed(1) : "-";
+    },
+    sortValue: (row): number | null => (row.fcf_cagr as number) ?? null,
+  },
+  {
+    key: "fcf_cagr_r2",
+    header: "R\u00B2",
+    type: "num",
+    title: "FCF指数回帰トレンドの決定係数（1に近いほど安定成長）",
+    toggleable: true,
+    render: (row): string => {
+      const v = row.fcf_cagr_r2 as number | null | undefined;
+      return v !== null && v !== undefined ? v.toFixed(2) : "-";
+    },
+    sortValue: (row): number | null => (row.fcf_cagr_r2 as number) ?? null,
+  },
+  {
+    key: "fcf_sma_cagr",
+    header: "sma_cagr%",
+    type: "num",
+    title: "3年移動平均ベースFCF年平均成長率（%）",
+    toggleable: true,
+    render: (row): string => {
+      const v = row.fcf_sma_cagr as number | null | undefined;
+      return v !== null && v !== undefined ? v.toFixed(1) : "-";
+    },
+    sortValue: (row): number | null => (row.fcf_sma_cagr as number) ?? null,
+  },
   C.priceCol,
   C.buildMetricCol(C.PER_A_SPEC, metricsAccessor("per_actual")),
   C.buildMetricCol(C.PER_C_SPEC, metricsAccessor("per")),

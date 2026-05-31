@@ -10,7 +10,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from formula_screening.config import MAGIC
-from formula_screening.indicators import croic, fcf_yield_avg, peg_blended_2f, peg_trailing
+from formula_screening.indicators import (
+    croic,
+    fcf_cagr,
+    fcf_cagr_r2,
+    fcf_sma_cagr,
+    fcf_yield_avg,
+    peg_blended_2f,
+    peg_trailing,
+)
 from formula_screening.preferred_shares import preferred_share_label
 import formula_screening.stock_db_compat as stock_db_api
 from formula_screening.metrics import compute_metrics
@@ -48,6 +56,9 @@ def _peg_blended_5y_actual_2f(stock: dict) -> float | None:
 _DERIVED_SOURCES: dict[str, Callable[[dict], ColumnSourceValue]] = {
     "fcf_yield_avg": fcf_yield_avg,
     "croic": croic,
+    "fcf_cagr": fcf_cagr,
+    "fcf_cagr_r2": fcf_cagr_r2,
+    "fcf_sma_cagr": fcf_sma_cagr,
     "peg_trailing_5": _peg_trailing_5,
     "peg_blended_5y_actual_2f": _peg_blended_5y_actual_2f,
     "preferred_share_label": preferred_share_label,

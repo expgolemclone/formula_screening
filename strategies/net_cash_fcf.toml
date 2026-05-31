@@ -32,6 +32,21 @@ source = "croic"
 format = "{:.2%}"
 
 [[columns]]
+header = "FCF_CAGR%"
+source = "fcf_cagr"
+format = "{:.1f}"
+
+[[columns]]
+header = "FCF_CAGR_R2"
+source = "fcf_cagr_r2"
+format = "{:.2f}"
+
+[[columns]]
+header = "FCF_SMA_CAGR%"
+source = "fcf_sma_cagr"
+format = "{:.1f}"
+
+[[columns]]
 header = "peg_trailing_5"
 source = "peg_trailing_5"
 format = "{:.2f}"

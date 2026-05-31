@@ -10,4 +10,7 @@ div%
 payout%
 pref
 croic%
+fcf_cagr%
+R²
+sma_cagr%
 pbr

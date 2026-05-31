@@ -66,6 +66,9 @@ pub struct ScreeningPayload {
     pub peg_blended_5y_actual_2f_status: String,
     pub has_preferred_shares: Option<bool>,
     pub croic: Option<f64>,
+    pub fcf_cagr: Option<f64>,
+    pub fcf_cagr_r2: Option<f64>,
+    pub fcf_sma_cagr: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -235,6 +238,9 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
         peg_blended_5y_actual_2f_status: peg_blended.status.as_str().to_string(),
         has_preferred_shares: preferred_share_flag(stock)?,
         croic: croic(stock),
+        fcf_cagr: fcf_cagr(stock, 10),
+        fcf_cagr_r2: fcf_cagr_r2(stock, 10),
+        fcf_sma_cagr: fcf_sma_cagr(stock, 10, 3),
     })
 }
 
@@ -272,6 +278,9 @@ pub fn collect_missing_metric_diagnostics(
             }
             for (field, value) in [
                 ("croic", croic(stock)),
+                ("fcf_cagr", fcf_cagr(stock, 10)),
+                ("fcf_cagr_r2", fcf_cagr_r2(stock, 10)),
+                ("fcf_sma_cagr", fcf_sma_cagr(stock, 10, 3)),
                 ("metrics.pbr", metric(stock, "pbr")),
                 ("metrics.market_cap", metric(stock, "market_cap")),
             ] {
@@ -365,6 +374,15 @@ pub fn compute_all_metrics()
                 ),
                 ("has_preferred_shares".to_string(), preferred_share_value),
                 ("croic".to_string(), metric_value(croic(&stock))),
+                ("fcf_cagr".to_string(), metric_value(fcf_cagr(&stock, 10))),
+                (
+                    "fcf_cagr_r2".to_string(),
+                    metric_value(fcf_cagr_r2(&stock, 10)),
+                ),
+                (
+                    "fcf_sma_cagr".to_string(),
+                    metric_value(fcf_sma_cagr(&stock, 10, 3)),
+                ),
                 ("pbr".to_string(), metric_value(metric(&stock, "pbr"))),
                 (
                     "market_cap".to_string(),
@@ -383,7 +401,7 @@ pub enum PublicMetricValue {
     Text(String),
 }
 
-const PUBLIC_METRIC_PY_ORDER: [&str; 18] = [
+const PUBLIC_METRIC_PY_ORDER: [&str; 21] = [
     "price",
     "price_date",
     "net_cash_ratio",
@@ -400,6 +418,9 @@ const PUBLIC_METRIC_PY_ORDER: [&str; 18] = [
     "total_payout_ratio",
     "has_preferred_shares",
     "croic",
+    "fcf_cagr",
+    "fcf_cagr_r2",
+    "fcf_sma_cagr",
     "pbr",
     "market_cap",
 ];
@@ -591,6 +612,9 @@ fn valid_sources() -> HashSet<&'static str> {
         "net_cash_ratio",
         "fcf_yield_avg",
         "croic",
+        "fcf_cagr",
+        "fcf_cagr_r2",
+        "fcf_sma_cagr",
         "peg_trailing_5",
         "peg_blended_5y_actual_2f",
         "preferred_share_label",
@@ -601,6 +625,9 @@ fn resolve_numeric_value(stock: &Stock, source: &str) -> Option<f64> {
     match source {
         "fcf_yield_avg" => fcf_yield_avg(stock, 10),
         "croic" => croic(stock),
+        "fcf_cagr" => fcf_cagr(stock, 10),
+        "fcf_cagr_r2" => fcf_cagr_r2(stock, 10),
+        "fcf_sma_cagr" => fcf_sma_cagr(stock, 10, 3),
         "peg_trailing_5" => peg_trailing(stock, 5),
         "peg_blended_5y_actual_2f" => peg_blended_2f(stock, 5),
         _ => metric(stock, source),
@@ -655,6 +682,95 @@ fn resolve_free_cf(items: &ItemMap) -> Option<f64> {
             _ => None,
         }
     })
+}
+
+/// Simple linear regression y = α + βx (x = 0,1,...,n-1).
+/// Returns (slope β, R²). Returns None if fewer than 2 points or denominator is zero.
+fn linreg_slope_r2(y_values: &[f64]) -> Option<(f64, f64)> {
+    let n = y_values.len();
+    if n < 2 {
+        return None;
+    }
+    let n_f = n as f64;
+    let s_x = (0..n).map(|i| i as f64).sum::<f64>();
+    let s_y: f64 = y_values.iter().copied().sum();
+    let s_xx: f64 = (0..n).map(|i| (i as f64).powi(2)).sum();
+    let s_xy: f64 = (0..n)
+        .zip(y_values.iter().copied())
+        .map(|(i, y)| i as f64 * y)
+        .sum();
+    let s_yy: f64 = y_values.iter().map(|y| y * y).sum();
+    let denom = n_f * s_xx - s_x * s_x;
+    if denom == 0.0 {
+        return None;
+    }
+    let slope = (n_f * s_xy - s_x * s_y) / denom;
+    let denom_r2 = (n_f * s_xx - s_x * s_x) * (n_f * s_yy - s_y * s_y);
+    if denom_r2 <= 0.0 {
+        return Some((slope, 0.0));
+    }
+    let r2 = (n_f * s_xy - s_x * s_y).powi(2) / denom_r2;
+    Some((slope, r2))
+}
+
+/// Collect positive FCF values from cf_history (oldest first) for regression.
+fn collect_fcf_values(stock: &Stock, years: usize) -> Option<Vec<f64>> {
+    let history: Vec<f64> = stock
+        .cf_history
+        .iter()
+        .take(years)
+        .filter_map(|period| resolve_free_cf(&period.items))
+        .collect();
+    if history.len() < years {
+        return None;
+    }
+    Some(history.into_iter().rev().collect()) // oldest first
+}
+
+pub fn fcf_cagr(stock: &Stock, years: usize) -> Option<f64> {
+    let values = collect_fcf_values(stock, years)?;
+    if values.iter().any(|v| *v <= 0.0) {
+        return None;
+    }
+    let log_values: Vec<f64> = values.iter().map(|v| v.ln()).collect();
+    let (slope, _) = linreg_slope_r2(&log_values)?;
+    Some((slope.exp() - 1.0) * 100.0)
+}
+
+pub fn fcf_cagr_r2(stock: &Stock, years: usize) -> Option<f64> {
+    let values = collect_fcf_values(stock, years)?;
+    if values.iter().any(|v| *v <= 0.0) {
+        return None;
+    }
+    let log_values: Vec<f64> = values.iter().map(|v| v.ln()).collect();
+    let (_, r2) = linreg_slope_r2(&log_values)?;
+    Some(r2)
+}
+
+pub fn fcf_sma_cagr(stock: &Stock, years: usize, sma_window: usize) -> Option<f64> {
+    if sma_window < 1 {
+        return None;
+    }
+    let values = collect_fcf_values(stock, years)?;
+    if values.len() < sma_window {
+        return None;
+    }
+    let sma_count = values.len() - sma_window + 1;
+    if sma_count < 2 {
+        return None;
+    }
+    let mut sma_values = Vec::with_capacity(sma_count);
+    for i in 0..sma_count {
+        let avg: f64 = values[i..i + sma_window].iter().sum::<f64>() / sma_window as f64;
+        sma_values.push(avg);
+    }
+    let first = sma_values.first()?;
+    let last = sma_values.last()?;
+    if *first <= 0.0 || *last <= 0.0 {
+        return None;
+    }
+    let n_years = (sma_count - 1) as f64;
+    Some((last / first).powf(1.0 / n_years) - 1.0)
 }
 
 pub fn fcf_yield_avg(stock: &Stock, years: usize) -> Option<f64> {
@@ -975,6 +1091,9 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
             None => row.set_item("has_preferred_shares", py.None())?,
         }
         set_optional_float(py, &row, "croic", payload.croic)?;
+        set_optional_float(py, &row, "fcf_cagr", payload.fcf_cagr)?;
+        set_optional_float(py, &row, "fcf_cagr_r2", payload.fcf_cagr_r2)?;
+        set_optional_float(py, &row, "fcf_sma_cagr", payload.fcf_sma_cagr)?;
         rows.append(row)?;
     }
     Ok(rows.into())
@@ -1162,5 +1281,54 @@ mod tests {
                 ],
             }])
         );
+    }
+
+    #[test]
+    fn fcf_cagr_returns_positive_growth_for_linearly_increasing_fcf() {
+        let stock = sample_stock();
+        // cf_history: 10, 9, 8, ..., 1 (most recent first)
+        // oldest first: 1, 2, 3, ..., 10 → constant ~10% annual growth
+        let cagr = fcf_cagr(&stock, 10).expect("fcf_cagr should return a value");
+        assert!(cagr > 0.0, "cagr should be positive, got {cagr}");
+    }
+
+    #[test]
+    fn fcf_cagr_r2_is_high_for_consistent_growth() {
+        let stock = sample_stock();
+        let r2 = fcf_cagr_r2(&stock, 10).expect("fcf_cagr_r2 should return a value");
+        assert!(r2 > 0.9, "R² should be close to 1 for linear growth, got {r2}");
+    }
+
+    #[test]
+    fn fcf_sma_cagr_returns_positive_growth() {
+        let stock = sample_stock();
+        let sma = fcf_sma_cagr(&stock, 10, 3).expect("fcf_sma_cagr should return a value");
+        assert!(sma > 0.0, "sma_cagr should be positive, got {sma}");
+    }
+
+    #[test]
+    fn fcf_cagr_returns_none_for_negative_fcf() {
+        let mut stock = sample_stock();
+        // Insert a negative FCF value in the history
+        stock.cf_history[3].items.insert("free_cf".to_string(), Some(-5.0));
+        assert!(fcf_cagr(&stock, 10).is_none());
+        assert!(fcf_cagr_r2(&stock, 10).is_none());
+        // SMA CAGR should still work since it uses absolute averages
+        // (but first/last SMA could be negative → None)
+    }
+
+    #[test]
+    fn fcf_sma_cagr_returns_none_for_insufficient_data() {
+        let mut stock = sample_stock();
+        stock.cf_history.truncate(3); // Only 3 periods, need at least sma_window + 1 = 4
+        assert!(fcf_sma_cagr(&stock, 10, 3).is_none());
+    }
+
+    #[test]
+    fn linreg_slope_r2_perfect_linear() {
+        // y = 2x + 1 → slope = 2, R² = 1
+        let (slope, r2) = linreg_slope_r2(&[1.0, 3.0, 5.0, 7.0]).unwrap();
+        assert!((slope - 2.0).abs() < 1e-9, "slope should be 2, got {slope}");
+        assert!((r2 - 1.0).abs() < 1e-9, "R² should be 1, got {r2}");
     }
 }
