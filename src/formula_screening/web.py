@@ -212,4 +212,5 @@ def _serialize_stock(stock: dict) -> dict:
         "peg_blended_5y_actual_2f_status": peg_blended_result.status,
         "has_preferred_shares": preferred_share_flag(stock),
         "croic": croic_value,
+        "cf_history": stock.get("cf_history"),
     }
