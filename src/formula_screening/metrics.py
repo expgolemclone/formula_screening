@@ -15,8 +15,8 @@ def _pct(a: float | None, b: float | None) -> float | None:
 
 
 def _total_payout_ratio(
-    dividend_payment: float | None,
-    treasury_stock_purchase: float | None,
+    cf_history: list[tuple[str, dict[str, float | None]]],
+    dividend_history: list[tuple[str, dict[str, float | None]]],
     market_cap: float | None,
 ) -> float | None:
     if market_cap is None or market_cap <= 0:
@@ -24,11 +24,16 @@ def _total_payout_ratio(
 
     payout_total = 0.0
     has_payout = False
-    for value in (dividend_payment, treasury_stock_purchase):
-        if value is None:
-            continue
-        payout_total += abs(value)
-        has_payout = True
+    for _period, items in cf_history:
+        value = items.get("treasury_stock_purchase")
+        if value is not None:
+            payout_total += abs(value)
+            has_payout = True
+    for _period, items in dividend_history:
+        value = items.get("dividend_payment")
+        if value is not None:
+            payout_total += abs(value)
+            has_payout = True
     if not has_payout:
         return None
     return payout_total / market_cap * 100
@@ -38,6 +43,8 @@ def compute_metrics(
     financials: dict[str, dict[str, float | None]],
     price: float | None,
     shares_outstanding: int | None,
+    cf_history: list[tuple[str, dict[str, float | None]]] | None = None,
+    dividend_history: list[tuple[str, dict[str, float | None]]] | None = None,
 ) -> dict[str, float | None]:
     """Compute derived screening metrics from raw financial data.
 
@@ -45,6 +52,8 @@ def compute_metrics(
         financials: Nested dict {statement: {item_name: value}} from DB.
         price: Latest stock price from stock_db price data.
         shares_outstanding: Current shares outstanding from stock_db.stocks.
+        cf_history: Historical CF items for multi-year payout calculation.
+        dividend_history: Historical dividend items for multi-year payout calculation.
 
     Returns:
         Dict of metric_name -> value.
@@ -94,8 +103,8 @@ def compute_metrics(
     dps = financials.get("dividend", {}).get("dps")
     metrics["dividend_yield"] = _pct(dps, price)
     metrics["total_payout_ratio"] = _total_payout_ratio(
-        financials.get("dividend", {}).get("dividend_payment"),
-        cf.get("treasury_stock_purchase"),
+        cf_history or [],
+        dividend_history or [],
         market_cap,
     )
 

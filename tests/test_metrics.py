@@ -25,14 +25,23 @@ def _base_financials() -> dict:
         "cf": {
             "operating_cf": 8_000_000_000.0,
             "investing_cf": -3_000_000_000.0,
-            "treasury_stock_purchase": -1_000_000_000.0,
         },
-        "dividend": {"dps": 50.0, "dividend_payment": -2_000_000_000.0},
+        "dividend": {"dps": 50.0},
         "forecast": {
             "net_income_current": 7_000_000_000.0,
             "net_income_next": 8_000_000_000.0,
         },
     }
+
+
+def _base_history() -> tuple[list, list]:
+    cf_history = [
+        ("2025-03", {"treasury_stock_purchase": -1_000_000_000.0}),
+    ]
+    dividend_history = [
+        ("2025-03", {"dividend_payment": -2_000_000_000.0}),
+    ]
+    return cf_history, dividend_history
 
 
 def test_per_uses_current_forecast() -> None:
@@ -77,16 +86,21 @@ def test_net_cash_ratio_subtracts_current_and_non_current_liabilities() -> None:
 
 
 def test_total_payout_ratio_uses_dividends_and_treasury_stock_purchase() -> None:
-    metrics = compute_metrics(_base_financials(), price=1000.0, shares_outstanding=10_000_000)
+    cf_history, dividend_history = _base_history()
+    metrics = compute_metrics(
+        _base_financials(), price=1000.0, shares_outstanding=10_000_000,
+        cf_history=cf_history, dividend_history=dividend_history,
+    )
 
     assert metrics["total_payout_ratio"] == pytest.approx(30.0)
 
 
 def test_total_payout_ratio_allows_single_payout_source() -> None:
-    financials = _base_financials()
-    del financials["cf"]["treasury_stock_purchase"]
-
-    metrics = compute_metrics(financials, price=1000.0, shares_outstanding=10_000_000)
+    dividend_history = [("2025-03", {"dividend_payment": -2_000_000_000.0})]
+    metrics = compute_metrics(
+        _base_financials(), price=1000.0, shares_outstanding=10_000_000,
+        cf_history=[], dividend_history=dividend_history,
+    )
 
     assert metrics["total_payout_ratio"] == pytest.approx(20.0)
 
@@ -94,23 +108,46 @@ def test_total_payout_ratio_allows_single_payout_source() -> None:
 def test_total_payout_ratio_uses_market_cap_even_without_positive_net_income() -> None:
     financials = _base_financials()
     financials["pl"]["net_income"] = 0.0
-
-    metrics = compute_metrics(financials, price=1000.0, shares_outstanding=10_000_000)
+    cf_history, dividend_history = _base_history()
+    metrics = compute_metrics(
+        financials, price=1000.0, shares_outstanding=10_000_000,
+        cf_history=cf_history, dividend_history=dividend_history,
+    )
 
     assert metrics["total_payout_ratio"] == pytest.approx(30.0)
 
 
 def test_total_payout_ratio_none_without_payout_sources() -> None:
-    financials = _base_financials()
-    del financials["dividend"]["dividend_payment"]
-    del financials["cf"]["treasury_stock_purchase"]
-
-    metrics = compute_metrics(financials, price=1000.0, shares_outstanding=10_000_000)
+    metrics = compute_metrics(
+        _base_financials(), price=1000.0, shares_outstanding=10_000_000,
+        cf_history=[], dividend_history=[],
+    )
 
     assert metrics["total_payout_ratio"] is None
 
 
 def test_total_payout_ratio_none_without_positive_market_cap() -> None:
-    metrics = compute_metrics(_base_financials(), price=0.0, shares_outstanding=10_000_000)
+    cf_history, dividend_history = _base_history()
+    metrics = compute_metrics(
+        _base_financials(), price=0.0, shares_outstanding=10_000_000,
+        cf_history=cf_history, dividend_history=dividend_history,
+    )
 
     assert metrics["total_payout_ratio"] is None
+
+
+def test_total_payout_ratio_sums_multiple_years() -> None:
+    cf_history = [
+        ("2025-03", {"treasury_stock_purchase": -1_000_000_000.0}),
+        ("2024-03", {"treasury_stock_purchase": -800_000_000.0}),
+    ]
+    dividend_history = [
+        ("2025-03", {"dividend_payment": -2_000_000_000.0}),
+        ("2024-03", {"dividend_payment": -1_500_000_000.0}),
+    ]
+    metrics = compute_metrics(
+        _base_financials(), price=1000.0, shares_outstanding=10_000_000,
+        cf_history=cf_history, dividend_history=dividend_history,
+    )
+    # (1000+800+2000+1500) / 10000 * 100 = 53.0
+    assert metrics["total_payout_ratio"] == pytest.approx(53.0)

@@ -19,6 +19,7 @@ pub struct Stock {
     pub metrics: MetricMap,
     pub cf_history: Vec<HistoricalItems>,
     pub pl_history: Vec<HistoricalItems>,
+    pub dividend_history: Vec<HistoricalItems>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -157,7 +158,13 @@ pub fn load_strategy(path: &Path) -> Result<Strategy, String> {
 }
 
 pub fn build_stock(raw: ScreeningStock) -> Stock {
-    let metrics = compute_metrics(&raw.financials, raw.price, raw.shares_outstanding);
+    let metrics = compute_metrics(
+        &raw.financials,
+        raw.price,
+        raw.shares_outstanding,
+        &raw.cf_history,
+        &raw.dividend_history,
+    );
     Stock {
         ticker: raw.ticker,
         name: raw.name,
@@ -168,6 +175,7 @@ pub fn build_stock(raw: ScreeningStock) -> Stock {
         metrics,
         cf_history: raw.cf_history,
         pl_history: raw.pl_history,
+        dividend_history: raw.dividend_history,
     }
 }
 
@@ -204,7 +212,7 @@ pub fn run_screening_payload(
     return_all: bool,
 ) -> Result<Vec<ScreeningPayload>, String> {
     let strategy = load_strategy(strategy_path)?;
-    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(tickers, 10, 6)?;
+    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(tickers, 10, 6, 10)?;
     let stocks = raw_stocks.into_iter().map(build_stock).collect::<Vec<_>>();
     run_strategy_with_mode(&strategy, stocks, return_all)
         .iter()
@@ -218,7 +226,7 @@ pub fn run_screening_payload_with_diagnostics(
     return_all: bool,
 ) -> Result<ScreeningRunResult, String> {
     let strategy = load_strategy(strategy_path)?;
-    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(tickers, 10, 6)?;
+    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(tickers, 10, 6, 10)?;
     let stocks = raw_stocks.into_iter().map(build_stock).collect::<Vec<_>>();
     let diagnostics = collect_missing_metric_diagnostics(&stocks)?;
     let payload = run_strategy_with_mode(&strategy, stocks, return_all)
@@ -326,7 +334,7 @@ pub fn collect_missing_metric_diagnostics(
 
 pub fn compute_all_metrics()
 -> Result<HashMap<String, HashMap<String, Option<PublicMetricValue>>>, String> {
-    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(None, 10, 6)?;
+    let raw_stocks = stock_db_core::screening::load_default_screening_stocks(None, 10, 6, 10)?;
     let mut result = HashMap::new();
     for raw_stock in raw_stocks {
         if raw_stock.financials.is_empty() {
@@ -470,6 +478,8 @@ pub fn compute_metrics(
     financials: &StatementMap,
     price: Option<f64>,
     shares_outstanding: Option<i64>,
+    cf_history: &[HistoricalItems],
+    dividend_history: &[HistoricalItems],
 ) -> MetricMap {
     let empty = ItemMap::new();
     let pl = financials.get("pl").unwrap_or(&empty);
@@ -545,8 +555,8 @@ pub fn compute_metrics(
         (
             "total_payout_ratio".to_string(),
             total_payout_ratio(
-                item(dividend, "dividend_payment"),
-                item(cf, "treasury_stock_purchase"),
+                cf_history,
+                dividend_history,
                 market_cap,
             ),
         ),
@@ -678,8 +688,8 @@ fn pct(left: Option<f64>, right: Option<f64>) -> Option<f64> {
 }
 
 fn total_payout_ratio(
-    dividend_payment: Option<f64>,
-    treasury_stock_purchase: Option<f64>,
+    cf_history: &[HistoricalItems],
+    dividend_history: &[HistoricalItems],
     market_cap: Option<f64>,
 ) -> Option<f64> {
     let market_cap = market_cap?;
@@ -689,12 +699,17 @@ fn total_payout_ratio(
 
     let mut payout_total = 0.0;
     let mut has_payout = false;
-    for value in [dividend_payment, treasury_stock_purchase]
-        .into_iter()
-        .flatten()
-    {
-        payout_total += value.abs();
-        has_payout = true;
+    for items in cf_history {
+        if let Some(value) = items.items.get("treasury_stock_purchase").copied().flatten() {
+            payout_total += value.abs();
+            has_payout = true;
+        }
+    }
+    for items in dividend_history {
+        if let Some(value) = items.items.get("dividend_payment").copied().flatten() {
+            payout_total += value.abs();
+            has_payout = true;
+        }
     }
     has_payout.then_some(payout_total / market_cap * 100.0)
 }
@@ -1220,7 +1235,6 @@ mod tests {
                 "dividend".to_string(),
                 HashMap::from([
                     ("dps".to_string(), Some(50.0)),
-                    ("dividend_payment".to_string(), Some(-2_000_000_000.0)),
                 ]),
             ),
             (
@@ -1233,7 +1247,24 @@ mod tests {
                 ]),
             ),
         ]);
-        let metrics = compute_metrics(&financials, Some(1000.0), Some(10_000_000));
+        let cf_history: Vec<HistoricalItems> = (0..10)
+            .map(|year| {
+                let mut items = HashMap::new();
+                items.insert("free_cf".to_string(), Some(10.0 - year as f64));
+                if year == 0 {
+                    items.insert("treasury_stock_purchase".to_string(), Some(-1_000_000_000.0));
+                }
+                HistoricalItems {
+                    period: format!("20{:02}-03", 25 - year),
+                    items,
+                }
+            })
+            .collect();
+        let dividend_history = vec![HistoricalItems {
+            period: "2025-03".to_string(),
+            items: HashMap::from([("dividend_payment".to_string(), Some(-2_000_000_000.0))]),
+        }];
+        let metrics = compute_metrics(&financials, Some(1000.0), Some(10_000_000), &cf_history, &dividend_history);
         Stock {
             ticker: "1301".to_string(),
             name: "test".to_string(),
@@ -1242,12 +1273,7 @@ mod tests {
             shares_outstanding: Some(10_000_000),
             financials,
             metrics,
-            cf_history: (0..10)
-                .map(|year| HistoricalItems {
-                    period: format!("20{:02}-03", 25 - year),
-                    items: HashMap::from([("free_cf".to_string(), Some(10.0 - year as f64))]),
-                })
-                .collect(),
+            cf_history,
             pl_history: vec![
                 ("2025-03", 200.0),
                 ("2024-03", 180.0),
@@ -1262,6 +1288,7 @@ mod tests {
                 items: HashMap::from([("eps".to_string(), Some(eps))]),
             })
             .collect(),
+            dividend_history,
         }
     }
 

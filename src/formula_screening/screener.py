@@ -307,7 +307,11 @@ def _stock_dict_from_api(record: stock_db_api.ScreeningStock) -> dict:
     price_date = record["price_date"]
     shares = record["shares_outstanding"]
 
-    metrics = compute_metrics(financials, price, shares)
+    metrics = compute_metrics(
+        financials, price, shares,
+        cf_history=record["cf_history"],
+        dividend_history=record["dividend_history"],
+    )
 
     return {
         "ticker": record["ticker"],
@@ -323,6 +327,7 @@ def _stock_dict_from_api(record: stock_db_api.ScreeningStock) -> dict:
         "metrics": metrics,
         "cf_history": record["cf_history"],
         "pl_history": record["pl_history"],
+        "dividend_history": record["dividend_history"],
     }
 
 
@@ -347,6 +352,7 @@ def _screen_chunk(
             MAGIC["screening"]["peg_trailing_years"] + 1,
             MAGIC["screening"]["peg_blended_actual_years"] + 1,
         ),
+        payout_periods=MAGIC["screening"]["payout_years"],
     ):
         try:
             stock: dict = _stock_dict_from_api(record)

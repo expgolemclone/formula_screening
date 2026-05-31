@@ -36,6 +36,7 @@ class ScreeningStock(TypedDict):
     financials: dict[str, dict[str, float | None]]
     cf_history: list[tuple[str, dict[str, float | None]]]
     pl_history: list[tuple[str, dict[str, float | None]]]
+    dividend_history: list[tuple[str, dict[str, float | None]]]
 
 
 def _stock_db_path() -> Path:
@@ -93,6 +94,7 @@ def load_screening_stocks(
     *,
     fcf_periods: int = 10,
     pl_periods: int = 6,
+    payout_periods: int = 10,
 ) -> list[ScreeningStock]:
     ensure_prices_fresh()
     conn = get_connection(_stock_db_path())
@@ -113,6 +115,7 @@ def load_screening_stocks(
                     "financials": get_financial_dict(conn, ticker),
                     "cf_history": get_historical_items(conn, ticker, "cf", fcf_periods),
                     "pl_history": get_historical_items(conn, ticker, "pl", pl_periods),
+                    "dividend_history": get_historical_items(conn, ticker, "dividend", payout_periods),
                 }
             )
         return result
