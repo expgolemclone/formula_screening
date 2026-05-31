@@ -157,7 +157,7 @@ const COLUMNS: ColumnDef[] = [
   },
   {
     key: "fcf_cagr_r2",
-    header: "R\u00B2",
+    header: "r2",
     type: "num",
     title: "FCF指数回帰トレンドの決定係数（1に近いほど安定成長）",
     toggleable: true,
