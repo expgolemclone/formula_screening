@@ -12,7 +12,8 @@
   {
     "header": "ncr",
     "source": "net_cash_ratio",
-    "type": "num",
+    "type": "metric_num",
+    "metric_key": "net_cash_ratio",
     "format": "{:.2f}",
     "decimals": 2,
     "title": "(流動資産 - 棚卸資産 + 有価証券 * 0.7 - 流動負債 - 固定負債) / 時価総額",
@@ -32,7 +33,8 @@
   {
     "header": "payout%",
     "source": "total_payout_ratio",
-    "type": "num",
+    "type": "metric_num",
+    "metric_key": "total_payout_ratio",
     "format": "{:.1f}",
     "decimals": 1,
     "suffix": "%",
