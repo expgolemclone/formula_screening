@@ -173,6 +173,7 @@ def test_rust_payload_preserves_python_screening_contract(
         "peg_blended_5y_actual_2f",
         "peg_blended_5y_actual_2f_status",
         "has_preferred_shares",
+        "cf_history",
     }
     assert set(row["metrics"]) == {
         "net_cash_ratio",
@@ -188,6 +189,9 @@ def test_rust_payload_preserves_python_screening_contract(
     assert row["name"] == "pass stock"
     assert row["price"] == pytest.approx(10.0)
     assert row["price_date"] == get_previous_jpx_business_day().isoformat()
+    assert row["cf_history"]
+    assert row["cf_history"][0]["period"] == "2025-03"
+    assert row["cf_history"][0]["items"]["free_cf"] == pytest.approx(1_000.0)
     assert row["metrics"]["market_cap"] == pytest.approx(10_000.0)
     assert row["metrics"]["net_cash_ratio"] == pytest.approx(4.07)
     assert row["metrics"]["per"] == pytest.approx(5.0)
