@@ -85,23 +85,17 @@ def test_net_cash_fcf_columns_include_peg_trailing_5() -> None:
 
     columns = dict(strategy.columns(_build_stock(-1.0)))
 
-    assert "peg_trailing_5" in columns
-    assert "peg_blended_5y_2f" in columns
+    assert "peg_5y" in columns
+    assert "peg_5y2f" in columns
 
 
-def test_net_cash_fcf_columns_show_preferred_share_flag() -> None:
+def test_net_cash_fcf_columns_include_preferred_share_as_web_bool() -> None:
+    """preferred_share is now a web-only bool column, not a CLI text column."""
     strategy = load_strategy(_STRATEGY_PATH)
 
-    assert dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=1.0)))["優先株"] == "yes"
-    assert dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=0.0)))["優先株"] == "no"
-    assert dict(strategy.columns(_build_stock(-1.0)))["優先株"] == "-"
-
-
-def test_net_cash_fcf_columns_reject_invalid_preferred_share_flag() -> None:
-    strategy = load_strategy(_STRATEGY_PATH)
-
-    with pytest.raises(ValueError, match="bs.has_preferred_shares"):
-        strategy.columns(_build_stock(-1.0, has_preferred_shares=2.0))
+    # CLI columns should not include the web-only bool column
+    columns = dict(strategy.columns(_build_stock(-1.0, has_preferred_shares=1.0)))
+    assert "優先株" not in columns
 
 
 def test_load_strategy_rejects_python_strategy_files(tmp_path: Path) -> None:

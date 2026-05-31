@@ -22,41 +22,171 @@ operator = ">="
 threshold = 0.05
 
 [[columns]]
-header = "FCF_10Y%"
+source = "code"
+type = "code"
+
+[[columns]]
+source = "name"
+type = "name"
+
+[[columns]]
+header = "ncr"
+source = "net_cash_ratio"
+format = "{:.2f}"
+type = "num"
+decimals = 2
+title = "(流動資産 - 棚卸資産 + 有価証券 * 0.7 - 流動負債 - 固定負債) / 時価総額"
+toggleable = false
+
+[[columns]]
+header = "fcf_10y%"
 source = "fcf_yield_avg"
 format = "{:.2%}"
+type = "num"
+decimals = 2
+scale = 100
+suffix = "%"
+title = "平均(過去10期の各期FCF / 現在の時価総額) * 100"
+toggleable = true
 
 [[columns]]
-header = "CROIC%"
-source = "croic"
-format = "{:.2%}"
-
-[[columns]]
-header = "FCF_CAGR%"
-source = "fcf_cagr"
+header = "payout%"
+source = "total_payout_ratio"
 format = "{:.1f}"
+type = "num"
+decimals = 1
+suffix = "%"
+title = "(|配当支払額| + |自己株式取得額|) / 時価総額 * 100"
+toggleable = true
 
 [[columns]]
-header = "FCF_CAGR_R2"
-source = "fcf_cagr_r2"
-format = "{:.2f}"
-
-[[columns]]
-header = "FCF_SMA_CAGR%"
-source = "fcf_sma_cagr"
-format = "{:.1f}"
-
-[[columns]]
-header = "peg_trailing_5"
+header = "peg_5y"
 source = "peg_trailing_5"
 format = "{:.2f}"
+type = "peg"
+status_source = "peg_trailing_5_status"
+decimals = 2
+title = "実績PER / 過去5年EPS CAGR[%]"
+toggleable = true
 
 [[columns]]
-header = "peg_blended_5y_2f"
+header = "peg_5y2f"
 source = "peg_blended_5y_actual_2f"
 format = "{:.2f}"
+type = "peg"
+status_source = "peg_blended_5y_actual_2f_status"
+decimals = 2
+title = "来期予想PER / (過去5年実績+2期予想)EPS CAGR[%]"
+toggleable = true
 
 [[columns]]
-header = "優先株"
-source = "preferred_share_label"
+header = "div%"
+source = "dividend_yield"
+format = "{:.2f}"
+type = "metric_num"
+metric_key = "dividend_yield"
+decimals = 2
+title = "1株配当 / 株価 * 100"
+toggleable = true
+
+[[columns]]
+header = "pref"
+source = "has_preferred_shares"
 format = "{}"
+type = "bool"
+title = "優先株"
+toggleable = true
+
+[[columns]]
+header = "equity%"
+source = "equity_ratio"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "equity_ratio"
+decimals = 1
+suffix = "%"
+title = "自己資本 / 総資産 * 100"
+toggleable = true
+
+[[columns]]
+header = "pbr"
+source = "pbr"
+format = "{:.2f}"
+type = "metric_num"
+metric_key = "pbr"
+decimals = 2
+title = "時価総額 / 純資産"
+toggleable = true
+
+[[columns]]
+header = "croic%"
+source = "croic"
+format = "{:.2%}"
+type = "num"
+decimals = 2
+scale = 100
+suffix = "%"
+title = "FCF / (自己資本 + 有利子負債) * 100"
+toggleable = true
+
+[[columns]]
+header = "fcf_cagr%"
+source = "fcf_cagr"
+format = "{:.1f}"
+type = "num"
+decimals = 1
+title = "指数回帰によるFCF年平均成長率（%）"
+toggleable = true
+
+[[columns]]
+header = "r2"
+source = "fcf_cagr_r2"
+format = "{:.2f}"
+type = "num"
+decimals = 2
+title = "FCF指数回帰トレンドの決定係数（1に近いほど安定成長）"
+toggleable = true
+
+[[columns]]
+header = "sma_cagr%"
+source = "fcf_sma_cagr"
+format = "{:.1f}"
+type = "num"
+decimals = 1
+title = "3年移動平均ベースFCF年平均成長率（%）"
+toggleable = true
+
+[[columns]]
+source = "price"
+type = "price"
+toggleable = true
+
+[[columns]]
+header = "per_a"
+source = "per_actual"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "per_actual"
+decimals = 1
+title = "時価総額 / 実績純利益"
+toggleable = true
+
+[[columns]]
+header = "per_c"
+source = "per"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "per"
+decimals = 1
+title = "時価総額 / 四季報今期予想純利益"
+toggleable = true
+
+[[columns]]
+header = "per_n"
+source = "per_next"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "per_next"
+decimals = 1
+title = "時価総額 / 四季報来期予想純利益"
+toggleable = true

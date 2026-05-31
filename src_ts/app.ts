@@ -1,12 +1,12 @@
 /**
  * formula_screening – app.ts
  *
- * Flat-mode configuration for StockTable.
- * Fetches screening results from /api/screening and renders them.
+ * TOML-driven column configuration for StockTable.
+ * Fetches column-config.json to build columns dynamically,
+ * then fetches screening results and renders them.
  */
 
 import type { ColumnDef, MetricThreshold, StockTableConfig } from "@stock-web-ui/runtime";
-import type { MetricColSpec } from "@stock-web-ui/columns";
 
 type StockTableApi = {
   init: (config: StockTableConfig) => void;
@@ -17,17 +17,51 @@ type StockColumnsApi = {
   codeCol: ColumnDef;
   nameCol: ColumnDef;
   priceCol: ColumnDef;
-  peg5yCol: ColumnDef;
-  peg5y2fCol: ColumnDef;
   fcfYCol: ColumnDef;
   croicCol: ColumnDef;
+  peg5yCol: ColumnDef;
+  peg5y2fCol: ColumnDef;
   NCR_SPEC: MetricColSpec;
   PER_A_SPEC: MetricColSpec;
   PER_C_SPEC: MetricColSpec;
   PER_N_SPEC: MetricColSpec;
   EQUITY_SPEC: MetricColSpec;
   COMMON_THRESHOLDS: Record<string, MetricThreshold>;
+  METRIC_TITLES: Record<string, string>;
 };
+
+interface MetricColSpec {
+  key: string;
+  header: string;
+  title?: string;
+  decimals: number;
+  scale?: number;
+  suffix?: string;
+}
+
+type Row = Record<string, unknown>;
+
+/* ------------------------------------------------------------------ */
+/*  Column config type (from TOML via JSON)                            */
+/* ------------------------------------------------------------------ */
+
+interface ColumnConfig {
+  source: string;
+  header?: string;
+  type?: string;
+  format?: string;
+  decimals?: number;
+  scale?: number;
+  suffix?: string;
+  title?: string;
+  toggleable?: boolean;
+  status_source?: string;
+  metric_key?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Module getters                                                     */
+/* ------------------------------------------------------------------ */
 
 function getStockTable(): StockTableApi {
   const runtime: StockTableApi | undefined = (
@@ -52,155 +86,192 @@ function getStockColumns(): StockColumnsApi {
 const StockTable: StockTableApi = getStockTable();
 const C: StockColumnsApi = getStockColumns();
 const IS_GITHUB_PAGES: boolean = location.hostname === "expgolemclone.github.io";
-const PAYOUT_SPEC: MetricColSpec = {
-  key: "total_payout_ratio",
-  header: "payout%",
-  decimals: 1,
-  suffix: "%",
+
+/* ------------------------------------------------------------------ */
+/*  PEG status labels                                                  */
+/* ------------------------------------------------------------------ */
+
+const PEG_STATUS_LABELS: Record<string, string> = {
+  missing_input: "miss",
+  insufficient_history: "hist",
+  non_positive_per: "per-",
+  non_positive_eps: "eps-",
+  non_positive_growth: "growth-",
 };
 
+const PEG_STATUS_LEGEND = "未算出: miss=入力欠損 / hist=履歴不足 / per-=PER<=0 / eps-=EPS<=0 / growth-=成長率<=0";
+
 /* ------------------------------------------------------------------ */
-/*  Metrics accessor (nested under row.metrics)                        */
+/*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function metricsAccessor(key: string): (row: Record<string, unknown>) => number | null {
-  return (row: Record<string, unknown>): number | null => {
+function toNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metricsAccessor(key: string): (row: Row) => number | null {
+  return (row: Row): number | null => {
     const metrics = row.metrics as Record<string, unknown> | undefined;
-    return (metrics?.[key] as number) ?? null;
+    return toNumber(metrics?.[key]);
   };
 }
 
 /* ------------------------------------------------------------------ */
-/*  Column definitions                                                 */
+/*  Dynamic column builders                                           */
 /* ------------------------------------------------------------------ */
 
-const COLUMNS: ColumnDef[] = [
-  C.codeCol,
-  C.nameCol,
-  C.buildMetricCol(C.NCR_SPEC, metricsAccessor("net_cash_ratio")),
-  C.fcfYCol,
-  C.buildMetricCol(PAYOUT_SPEC, metricsAccessor("total_payout_ratio")),
-  C.peg5yCol,
-  C.peg5y2fCol,
-  {
-    key: "dividend_yield",
-    header: "div%",
+function buildNumCol(cfg: ColumnConfig): ColumnDef {
+  const source = cfg.source;
+  const scale = cfg.scale ?? 1;
+  const decimals = cfg.decimals ?? 1;
+  const suffix = cfg.suffix ?? "";
+
+  return {
+    key: source,
+    header: cfg.header ?? source,
     type: "num",
-    title: "1株配当 / 株価 * 100",
-    toggleable: true,
-    render: (row): string => {
-      const metrics = row.metrics as Record<string, unknown> | undefined;
-      const v = metrics?.dividend_yield as number | null | undefined;
-      return v !== null && v !== undefined ? v.toFixed(2) : "-";
+    title: cfg.title,
+    toggleable: cfg.toggleable ?? true,
+    render: (row: Row): string => {
+      const raw = toNumber(row[source]);
+      if (raw === null) return "-";
+      const v = raw * scale;
+      return v.toFixed(decimals) + suffix;
     },
-    sortValue: (row): number | null => {
-      const metrics = row.metrics as Record<string, unknown> | undefined;
-      return (metrics?.dividend_yield as number) ?? null;
+    sortValue: (row: Row): number | null => {
+      const raw = toNumber(row[source]);
+      return raw !== null ? raw * scale : null;
     },
-  },
-  {
-    key: "has_preferred_shares",
-    header: "pref",
+  };
+}
+
+function buildMetricNumCol(cfg: ColumnConfig): ColumnDef {
+  const metricKey = cfg.metric_key ?? cfg.source;
+  const scale = cfg.scale ?? 1;
+  const decimals = cfg.decimals ?? 1;
+  const suffix = cfg.suffix ?? "";
+
+  return {
+    key: cfg.source,
+    header: cfg.header ?? cfg.source,
+    type: "num",
+    title: cfg.title,
+    toggleable: cfg.toggleable ?? true,
+    render: (row: Row): string => {
+      const raw = metricsAccessor(metricKey)(row);
+      if (raw === null) return "-";
+      const v = raw * scale;
+      return v.toFixed(decimals) + suffix;
+    },
+    sortValue: (row: Row): number | null => {
+      const raw = metricsAccessor(metricKey)(row);
+      return raw !== null ? raw * scale : null;
+    },
+  };
+}
+
+function buildPegCol(cfg: ColumnConfig): ColumnDef {
+  const source = cfg.source;
+  const statusSource = cfg.status_source ?? source + "_status";
+  const decimals = cfg.decimals ?? 2;
+  const resolvedTitle = cfg.title ?? C.METRIC_TITLES[source];
+
+  return {
+    key: source,
+    header: cfg.header ?? source,
+    type: "num",
+    title: resolvedTitle ? `${resolvedTitle} (${PEG_STATUS_LEGEND})` : undefined,
+    toggleable: cfg.toggleable ?? true,
+    render: (row: Row): string => {
+      const value = toNumber(row[source]);
+      if (value !== null) {
+        return value.toFixed(decimals);
+      }
+      const status = typeof row[statusSource] === "string" ? (row[statusSource] as string) : null;
+      if (status === null || status === "ok") return "-";
+      return PEG_STATUS_LABELS[status] ?? "-";
+    },
+    sortValue: (row: Row): number | null => toNumber(row[source]),
+  };
+}
+
+function buildBoolCol(cfg: ColumnConfig): ColumnDef {
+  const source = cfg.source;
+
+  return {
+    key: source,
+    header: cfg.header ?? source,
     type: "text",
-    title: "優先株",
-    toggleable: true,
-    render: (row): string => {
-      const value = row.has_preferred_shares;
-      if (value === true) {
-        return "yes";
-      }
-      if (value === false) {
-        return "no";
-      }
+    title: cfg.title,
+    toggleable: cfg.toggleable ?? true,
+    render: (row: Row): string => {
+      const value = row[source];
+      if (value === true) return "yes";
+      if (value === false) return "no";
       return "-";
     },
-    sortValue: (row): number | null => {
-      const value = row.has_preferred_shares;
-      if (value === true) {
-        return 1;
-      }
-      if (value === false) {
-        return 0;
-      }
+    sortValue: (row: Row): number | null => {
+      const value = row[source];
+      if (value === true) return 1;
+      if (value === false) return 0;
       return null;
     },
-  },
-  C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
-  {
-    key: "pbr",
-    header: "pbr",
-    type: "num",
-    title: "時価総額 / 純資産",
-    toggleable: true,
-    render: (row): string => {
-      const metrics = row.metrics as Record<string, unknown> | undefined;
-      const v = metrics?.pbr as number | null | undefined;
-      return v !== null && v !== undefined ? v.toFixed(2) : "-";
-    },
-    sortValue: (row): number | null => {
-      const metrics = row.metrics as Record<string, unknown> | undefined;
-      return (metrics?.pbr as number) ?? null;
-    },
-  },
-  C.croicCol,
-  {
-    key: "fcf_cagr",
-    header: "fcf_cagr%",
-    type: "num",
-    title: "指数回帰によるFCF年平均成長率（%）",
-    toggleable: true,
-    render: (row): string => {
-      const v = row.fcf_cagr as number | null | undefined;
-      return v !== null && v !== undefined ? v.toFixed(1) : "-";
-    },
-    sortValue: (row): number | null => (row.fcf_cagr as number) ?? null,
-  },
-  {
-    key: "fcf_cagr_r2",
-    header: "r2",
-    type: "num",
-    title: "FCF指数回帰トレンドの決定係数（1に近いほど安定成長）",
-    toggleable: true,
-    render: (row): string => {
-      const v = row.fcf_cagr_r2 as number | null | undefined;
-      return v !== null && v !== undefined ? v.toFixed(2) : "-";
-    },
-    sortValue: (row): number | null => (row.fcf_cagr_r2 as number) ?? null,
-  },
-  {
-    key: "fcf_sma_cagr",
-    header: "sma_cagr%",
-    type: "num",
-    title: "3年移動平均ベースFCF年平均成長率（%）",
-    toggleable: true,
-    render: (row): string => {
-      const v = row.fcf_sma_cagr as number | null | undefined;
-      return v !== null && v !== undefined ? v.toFixed(1) : "-";
-    },
-    sortValue: (row): number | null => (row.fcf_sma_cagr as number) ?? null,
-  },
-  C.priceCol,
-  C.buildMetricCol(C.PER_A_SPEC, metricsAccessor("per_actual")),
-  C.buildMetricCol(C.PER_C_SPEC, metricsAccessor("per")),
-  C.buildMetricCol(C.PER_N_SPEC, metricsAccessor("per_next")),
-];
+  };
+}
+
+function buildColumnsFromConfig(configs: ColumnConfig[]): ColumnDef[] {
+  return configs.map(cfg => {
+    switch (cfg.type) {
+      case "code": return C.codeCol;
+      case "name": return C.nameCol;
+      case "price": return C.priceCol;
+      case "num": return buildNumCol(cfg);
+      case "metric_num": return buildMetricNumCol(cfg);
+      case "peg": return buildPegCol(cfg);
+      case "bool": return buildBoolCol(cfg);
+      default: throw new Error(`Unknown column type: ${cfg.type}`);
+    }
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Thresholds                                                         */
+/* ------------------------------------------------------------------ */
 
 const METRIC_THRESHOLDS: Record<string, MetricThreshold> = {
   ...C.COMMON_THRESHOLDS,
-  pbr: { good: (v): boolean => v < 0.5 },
-  dividend_yield: { good: (v): boolean => v >= 4 },
+  pbr: { good: (v: number): boolean => v < 0.5 },
+  dividend_yield: { good: (v: number): boolean => v >= 4 },
 };
 
 /* ------------------------------------------------------------------ */
 /*  Bootstrap                                                          */
 /* ------------------------------------------------------------------ */
 
-function bootstrap(): void {
+async function bootstrap(): Promise<void> {
+  const columnConfigUrl = IS_GITHUB_PAGES
+    ? "assets/column-config.json"
+    : "/api/column-config";
+
+  let columns: ColumnDef[];
+
+  try {
+    const response = await fetch(columnConfigUrl, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+    const configs: ColumnConfig[] = await response.json();
+    columns = buildColumnsFromConfig(configs);
+  } catch (err) {
+    console.error("Failed to load column config, using defaults:", err);
+    columns = [C.codeCol, C.nameCol];
+  }
+
   StockTable.init({
     defaultTitle: "Formula Screening",
     dataUrl: IS_GITHUB_PAGES ? "assets/screening.json" : "/api/screening",
     metadataUrl: IS_GITHUB_PAGES ? "assets/stock-price-meta.json" : "/api/stock-price-meta",
-    columns: COLUMNS,
+    columns,
     metricThresholds: METRIC_THRESHOLDS,
     defaultSortKey: "net_cash_ratio",
     defaultSortDirection: "desc",
@@ -210,7 +281,7 @@ function bootstrap(): void {
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bootstrap);
+  document.addEventListener("DOMContentLoaded", () => void bootstrap());
 } else {
-  bootstrap();
+  void bootstrap();
 }

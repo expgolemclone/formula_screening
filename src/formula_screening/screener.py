@@ -172,11 +172,17 @@ def _load_filter(raw_filter: dict) -> tuple[FilterSource, str, FilterThreshold]:
     return source, op, threshold
 
 
-def _load_column(raw_column: dict) -> tuple[str, ColumnSource, str]:
-    header = raw_column["header"]
+_WEB_ONLY_TYPES = frozenset({"code", "name", "price", "bool"})
+
+
+def _load_column(raw_column: dict) -> tuple[str, ColumnSource, str] | None:
+    # Built-in web columns are not CLI data sources — skip
+    if raw_column.get("type") in _WEB_ONLY_TYPES:
+        return None
+    header = raw_column.get("header", "")
     source = _require_source(raw_column["source"])
-    fmt = raw_column["format"]
-    if not all(isinstance(value, str) for value in (header, fmt)):
+    fmt = raw_column.get("format", "{}")
+    if not isinstance(header, str) or not isinstance(fmt, str):
         msg = f"Strategy column values must be strings: {raw_column!r}"
         raise TypeError(msg)
     return header, source, fmt
@@ -250,11 +256,12 @@ def load_strategy(path: Path) -> Strategy:
         msg = f"Strategy columns must be a list: {columns_raw!r}"
         raise TypeError(msg)
 
+    loaded_columns = [_load_column(c) for c in columns_raw]
     return Strategy(
         required_sources=tuple(required_sources_raw),
         filters=tuple(_load_filter(raw_filter) for raw_filter in filters_raw),
         sort=sort,
-        column_specs=tuple(_load_column(raw_column) for raw_column in columns_raw),
+        column_specs=tuple(col for col in loaded_columns if col is not None),
     )
 
 

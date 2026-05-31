@@ -45,11 +45,28 @@ pub enum Threshold {
     Range([f64; 2]),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Column {
-    pub header: String,
+    pub header: Option<String>,
     pub source: String,
-    pub format: String,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub column_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decimals: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suffix: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub toggleable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metric_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,6 +99,7 @@ pub struct MissingMetricDiagnostic {
 pub struct ScreeningRunResult {
     pub payload: Vec<ScreeningPayload>,
     pub diagnostics: Vec<MissingMetricDiagnostic>,
+    pub column_config: Vec<Column>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -208,6 +226,7 @@ pub fn run_screening_payload_with_diagnostics(
     Ok(ScreeningRunResult {
         payload,
         diagnostics,
+        column_config: strategy.columns,
     })
 }
 
@@ -578,8 +597,11 @@ fn validate_strategy(strategy: &Strategy) -> Result<(), String> {
     {
         return Err(format!("unknown strategy source: {sort}"));
     }
+    let web_only_sources: HashSet<&str> = HashSet::from(["code", "name", "price", "has_preferred_shares"]);
     for column in &strategy.columns {
-        if !valid_sources.contains(column.source.as_str()) {
+        if !web_only_sources.contains(column.source.as_str())
+            && !valid_sources.contains(column.source.as_str())
+        {
             return Err(format!("unknown strategy source: {}", column.source));
         }
     }
@@ -1112,6 +1134,16 @@ fn run_result_to_py(py: Python<'_>, result: &ScreeningRunResult) -> PyResult<PyO
         diagnostics.append(item)?;
     }
     row.set_item("diagnostics", diagnostics)?;
+
+    let column_config_json = serde_json::to_string(&result.column_config).map_err(|err| {
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "failed to serialize column_config: {err}"
+        ))
+    })?;
+    let json_module = py.import("json")?;
+    let column_config_py = json_module.call_method1("loads", (column_config_json,))?;
+    row.set_item("column_config", column_config_py)?;
+
     Ok(row.into())
 }
 

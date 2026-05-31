@@ -21,6 +21,9 @@ _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "asset
 _GH_PAGES_METADATA_JSON = (
     Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "stock-price-meta.json"
 )
+_GH_PAGES_COLUMN_CONFIG_JSON = (
+    Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "column-config.json"
+)
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -149,7 +152,13 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
     save_screening_payload_json(payload, _GH_PAGES_JSON)
     save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON)
-    _auto_push_json([_GH_PAGES_JSON, _GH_PAGES_METADATA_JSON], "Update screening data")
+    column_config: list[dict] = result.get("column_config", [])
+    if column_config:
+        _save_column_config_json(column_config, _GH_PAGES_COLUMN_CONFIG_JSON)
+    _auto_push_json(
+        [_GH_PAGES_JSON, _GH_PAGES_METADATA_JSON, _GH_PAGES_COLUMN_CONFIG_JSON],
+        "Update screening data",
+    )
 
     if args.json:
         save_screening_payload_json(payload, Path(args.json))
@@ -157,6 +166,14 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         return
 
     serve_screening_payload(payload)
+
+
+def _save_column_config_json(column_config: list[dict], path: Path) -> None:
+    """Save column configuration as a static JSON file for GitHub Pages."""
+    import json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(column_config, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def main() -> None:
