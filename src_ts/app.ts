@@ -55,7 +55,6 @@ const IS_GITHUB_PAGES: boolean = location.hostname === "expgolemclone.github.io"
 const PAYOUT_SPEC: MetricColSpec = {
   key: "total_payout_ratio",
   header: "payout%",
-  title: "(|配当支払額| + |自己株式取得額|) / 時価総額 * 100",
   decimals: 1,
   suffix: "%",
 };
