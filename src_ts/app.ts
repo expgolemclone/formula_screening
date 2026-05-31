@@ -251,7 +251,7 @@ const METRIC_THRESHOLDS: Record<string, MetricThreshold> = {
 async function bootstrap(): Promise<void> {
   const columnConfigUrl = IS_GITHUB_PAGES
     ? "assets/column-config.json"
-    : "/api/column-config";
+    : "/assets/column-config.json";
 
   let columns: ColumnDef[];
 

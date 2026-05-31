@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use formula_screening_core::run_screening_payload;
+use formula_screening_core::run_screening_payload_with_diagnostics;
 use serde_json::Value;
 use stock_web_ui_core::{BrowserEntry, IndexPage, ServeConfig, ServerConfig};
 
@@ -37,19 +37,22 @@ fn main() -> Result<(), String> {
 
 fn run_screen(args: ScreenArgs) -> Result<(), String> {
     let tickers = resolve_ticker_args(&args.ticker)?;
-    let payload = run_screening_payload(&args.strategy, tickers.as_deref(), false)?;
-    println!("{} stocks matched", payload.len());
+    let result = run_screening_payload_with_diagnostics(&args.strategy, tickers.as_deref(), false)?;
+    println!("{} stocks matched", result.payload.len());
 
     let default_json = PathBuf::from("docs/assets/screening.json");
-    write_json(&default_json, &payload)?;
+    write_json(&default_json, &result.payload)?;
+
+    let column_config_json = PathBuf::from("docs/assets/column-config.json");
+    write_json(&column_config_json, &result.column_config)?;
 
     if let Some(path) = args.json {
-        write_json(&path, &payload)?;
+        write_json(&path, &result.payload)?;
         println!("Saved to {}", path.display());
         return Ok(());
     }
 
-    let serve_payload = serde_json::to_value(payload).map_err(|err| err.to_string())?;
+    let serve_payload = serde_json::to_value(result.payload).map_err(|err| err.to_string())?;
     serve_local(serve_payload)
 }
 

@@ -177,7 +177,7 @@ const METRIC_THRESHOLDS = {
 async function bootstrap() {
     const columnConfigUrl = IS_GITHUB_PAGES
         ? "assets/column-config.json"
-        : "/api/column-config";
+        : "/assets/column-config.json";
     let columns;
     try {
         const response = await fetch(columnConfigUrl, { cache: "no-store" });
