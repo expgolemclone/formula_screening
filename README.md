@@ -7,5 +7,32 @@
 
 ---
 
+## 開発環境
+
+Nix dev shell は必須ではない。標準の開発環境はローカルツールと `.venv` を使う。
+
+必要なツール:
+
+- `uv`
+- Python 3.13
+- Rust/Cargo
+- Node.js/npm
+- `git-lfs`（LFS 対象ファイルを扱う場合）
+
+初期化:
+
+```sh
+uv sync --frozen --extra dev
+npm ci
+```
+
+検証:
+
+```sh
+UV_PROJECT_ENVIRONMENT=.venv uv run --frozen pytest
+cargo test --locked
+npx tsc --noEmit
+```
+
 > [!NOTE]
 > 仕様は[ARCHITECTURE.md](ARCHITECTURE.md)を参照
