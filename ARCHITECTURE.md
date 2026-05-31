@@ -113,9 +113,9 @@ current_assets - inventories + investment_securities * 0.7
 
 - `fcf.py`: 過去 N 期の平均 FCF Yield を計算する。既定の N は `config/magic_numbers.toml` の `fcf_years = 10`。各期の FCF を現在の時価総額で割る。ライブスクリーニング向けであり、バックテスト用途には先読みバイアスがある。上場年数が N 年未満で有効期間数が不足する銘柄では警告ログを出力し `None` を返す（スクリプト全体は継続する）。10期未満の原因確認は `scripts/diagnose_fcf_history.py` を使う。この診断は `formula_screening.stock_db_compat.get_screening_tickers()` と `formula_screening.stock_db_compat.load_screening_stocks()` だけを使い、CF期間数不足、期間内の `free_cf` / `operating_cf` / `investing_cf` 欠損、CF履歴なしを分類する。
 - `fcf_growth.py`: 過去 N 期の FCF 成長率を 3 つの方法で計算する。回帰対象年数は `fcf_years`、SMA 窓幅は `fcf_sma_window`（既定 3）。
-  - `fcf_cagr`: 過去 N 期の FCF に自然対数をとり最小二乗法で線形回帰した傾き β から `e^β - 1` を%で返す。全期間 FCF > 0 が必要。FCF に 0 以下が含まれる、またはデータ不足の場合は `None`。
-  - `fcf_cagr_r2`: 同一回帰の決定係数 R² を返す（0.0〜1.0）。1 に近いほど安定した成長トレンド。
-  - `fcf_sma_cagr`: 各年の `fcf_sma_window` 年単純移動平均を計算し、最初と最後の SMA 値で CAGR を求める。マイナス FCF を含む企業でも SMA 両端が正なら計算可能。データ不足（N < sma_window + 1）の場合は `None`。
+  - `fcf_cagr`: 全期間 FCF > 0 の場合は自然対数をとり最小二乗法で線形回帰した傾き β から `e^β - 1` を%で返す（指数回帰 CAGR）。FCF に 0 以下が含まれる場合は線形回帰の傾きを平均絶対 FCF で正規化した `slope / |mean| * 100` にフォールバックする。データ不足または平均がゼロの場合は `None`。
+  - `fcf_cagr_r2`: 全期間 FCF > 0 の場合は指数回帰の決定係数 R² を返す。FCF に 0 以下が含まれる場合は生値の線形回帰 R² にフォールバックする（0.0〜1.0）。1 に近いほど安定した成長トレンド。
+  - `fcf_sma_cagr`: 各年の `fcf_sma_window` 年単純移動平均を計算し、最初と最後の SMA 値で成長率を求める。SMA 両端が正の場合は複利 CAGR `(last/first)^(1/n) - 1`、それ以外は線形成長率 `(last-first)/|first|/n` にフォールバックする。first が 0 またはデータ不足の場合は `None`。
 - `croic.py`: `free_cf / (stockholders_equity + interest_bearing_debt)` を計算する。`interest_bearing_debt` は `metrics.py` が `short_term_debt + long_term_debt` から導出する。これらのBS項目は `stock_db` の XBRL パーサーが JPPFS（`ShortTermLoansPayable` / `LongTermLoansPayable` 等）と IFRS（`BorrowingsNCLIFRS` / `BondsAndBorrowingsCLIFRS` 等）の両概念名を候補としてパースする。
 - `peg.py`: Trailing PEG（`peg_trailing`）と独自ブレンドPEG（`peg_blended_2f`）を計算する。いずれもEPSベース（`stock_db` の `compute_eps` で計算済み）。
   - `peg_trailing(stock, years)`: 過去 `years` 期間の実績EPS CAGRを使い、`per_actual / CAGR%` を返す。5年CAGRには6データポイントが必要（`years+1`）。
