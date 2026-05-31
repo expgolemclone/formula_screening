@@ -78,12 +78,8 @@ const COLUMNS: ColumnDef[] = [
   C.codeCol,
   C.nameCol,
   C.buildMetricCol(C.NCR_SPEC, metricsAccessor("net_cash_ratio")),
-  C.priceCol,
-  C.buildMetricCol(C.PER_A_SPEC, metricsAccessor("per_actual")),
-  C.buildMetricCol(C.PER_C_SPEC, metricsAccessor("per")),
-  C.buildMetricCol(C.PER_N_SPEC, metricsAccessor("per_next")),
   C.fcfYCol,
-  C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
+  C.buildMetricCol(PAYOUT_SPEC, metricsAccessor("total_payout_ratio")),
   C.peg5yCol,
   C.peg5y2fCol,
   {
@@ -102,7 +98,6 @@ const COLUMNS: ColumnDef[] = [
       return (metrics?.dividend_yield as number) ?? null;
     },
   },
-  C.buildMetricCol(PAYOUT_SPEC, metricsAccessor("total_payout_ratio")),
   {
     key: "has_preferred_shares",
     header: "pref",
@@ -130,7 +125,7 @@ const COLUMNS: ColumnDef[] = [
       return null;
     },
   },
-  C.croicCol,
+  C.buildMetricCol(C.EQUITY_SPEC, metricsAccessor("equity_ratio")),
   {
     key: "pbr",
     header: "pbr",
@@ -147,6 +142,11 @@ const COLUMNS: ColumnDef[] = [
       return (metrics?.pbr as number) ?? null;
     },
   },
+  C.croicCol,
+  C.priceCol,
+  C.buildMetricCol(C.PER_A_SPEC, metricsAccessor("per_actual")),
+  C.buildMetricCol(C.PER_C_SPEC, metricsAccessor("per")),
+  C.buildMetricCol(C.PER_N_SPEC, metricsAccessor("per_next")),
 ];
 
 const METRIC_THRESHOLDS: Record<string, MetricThreshold> = {
