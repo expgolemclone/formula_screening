@@ -749,23 +749,36 @@ fn collect_fcf_values(stock: &Stock, years: usize) -> Option<Vec<f64>> {
     Some(history.into_iter().rev().collect()) // oldest first
 }
 
-pub fn fcf_cagr(stock: &Stock, years: usize) -> Option<f64> {
-    let values = collect_fcf_values(stock, years)?;
-    if values.iter().any(|v| *v <= 0.0) {
+/// Linear regression growth rate: slope / |mean| * 100.
+/// Returns None if mean is zero (degenerate case).
+fn linear_cagr_pct(values: &[f64]) -> Option<f64> {
+    let (slope, _) = linreg_slope_r2(values)?;
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    if mean == 0.0 {
         return None;
     }
-    let log_values: Vec<f64> = values.iter().map(|v| v.ln()).collect();
-    let (slope, _) = linreg_slope_r2(&log_values)?;
-    Some((slope.exp() - 1.0) * 100.0)
+    Some((slope / mean.abs()) * 100.0)
+}
+
+pub fn fcf_cagr(stock: &Stock, years: usize) -> Option<f64> {
+    let values = collect_fcf_values(stock, years)?;
+    if values.iter().all(|v| *v > 0.0) {
+        let log_values: Vec<f64> = values.iter().map(|v| v.ln()).collect();
+        let (slope, _) = linreg_slope_r2(&log_values)?;
+        Some((slope.exp() - 1.0) * 100.0)
+    } else {
+        linear_cagr_pct(&values)
+    }
 }
 
 pub fn fcf_cagr_r2(stock: &Stock, years: usize) -> Option<f64> {
     let values = collect_fcf_values(stock, years)?;
-    if values.iter().any(|v| *v <= 0.0) {
-        return None;
-    }
-    let log_values: Vec<f64> = values.iter().map(|v| v.ln()).collect();
-    let (_, r2) = linreg_slope_r2(&log_values)?;
+    let reg_values: Vec<f64> = if values.iter().all(|v| *v > 0.0) {
+        values.iter().map(|v| v.ln()).collect()
+    } else {
+        values
+    };
+    let (_, r2) = linreg_slope_r2(&reg_values)?;
     Some(r2)
 }
 
@@ -786,13 +799,16 @@ pub fn fcf_sma_cagr(stock: &Stock, years: usize, sma_window: usize) -> Option<f6
         let avg: f64 = values[i..i + sma_window].iter().sum::<f64>() / sma_window as f64;
         sma_values.push(avg);
     }
-    let first = sma_values.first()?;
-    let last = sma_values.last()?;
-    if *first <= 0.0 || *last <= 0.0 {
-        return None;
-    }
+    let first = *sma_values.first()?;
+    let last = *sma_values.last()?;
     let n_years = (sma_count - 1) as f64;
-    Some((last / first).powf(1.0 / n_years) - 1.0)
+    if first > 0.0 && last > 0.0 {
+        Some((last / first).powf(1.0 / n_years) - 1.0)
+    } else if first == 0.0 {
+        None
+    } else {
+        Some((last - first) / first.abs() / n_years)
+    }
 }
 
 pub fn fcf_yield_avg(stock: &Stock, years: usize) -> Option<f64> {
@@ -1339,14 +1355,15 @@ mod tests {
     }
 
     #[test]
-    fn fcf_cagr_returns_none_for_negative_fcf() {
+    fn fcf_cagr_returns_linear_fallback_for_negative_fcf() {
         let mut stock = sample_stock();
         // Insert a negative FCF value in the history
         stock.cf_history[3].items.insert("free_cf".to_string(), Some(-5.0));
-        assert!(fcf_cagr(&stock, 10).is_none());
-        assert!(fcf_cagr_r2(&stock, 10).is_none());
-        // SMA CAGR should still work since it uses absolute averages
-        // (but first/last SMA could be negative → None)
+        // Should now use linear regression fallback instead of returning None
+        let cagr = fcf_cagr(&stock, 10);
+        assert!(cagr.is_some(), "fcf_cagr should return a value even with negative FCF");
+        let r2 = fcf_cagr_r2(&stock, 10);
+        assert!(r2.is_some(), "fcf_cagr_r2 should return a value even with negative FCF");
     }
 
     #[test]

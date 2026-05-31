@@ -55,32 +55,57 @@ def _linreg_slope_r2(y_values: list[float]) -> tuple[float, float] | None:
     return (slope, r2)
 
 
-def fcf_cagr(stock: dict, years: int = _FCF_YEARS) -> float | None:
-    """Exponential regression CAGR of FCF over *years* periods (%).
+def _linear_cagr_pct(values: list[float]) -> float | None:
+    """Linear regression growth rate: slope / |mean| * 100.
 
-    All FCF values must be positive. Returns None if any FCF <= 0 or insufficient data.
+    Returns None if mean is zero (degenerate case).
     """
-    values = _collect_fcf_values(stock, years)
-    if values is None or any(v <= 0 for v in values):
-        return None
-    log_values = [math.log(v) for v in values]
-    result = _linreg_slope_r2(log_values)
+    result = _linreg_slope_r2(values)
     if result is None:
         return None
     slope, _ = result
-    return (math.exp(slope) - 1) * 100
+    mean = sum(values) / len(values)
+    if mean == 0.0:
+        return None
+    return (slope / abs(mean)) * 100
+
+
+def fcf_cagr(stock: dict, years: int = _FCF_YEARS) -> float | None:
+    """CAGR of FCF over *years* periods (%).
+
+    When all FCF values are positive, uses exponential regression (compound CAGR).
+    When any FCF <= 0, falls back to linear regression growth rate (slope / |mean| * 100).
+    Returns None if insufficient data.
+    """
+    values = _collect_fcf_values(stock, years)
+    if values is None:
+        return None
+    if all(v > 0 for v in values):
+        log_values = [math.log(v) for v in values]
+        result = _linreg_slope_r2(log_values)
+        if result is None:
+            return None
+        slope, _ = result
+        return (math.exp(slope) - 1) * 100
+    return _linear_cagr_pct(values)
 
 
 def fcf_cagr_r2(stock: dict, years: int = _FCF_YEARS) -> float | None:
-    """R² of exponential regression on FCF (0.0 ~ 1.0).
+    """R² of FCF regression (0.0 ~ 1.0).
 
-    Returns None if any FCF <= 0 or insufficient data.
+    When all FCF values are positive, uses exponential regression R².
+    When any FCF <= 0, uses linear regression R² on raw values.
+    Returns None if insufficient data.
     """
     values = _collect_fcf_values(stock, years)
-    if values is None or any(v <= 0 for v in values):
+    if values is None:
         return None
-    log_values = [math.log(v) for v in values]
-    result = _linreg_slope_r2(log_values)
+    if all(v > 0 for v in values):
+        log_values = [math.log(v) for v in values]
+        reg_values = log_values
+    else:
+        reg_values = values
+    result = _linreg_slope_r2(reg_values)
     if result is None:
         return None
     _, r2 = result
@@ -106,7 +131,10 @@ def fcf_sma_cagr(
         sma_values.append(avg)
     first = sma_values[0]
     last = sma_values[-1]
-    if first <= 0 or last <= 0:
-        return None
     n_years = sma_count - 1
-    return (last / first) ** (1.0 / n_years) - 1
+    if first > 0 and last > 0:
+        return (last / first) ** (1.0 / n_years) - 1
+    # Fallback for non-positive SMA endpoints: linear growth rate
+    if first == 0.0:
+        return None
+    return (last - first) / abs(first) / n_years
