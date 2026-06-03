@@ -15,29 +15,53 @@
     "type": "metric_num",
     "format": "{:.2f}",
     "decimals": 2,
-    "title": "Net Cash Ratio",
+    "title": "(流動資産 - 棚卸資産 + 有価証券 * 0.7 - 流動負債 - 固定負債) / 時価総額",
     "toggleable": false,
-    "metric_key": "net_cash_ratio"
+    "metric_key": "net_cash_ratio",
+    "stock_link": "shikiho"
   },
   {
-    "header": "per_c",
-    "source": "per",
+    "header": "fcf_10y%",
+    "source": "fcf_yield_avg",
+    "type": "num",
+    "format": "{:.2%}",
+    "decimals": 2,
+    "scale": 100.0,
+    "suffix": "%",
+    "title": "平均(過去10期の各期FCF / 現在の時価総額) * 100",
+    "toggleable": true,
+    "stock_link": "buffett_code"
+  },
+  {
+    "header": "payout%",
+    "source": "total_payout_ratio",
     "type": "metric_num",
     "format": "{:.1f}",
     "decimals": 1,
-    "title": "今期PER",
+    "suffix": "%",
+    "title": "(|配当支払額| + |自己株式取得額|) / 時価総額 * 100",
     "toggleable": true,
-    "metric_key": "per"
+    "metric_key": "total_payout_ratio"
   },
   {
-    "header": "pbr",
-    "source": "pbr",
-    "type": "metric_num",
+    "header": "peg_5y",
+    "source": "peg_trailing_5",
+    "type": "peg",
     "format": "{:.2f}",
     "decimals": 2,
-    "title": "PBR",
+    "title": "実績PER / 過去5年EPS CAGR[%]",
     "toggleable": true,
-    "metric_key": "pbr"
+    "status_source": "peg_trailing_5_status"
+  },
+  {
+    "header": "peg_5y2f",
+    "source": "peg_blended_5y_actual_2f",
+    "type": "peg",
+    "format": "{:.2f}",
+    "decimals": 2,
+    "title": "来期予想PER / (過去5年実績+2期予想)EPS CAGR[%]",
+    "toggleable": true,
+    "status_source": "peg_blended_5y_actual_2f_status"
   },
   {
     "header": "div%",
@@ -45,14 +69,111 @@
     "type": "metric_num",
     "format": "{:.2f}",
     "decimals": 2,
-    "title": "配当利回り",
+    "title": "1株配当 / 株価 * 100",
     "toggleable": true,
     "metric_key": "dividend_yield"
+  },
+  {
+    "header": "pref",
+    "source": "has_preferred_shares",
+    "type": "bool",
+    "format": "{}",
+    "title": "優先株",
+    "toggleable": true
+  },
+  {
+    "header": "equity%",
+    "source": "equity_ratio",
+    "type": "metric_num",
+    "format": "{:.1f}",
+    "decimals": 1,
+    "suffix": "%",
+    "title": "自己資本 / 総資産 * 100",
+    "toggleable": true,
+    "metric_key": "equity_ratio"
+  },
+  {
+    "header": "pbr",
+    "source": "pbr",
+    "type": "metric_num",
+    "format": "{:.2f}",
+    "decimals": 2,
+    "title": "時価総額 / 純資産",
+    "toggleable": true,
+    "metric_key": "pbr"
+  },
+  {
+    "header": "croic%",
+    "source": "croic",
+    "type": "num",
+    "format": "{:.2%}",
+    "decimals": 2,
+    "scale": 100.0,
+    "suffix": "%",
+    "title": "FCF / (自己資本 + 有利子負債) * 100",
+    "toggleable": true
+  },
+  {
+    "header": "fcf_cagr%",
+    "source": "fcf_cagr",
+    "type": "num",
+    "format": "{:.1f}",
+    "decimals": 1,
+    "title": "指数回帰によるFCF年平均成長率（%）",
+    "toggleable": true
+  },
+  {
+    "header": "r2",
+    "source": "fcf_cagr_r2",
+    "type": "num",
+    "format": "{:.2f}",
+    "decimals": 2,
+    "title": "FCF指数回帰トレンドの決定係数（1に近いほど安定成長）",
+    "toggleable": true
+  },
+  {
+    "header": "sma_cagr%",
+    "source": "fcf_sma_cagr",
+    "type": "num",
+    "format": "{:.1f}",
+    "decimals": 1,
+    "title": "3年移動平均ベースFCF年平均成長率（%）",
+    "toggleable": true
   },
   {
     "header": null,
     "source": "price",
     "type": "price",
     "toggleable": true
+  },
+  {
+    "header": "per_a",
+    "source": "per_actual",
+    "type": "metric_num",
+    "format": "{:.1f}",
+    "decimals": 1,
+    "title": "時価総額 / 実績純利益",
+    "toggleable": true,
+    "metric_key": "per_actual"
+  },
+  {
+    "header": "per_c",
+    "source": "per",
+    "type": "metric_num",
+    "format": "{:.1f}",
+    "decimals": 1,
+    "title": "時価総額 / 四季報今期予想純利益",
+    "toggleable": true,
+    "metric_key": "per"
+  },
+  {
+    "header": "per_n",
+    "source": "per_next",
+    "type": "metric_num",
+    "format": "{:.1f}",
+    "decimals": 1,
+    "title": "時価総額 / 四季報来期予想純利益",
+    "toggleable": true,
+    "metric_key": "per_next"
   }
 ]
