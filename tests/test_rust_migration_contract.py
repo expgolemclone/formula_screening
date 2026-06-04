@@ -59,6 +59,7 @@ def _insert_screening_stock(
             "investment_securities": 1_000.0,
             "total_assets": 100_000.0,
             "stockholders_equity": 60_000.0,
+            "retained_earnings": 7_000.0,
             "total_equity": 60_000.0,
             "short_term_debt": 1_000.0,
             "long_term_debt": 2_000.0,
@@ -173,6 +174,9 @@ def test_rust_payload_preserves_python_screening_contract(
         "peg_blended_5y_actual_2f",
         "peg_blended_5y_actual_2f_status",
         "has_preferred_shares",
+        "has_potential_equity",
+        "potential_common_shares",
+        "has_unquantified_potential_equity",
         "cf_history",
     }
     assert set(row["metrics"]) == {
@@ -183,6 +187,7 @@ def test_rust_payload_preserves_python_screening_contract(
         "pbr",
         "dividend_yield",
         "total_payout_ratio",
+        "retained_earnings_ratio",
         "equity_ratio",
         "market_cap",
     }
@@ -200,6 +205,7 @@ def test_rust_payload_preserves_python_screening_contract(
     assert row["metrics"]["pbr"] == pytest.approx(1 / 6)
     assert row["metrics"]["dividend_yield"] == pytest.approx(10.0)
     assert row["metrics"]["total_payout_ratio"] == pytest.approx(6.0)
+    assert row["metrics"]["retained_earnings_ratio"] == pytest.approx(0.7)
     assert row["metrics"]["equity_ratio"] == pytest.approx(60.0)
     assert row["fcf_yield_avg"] is not None
     assert row["croic"] is not None
@@ -210,6 +216,9 @@ def test_rust_payload_preserves_python_screening_contract(
     assert row["peg_blended_5y_actual_2f"] is not None
     assert row["peg_blended_5y_actual_2f_status"] == "ok"
     assert row["has_preferred_shares"] is True
+    assert row["has_potential_equity"] is None
+    assert row["potential_common_shares"] is None
+    assert row["has_unquantified_potential_equity"] is False
 
     all_payload = run_screening_payload_py(
         str(_STRATEGY_PATH),
@@ -281,29 +290,14 @@ def test_rust_payload_marks_negative_peg_growth_separately(tmp_path: Path, monke
             "2021-03": 120.0,
             "2020-03": 130.0,
         }.items():
-            conn.execute(
-                """
-                UPDATE financial_items
-                SET value = ?
-                WHERE ticker = '3333'
-                  AND period = ?
-                  AND statement = 'pl'
-                  AND item_name = 'eps'
-                """,
-                (eps, period),
-            )
-        conn.execute(
-            """
-            UPDATE financial_items
-            SET value = CASE item_name
-                WHEN 'eps_current' THEN 70.0
-                WHEN 'eps_next' THEN 60.0
-                ELSE value
-            END
-            WHERE ticker = '3333'
-              AND statement = 'forecast'
-              AND item_name IN ('eps_current', 'eps_next')
-            """
+            _upsert_items(conn, "3333", period, "pl", {"eps": eps})
+        _upsert_items(
+            conn,
+            "3333",
+            "26.3",
+            "forecast",
+            {"eps_current": 70.0, "eps_next": 60.0},
+            source="shikiho",
         )
         conn.commit()
     finally:

@@ -81,6 +81,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
                 "pbr": 0.5,
                 "dividend_yield": 2.0,
                 "total_payout_ratio": 30.0,
+                "retained_earnings_ratio": 0.4,
                 "equity_ratio": 60.0,
                 "market_cap": 10000.0,
                 "free_cf": 10.0,
@@ -100,6 +101,12 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
             },
             "cf_history": [],
             "bs": {"stockholders_equity": 100.0, "has_preferred_shares": 1.0},
+            "potential_equity_summary": {
+                "has_potential_equity": True,
+                "total_potential_common_shares": 10_000.0,
+                "has_unquantified_terms": True,
+                "instrument_types": ["share_acquisition_right"],
+            },
         }
     )
 
@@ -112,8 +119,12 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
     assert payload["metrics"]["per_actual"] == 10.0
     assert payload["metrics"]["per_next"] == 6.0
     assert payload["metrics"]["total_payout_ratio"] == 30.0
+    assert payload["metrics"]["retained_earnings_ratio"] == 0.4
     assert payload["price_date"] == "2026-05-20"
     assert payload["has_preferred_shares"] is True
+    assert payload["has_potential_equity"] is True
+    assert payload["potential_common_shares"] == 10_000.0
+    assert payload["has_unquantified_potential_equity"] is True
 
 
 def test_serialize_stock_preserves_missing_preferred_share_flag() -> None:
@@ -131,6 +142,12 @@ def test_serialize_stock_preserves_missing_preferred_share_flag() -> None:
             "forecast": {},
             "cf_history": [],
             "bs": {},
+            "potential_equity_summary": {
+                "has_potential_equity": None,
+                "total_potential_common_shares": None,
+                "has_unquantified_terms": False,
+                "instrument_types": [],
+            },
         }
     )
 

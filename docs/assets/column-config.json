@@ -82,6 +82,31 @@
     "toggleable": true
   },
   {
+    "header": "dil",
+    "source": "has_potential_equity",
+    "type": "bool",
+    "format": "{}",
+    "title": "潜在株式",
+    "toggleable": true
+  },
+  {
+    "header": "dil_sh",
+    "source": "potential_common_shares",
+    "type": "num",
+    "format": "{:.0f}",
+    "decimals": 0,
+    "title": "潜在株式の普通株換算増加数",
+    "toggleable": true
+  },
+  {
+    "header": "dil_unk",
+    "source": "has_unquantified_potential_equity",
+    "type": "bool",
+    "format": "{}",
+    "title": "潜在株式に未数値化の条項あり",
+    "toggleable": true
+  },
+  {
     "header": "equity%",
     "source": "equity_ratio",
     "type": "metric_num",

@@ -37,6 +37,7 @@ class ScreeningStock(TypedDict):
     cf_history: list[tuple[str, dict[str, float | None]]]
     pl_history: list[tuple[str, dict[str, float | None]]]
     dividend_history: list[tuple[str, dict[str, float | None]]]
+    potential_equity_summary: dict[str, object]
 
 
 def _stock_db_path() -> Path:
@@ -116,6 +117,7 @@ def load_screening_stocks(
                     "cf_history": get_historical_items(conn, ticker, "cf", fcf_periods),
                     "pl_history": get_historical_items(conn, ticker, "pl", pl_periods),
                     "dividend_history": get_historical_items(conn, ticker, "dividend", payout_periods),
+                    "potential_equity_summary": _get_potential_equity_summary(conn, ticker),
                 }
             )
         return result
@@ -174,3 +176,37 @@ def get_latest_balance_sheet(
         if row["period"] == period and row["statement"] == "bs"
     }
     return period, bs, None
+
+
+def _get_potential_equity_summary(conn, ticker: str) -> dict[str, object]:
+    rows = conn.execute(
+        """
+        SELECT period, instrument_type, potential_common_shares
+        FROM potential_equity_terms
+        WHERE ticker = ? AND source = 'edinet_xbrl'
+        ORDER BY period DESC, instrument_type, instrument_name
+        """,
+        (ticker,),
+    ).fetchall()
+    if not rows:
+        return {
+            "has_potential_equity": None,
+            "total_potential_common_shares": None,
+            "has_unquantified_terms": False,
+            "instrument_types": [],
+        }
+    latest_period = max(str(row["period"]) for row in rows)
+    latest_rows = [row for row in rows if str(row["period"]) == latest_period]
+    quantified = [
+        row["potential_common_shares"]
+        for row in latest_rows
+        if row["potential_common_shares"] is not None
+    ]
+    return {
+        "has_potential_equity": True,
+        "total_potential_common_shares": sum(quantified) if quantified else None,
+        "has_unquantified_terms": any(
+            row["potential_common_shares"] is None for row in latest_rows
+        ),
+        "instrument_types": sorted({str(row["instrument_type"]) for row in latest_rows}),
+    }

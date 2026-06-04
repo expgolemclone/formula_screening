@@ -4,7 +4,9 @@ use std::path::Path;
 
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
-use stock_db_core::screening::{HistoricalItems, ItemMap, ScreeningStock, StatementMap};
+use stock_db_core::screening::{
+    HistoricalItems, ItemMap, PotentialEquitySummary, ScreeningStock, StatementMap,
+};
 
 pub type MetricMap = HashMap<String, Option<f64>>;
 
@@ -20,6 +22,7 @@ pub struct Stock {
     pub cf_history: Vec<HistoricalItems>,
     pub pl_history: Vec<HistoricalItems>,
     pub dividend_history: Vec<HistoricalItems>,
+    pub potential_equity_summary: PotentialEquitySummary,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -91,6 +94,9 @@ pub struct ScreeningPayload {
     pub peg_blended_5y_actual_2f: Option<f64>,
     pub peg_blended_5y_actual_2f_status: String,
     pub has_preferred_shares: Option<bool>,
+    pub has_potential_equity: Option<bool>,
+    pub potential_common_shares: Option<f64>,
+    pub has_unquantified_potential_equity: bool,
     pub croic: Option<f64>,
     pub fcf_cagr: Option<f64>,
     pub fcf_cagr_r2: Option<f64>,
@@ -121,6 +127,7 @@ pub struct PublicMetrics {
     pub equity_ratio: Option<f64>,
     pub dividend_yield: Option<f64>,
     pub total_payout_ratio: Option<f64>,
+    pub retained_earnings_ratio: Option<f64>,
     pub pbr: Option<f64>,
     pub market_cap: Option<f64>,
 }
@@ -183,6 +190,7 @@ pub fn build_stock(raw: ScreeningStock) -> Stock {
         cf_history: raw.cf_history,
         pl_history: raw.pl_history,
         dividend_history: raw.dividend_history,
+        potential_equity_summary: raw.potential_equity_summary,
     }
 }
 
@@ -264,6 +272,7 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
             equity_ratio: metric(stock, "equity_ratio"),
             dividend_yield: metric(stock, "dividend_yield"),
             total_payout_ratio: metric(stock, "total_payout_ratio"),
+            retained_earnings_ratio: metric(stock, "retained_earnings_ratio"),
             pbr: metric(stock, "pbr"),
             market_cap: metric(stock, "market_cap"),
         },
@@ -273,6 +282,9 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
         peg_blended_5y_actual_2f: peg_blended.value,
         peg_blended_5y_actual_2f_status: peg_blended.status.as_str().to_string(),
         has_preferred_shares: preferred_share_flag(stock)?,
+        has_potential_equity: stock.potential_equity_summary.has_potential_equity,
+        potential_common_shares: stock.potential_equity_summary.total_potential_common_shares,
+        has_unquantified_potential_equity: stock.potential_equity_summary.has_unquantified_terms,
         croic: croic(stock),
         fcf_cagr: fcf_cagr(stock, 10),
         fcf_cagr_r2: fcf_cagr_r2(stock, 10),
@@ -311,6 +323,10 @@ pub fn collect_missing_metric_diagnostics(
                 (
                     "metrics.total_payout_ratio",
                     metric(stock, "total_payout_ratio"),
+                ),
+                (
+                    "metrics.retained_earnings_ratio",
+                    metric(stock, "retained_earnings_ratio"),
                 ),
             ] {
                 if value.is_none() {
@@ -357,6 +373,10 @@ pub fn compute_all_metrics()
         }
         let stock = build_stock(raw_stock);
         let preferred_share_value = preferred_share_flag(&stock)?.map(PublicMetricValue::Bool);
+        let potential_equity_value = stock
+            .potential_equity_summary
+            .has_potential_equity
+            .map(PublicMetricValue::Bool);
         let peg_trailing = peg_trailing_result(&stock, 5);
         let peg_blended = peg_blended_2f_result(&stock, 5);
         result.insert(
@@ -416,7 +436,22 @@ pub fn compute_all_metrics()
                     "total_payout_ratio".to_string(),
                     metric_value(metric(&stock, "total_payout_ratio")),
                 ),
+                (
+                    "retained_earnings_ratio".to_string(),
+                    metric_value(metric(&stock, "retained_earnings_ratio")),
+                ),
                 ("has_preferred_shares".to_string(), preferred_share_value),
+                ("has_potential_equity".to_string(), potential_equity_value),
+                (
+                    "potential_common_shares".to_string(),
+                    metric_value(stock.potential_equity_summary.total_potential_common_shares),
+                ),
+                (
+                    "has_unquantified_potential_equity".to_string(),
+                    Some(PublicMetricValue::Bool(
+                        stock.potential_equity_summary.has_unquantified_terms,
+                    )),
+                ),
                 ("croic".to_string(), metric_value(croic(&stock))),
                 ("fcf_cagr".to_string(), metric_value(fcf_cagr(&stock, 10))),
                 (
@@ -445,7 +480,7 @@ pub enum PublicMetricValue {
     Text(String),
 }
 
-const PUBLIC_METRIC_PY_ORDER: [&str; 21] = [
+const PUBLIC_METRIC_PY_ORDER: [&str; 25] = [
     "price",
     "price_date",
     "net_cash_ratio",
@@ -460,7 +495,11 @@ const PUBLIC_METRIC_PY_ORDER: [&str; 21] = [
     "peg_blended_5y_actual_2f_status",
     "dividend_yield",
     "total_payout_ratio",
+    "retained_earnings_ratio",
     "has_preferred_shares",
+    "has_potential_equity",
+    "potential_common_shares",
+    "has_unquantified_potential_equity",
     "croic",
     "fcf_cagr",
     "fcf_cagr_r2",
@@ -514,6 +553,7 @@ pub fn compute_metrics(
     let net_income = item(pl, "net_income");
     let total_assets = item(bs, "total_assets");
     let stockholders_equity = item(bs, "stockholders_equity");
+    let retained_earnings = item(bs, "retained_earnings");
     let total_equity = item(bs, "total_equity");
     let total_debt = item(bs, "total_debt");
     let gross_profit = match (revenue, item(pl, "cost_of_revenue")) {
@@ -569,11 +609,11 @@ pub fn compute_metrics(
         ),
         (
             "total_payout_ratio".to_string(),
-            total_payout_ratio(
-                cf_history,
-                dividend_history,
-                market_cap,
-            ),
+            total_payout_ratio(cf_history, dividend_history, market_cap),
+        ),
+        (
+            "retained_earnings_ratio".to_string(),
+            safe_div(retained_earnings, market_cap),
         ),
         ("gross_margin".to_string(), pct(gross_profit, revenue)),
         (
@@ -624,7 +664,15 @@ fn validate_strategy(strategy: &Strategy) -> Result<(), String> {
     {
         return Err(format!("unknown strategy source: {sort}"));
     }
-    let web_only_sources: HashSet<&str> = HashSet::from(["code", "name", "price", "has_preferred_shares"]);
+    let web_only_sources: HashSet<&str> = HashSet::from([
+        "code",
+        "name",
+        "price",
+        "has_preferred_shares",
+        "has_potential_equity",
+        "potential_common_shares",
+        "has_unquantified_potential_equity",
+    ]);
     for column in &strategy.columns {
         if !web_only_sources.contains(column.source.as_str())
             && !valid_sources.contains(column.source.as_str())
@@ -644,6 +692,7 @@ fn valid_sources() -> HashSet<&'static str> {
         "pbr",
         "dividend_yield",
         "total_payout_ratio",
+        "retained_earnings_ratio",
         "gross_margin",
         "operating_margin",
         "ordinary_margin",
@@ -715,7 +764,12 @@ fn total_payout_ratio(
     let mut payout_total = 0.0;
     let mut has_payout = false;
     for items in cf_history {
-        if let Some(value) = items.items.get("treasury_stock_purchase").copied().flatten() {
+        if let Some(value) = items
+            .items
+            .get("treasury_stock_purchase")
+            .copied()
+            .flatten()
+        {
             payout_total += value.abs();
             has_payout = true;
         }
@@ -1139,6 +1193,12 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
             "total_payout_ratio",
             payload.metrics.total_payout_ratio,
         )?;
+        set_optional_float(
+            py,
+            &metrics,
+            "retained_earnings_ratio",
+            payload.metrics.retained_earnings_ratio,
+        )?;
         set_optional_float(py, &metrics, "pbr", payload.metrics.pbr)?;
         set_optional_float(py, &metrics, "market_cap", payload.metrics.market_cap)?;
         row.set_item("metrics", metrics)?;
@@ -1160,6 +1220,20 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
             Some(value) => row.set_item("has_preferred_shares", value)?,
             None => row.set_item("has_preferred_shares", py.None())?,
         }
+        match payload.has_potential_equity {
+            Some(value) => row.set_item("has_potential_equity", value)?,
+            None => row.set_item("has_potential_equity", py.None())?,
+        }
+        set_optional_float(
+            py,
+            &row,
+            "potential_common_shares",
+            payload.potential_common_shares,
+        )?;
+        row.set_item(
+            "has_unquantified_potential_equity",
+            payload.has_unquantified_potential_equity,
+        )?;
         set_optional_float(py, &row, "croic", payload.croic)?;
         set_optional_float(py, &row, "fcf_cagr", payload.fcf_cagr)?;
         set_optional_float(py, &row, "fcf_cagr_r2", payload.fcf_cagr_r2)?;
@@ -1244,6 +1318,7 @@ mod tests {
                 HashMap::from([
                     ("total_assets".to_string(), Some(50_000_000_000.0)),
                     ("stockholders_equity".to_string(), Some(25_000_000_000.0)),
+                    ("retained_earnings".to_string(), Some(4_000_000_000.0)),
                     ("total_equity".to_string(), Some(25_000_000_000.0)),
                     ("total_debt".to_string(), Some(10_000_000_000.0)),
                     ("current_assets".to_string(), Some(20_000_000_000.0)),
@@ -1265,9 +1340,7 @@ mod tests {
             ),
             (
                 "dividend".to_string(),
-                HashMap::from([
-                    ("dps".to_string(), Some(50.0)),
-                ]),
+                HashMap::from([("dps".to_string(), Some(50.0))]),
             ),
             (
                 "forecast".to_string(),
@@ -1284,7 +1357,10 @@ mod tests {
                 let mut items = HashMap::new();
                 items.insert("free_cf".to_string(), Some(10.0 - year as f64));
                 if year == 0 {
-                    items.insert("treasury_stock_purchase".to_string(), Some(-1_000_000_000.0));
+                    items.insert(
+                        "treasury_stock_purchase".to_string(),
+                        Some(-1_000_000_000.0),
+                    );
                 }
                 HistoricalItems {
                     period: format!("20{:02}-03", 25 - year),
@@ -1296,7 +1372,13 @@ mod tests {
             period: "2025-03".to_string(),
             items: HashMap::from([("dividend_payment".to_string(), Some(-2_000_000_000.0))]),
         }];
-        let metrics = compute_metrics(&financials, Some(1000.0), Some(10_000_000), &cf_history, &dividend_history);
+        let metrics = compute_metrics(
+            &financials,
+            Some(1000.0),
+            Some(10_000_000),
+            &cf_history,
+            &dividend_history,
+        );
         Stock {
             ticker: "1301".to_string(),
             name: "test".to_string(),
@@ -1321,6 +1403,15 @@ mod tests {
             })
             .collect(),
             dividend_history,
+            potential_equity_summary: PotentialEquitySummary {
+                has_potential_equity: Some(true),
+                total_potential_common_shares: Some(100_000.0),
+                has_unquantified_terms: true,
+                instrument_types: vec![
+                    "share_acquisition_right".to_string(),
+                    "other_potential_equity".to_string(),
+                ],
+            },
         }
     }
 
@@ -1336,6 +1427,7 @@ mod tests {
             metric(&stock, "per_next"),
             Some(10_000_000_000.0 / 8_000_000_000.0)
         );
+        assert_eq!(metric(&stock, "retained_earnings_ratio"), Some(0.4));
     }
 
     #[test]
@@ -1405,7 +1497,10 @@ mod tests {
     fn fcf_cagr_r2_is_high_for_consistent_growth() {
         let stock = sample_stock();
         let r2 = fcf_cagr_r2(&stock, 10).expect("fcf_cagr_r2 should return a value");
-        assert!(r2 > 0.9, "R² should be close to 1 for linear growth, got {r2}");
+        assert!(
+            r2 > 0.9,
+            "R² should be close to 1 for linear growth, got {r2}"
+        );
     }
 
     #[test]
@@ -1419,12 +1514,20 @@ mod tests {
     fn fcf_cagr_returns_linear_fallback_for_negative_fcf() {
         let mut stock = sample_stock();
         // Insert a negative FCF value in the history
-        stock.cf_history[3].items.insert("free_cf".to_string(), Some(-5.0));
+        stock.cf_history[3]
+            .items
+            .insert("free_cf".to_string(), Some(-5.0));
         // Should now use linear regression fallback instead of returning None
         let cagr = fcf_cagr(&stock, 10);
-        assert!(cagr.is_some(), "fcf_cagr should return a value even with negative FCF");
+        assert!(
+            cagr.is_some(),
+            "fcf_cagr should return a value even with negative FCF"
+        );
         let r2 = fcf_cagr_r2(&stock, 10);
-        assert!(r2.is_some(), "fcf_cagr_r2 should return a value even with negative FCF");
+        assert!(
+            r2.is_some(),
+            "fcf_cagr_r2 should return a value even with negative FCF"
+        );
     }
 
     #[test]

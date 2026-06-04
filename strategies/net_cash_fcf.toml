@@ -41,6 +41,17 @@ stock_link = "shikiho"
 toggleable = false
 
 [[columns]]
+header = "re/mcap"
+source = "retained_earnings_ratio"
+format = "{:.2f}"
+type = "metric_num"
+metric_key = "retained_earnings_ratio"
+decimals = 2
+title = "利益剰余金 / 時価総額"
+stock_link = "shikiho"
+toggleable = true
+
+[[columns]]
 header = "fcf_10y%"
 source = "fcf_yield_avg"
 format = "{:.2%}"
@@ -99,6 +110,31 @@ source = "has_preferred_shares"
 format = "{}"
 type = "bool"
 title = "優先株"
+toggleable = true
+
+[[columns]]
+header = "dil"
+source = "has_potential_equity"
+format = "{}"
+type = "bool"
+title = "潜在株式"
+toggleable = true
+
+[[columns]]
+header = "dil_sh"
+source = "potential_common_shares"
+format = "{:.0f}"
+type = "num"
+decimals = 0
+title = "潜在株式の普通株換算増加数"
+toggleable = true
+
+[[columns]]
+header = "dil_unk"
+source = "has_unquantified_potential_equity"
+format = "{}"
+type = "bool"
+title = "潜在株式に未数値化の条項あり"
 toggleable = true
 
 [[columns]]

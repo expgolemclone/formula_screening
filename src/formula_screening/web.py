@@ -43,7 +43,9 @@ def compute_all_stock_metrics(
                      "fcf_yield_avg", "equity_ratio", "peg_trailing_5",
                      "peg_trailing_5_status", "peg_blended_5y_actual_2f",
                      "peg_blended_5y_actual_2f_status", "dividend_yield",
-                     "total_payout_ratio", "has_preferred_shares", "croic",
+                     "total_payout_ratio", "retained_earnings_ratio",
+                     "has_preferred_shares", "has_potential_equity",
+                     "potential_common_shares", "has_unquantified_potential_equity", "croic",
                      "pbr", "market_cap"}}``
     """
     if conn is not None:
@@ -183,6 +185,7 @@ def save_stock_price_metadata_json(path: Path) -> None:
 def _serialize_stock(stock: dict) -> dict:
     """Convert a screener stock dict to the JSON shape expected by app.js."""
     metrics = stock.get("metrics", {})
+    potential_equity_summary = stock["potential_equity_summary"]
 
     fcf_value = fcf_yield_avg(stock)
     croic_value = croic(stock)
@@ -202,6 +205,7 @@ def _serialize_stock(stock: dict) -> dict:
             "equity_ratio": metrics.get("equity_ratio"),
             "dividend_yield": metrics.get("dividend_yield"),
             "total_payout_ratio": metrics.get("total_payout_ratio"),
+            "retained_earnings_ratio": metrics.get("retained_earnings_ratio"),
             "pbr": metrics.get("pbr"),
             "market_cap": metrics.get("market_cap"),
         },
@@ -211,6 +215,11 @@ def _serialize_stock(stock: dict) -> dict:
         "peg_blended_5y_actual_2f": peg_blended_result.value,
         "peg_blended_5y_actual_2f_status": peg_blended_result.status,
         "has_preferred_shares": preferred_share_flag(stock),
+        "has_potential_equity": potential_equity_summary["has_potential_equity"],
+        "potential_common_shares": potential_equity_summary["total_potential_common_shares"],
+        "has_unquantified_potential_equity": bool(
+            potential_equity_summary["has_unquantified_terms"]
+        ),
         "croic": croic_value,
         "cf_history": stock.get("cf_history"),
     }

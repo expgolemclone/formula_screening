@@ -16,6 +16,7 @@ def _base_financials() -> dict:
         "bs": {
             "total_assets": 50_000_000_000.0,
             "stockholders_equity": 25_000_000_000.0,
+            "retained_earnings": 4_000_000_000.0,
             "total_equity": 25_000_000_000.0,
             "total_debt": 10_000_000_000.0,
             "current_assets": 20_000_000_000.0,
@@ -60,6 +61,21 @@ def test_per_actual_unchanged() -> None:
     metrics = compute_metrics(_base_financials(), price=1000.0, shares_outstanding=10_000_000)
     market_cap = 1000.0 * 10_000_000
     assert metrics["per_actual"] == pytest.approx(market_cap / 6_000_000_000.0)
+
+
+def test_retained_earnings_ratio_uses_market_cap() -> None:
+    metrics = compute_metrics(_base_financials(), price=1000.0, shares_outstanding=10_000_000)
+
+    assert metrics["retained_earnings_ratio"] == pytest.approx(0.4)
+
+
+def test_retained_earnings_ratio_none_without_retained_earnings() -> None:
+    financials = _base_financials()
+    del financials["bs"]["retained_earnings"]
+
+    metrics = compute_metrics(financials, price=1000.0, shares_outstanding=10_000_000)
+
+    assert metrics["retained_earnings_ratio"] is None
 
 
 def test_per_none_when_no_forecast() -> None:

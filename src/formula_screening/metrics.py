@@ -74,6 +74,7 @@ def compute_metrics(
 
     total_assets = bs.get("total_assets")
     stockholders_equity = bs.get("stockholders_equity")
+    retained_earnings = bs.get("retained_earnings")
     total_equity = bs.get("total_equity")
     total_debt = bs.get("total_debt")
 
@@ -99,6 +100,7 @@ def compute_metrics(
     metrics["per_next"] = _safe_div(market_cap, ni_next)
     metrics["per_actual"] = _safe_div(market_cap, net_income)
     metrics["pbr"] = _safe_div(market_cap, total_equity)
+    metrics["retained_earnings_ratio"] = _safe_div(retained_earnings, market_cap)
 
     dps = financials.get("dividend", {}).get("dps")
     metrics["dividend_yield"] = _pct(dps, price)
