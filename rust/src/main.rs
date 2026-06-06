@@ -127,6 +127,20 @@ fn serve_local(payload: Value) -> Result<(), String> {
                     allowed_url_prefix: "https://scouter.monex.co.jp/".to_string(),
                 },
             ),
+            (
+                "buffett_code".to_string(),
+                BrowserEntry {
+                    command: "google-chrome".to_string(),
+                    allowed_url_prefix: "https://www.buffett-code.com/".to_string(),
+                },
+            ),
+            (
+                "google".to_string(),
+                BrowserEntry {
+                    command: "google-chrome".to_string(),
+                    allowed_url_prefix: "https://www.google.com/search?".to_string(),
+                },
+            ),
         ],
     })
 }

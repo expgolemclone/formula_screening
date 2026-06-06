@@ -6,7 +6,7 @@
  * then fetches screening results and renders them.
  */
 
-import type { ColumnDef, MetricThreshold, StockTableConfig } from "@stock-web-ui/runtime";
+import type { ColumnDef, MetricThreshold, StockLink, StockTableConfig } from "@stock-web-ui/runtime";
 
 type StockTableApi = {
   init: (config: StockTableConfig) => void;
@@ -57,6 +57,7 @@ interface ColumnConfig {
   toggleable?: boolean;
   status_source?: string;
   metric_key?: string;
+  stock_link?: StockLink;
 }
 
 /* ------------------------------------------------------------------ */
@@ -126,7 +127,7 @@ function buildNumCol(cfg: ColumnConfig): ColumnDef {
   const decimals = cfg.decimals ?? 1;
   const suffix = cfg.suffix ?? "";
 
-  return {
+  const col: ColumnDef = {
     key: source,
     header: cfg.header ?? source,
     type: "num",
@@ -143,6 +144,10 @@ function buildNumCol(cfg: ColumnConfig): ColumnDef {
       return raw !== null ? raw * scale : null;
     },
   };
+  if (cfg.stock_link) {
+    col.stockLink = cfg.stock_link;
+  }
+  return col;
 }
 
 function buildMetricNumCol(cfg: ColumnConfig): ColumnDef {
@@ -151,7 +156,7 @@ function buildMetricNumCol(cfg: ColumnConfig): ColumnDef {
   const decimals = cfg.decimals ?? 1;
   const suffix = cfg.suffix ?? "";
 
-  return {
+  const col: ColumnDef = {
     key: cfg.source,
     header: cfg.header ?? cfg.source,
     type: "num",
@@ -168,6 +173,10 @@ function buildMetricNumCol(cfg: ColumnConfig): ColumnDef {
       return raw !== null ? raw * scale : null;
     },
   };
+  if (cfg.stock_link) {
+    col.stockLink = cfg.stock_link;
+  }
+  return col;
 }
 
 function buildPegCol(cfg: ColumnConfig): ColumnDef {
