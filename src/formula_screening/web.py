@@ -45,7 +45,8 @@ def compute_all_stock_metrics(
                      "peg_blended_5y_actual_2f_status", "dividend_yield",
                      "total_payout_ratio", "retained_earnings_ratio",
                      "has_preferred_shares", "has_potential_equity",
-                     "potential_common_shares", "has_unquantified_potential_equity", "croic",
+                     "potential_common_shares", "has_unquantified_potential_equity",
+                     "diluted_eps_common_share_increase", "croic",
                      "pbr", "market_cap"}}``
     """
     if conn is not None:
@@ -216,10 +217,11 @@ def _serialize_stock(stock: dict) -> dict:
         "peg_blended_5y_actual_2f_status": peg_blended_result.status,
         "has_preferred_shares": preferred_share_flag(stock),
         "has_potential_equity": potential_equity_summary["has_potential_equity"],
-        "potential_common_shares": potential_equity_summary["total_potential_common_shares"],
+        "potential_common_shares": potential_equity_summary["total_period_end_common_shares"],
         "has_unquantified_potential_equity": bool(
             potential_equity_summary["has_unquantified_terms"]
         ),
+        "diluted_eps_common_share_increase": stock.get("diluted_eps_common_share_increase"),
         "croic": croic_value,
         "cf_history": stock.get("cf_history"),
     }

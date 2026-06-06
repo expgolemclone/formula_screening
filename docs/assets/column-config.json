@@ -21,6 +21,17 @@
     "stock_link": "shikiho"
   },
   {
+    "header": "re/mcap",
+    "source": "retained_earnings_ratio",
+    "type": "metric_num",
+    "format": "{:.2f}",
+    "decimals": 2,
+    "title": "利益剰余金 / 時価総額",
+    "toggleable": true,
+    "metric_key": "retained_earnings_ratio",
+    "stock_link": "shikiho"
+  },
+  {
     "header": "fcf_10y%",
     "source": "fcf_yield_avg",
     "type": "num",
@@ -96,7 +107,16 @@
     "type": "num",
     "format": "{:.0f}",
     "decimals": 0,
-    "title": "潜在株式の普通株換算増加数",
+    "title": "期末潜在株式の普通株換算数",
+    "toggleable": true
+  },
+  {
+    "header": "eps_dil",
+    "source": "diluted_eps_common_share_increase",
+    "type": "num",
+    "format": "{:.0f}",
+    "decimals": 0,
+    "title": "潜在株式調整後EPSの普通株式増加数",
     "toggleable": true
   },
   {

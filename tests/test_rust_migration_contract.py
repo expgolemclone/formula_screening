@@ -177,6 +177,7 @@ def test_rust_payload_preserves_python_screening_contract(
         "has_potential_equity",
         "potential_common_shares",
         "has_unquantified_potential_equity",
+        "diluted_eps_common_share_increase",
         "cf_history",
     }
     assert set(row["metrics"]) == {
@@ -219,6 +220,7 @@ def test_rust_payload_preserves_python_screening_contract(
     assert row["has_potential_equity"] is None
     assert row["potential_common_shares"] is None
     assert row["has_unquantified_potential_equity"] is False
+    assert row["diluted_eps_common_share_increase"] is None
 
     all_payload = run_screening_payload_py(
         str(_STRATEGY_PATH),

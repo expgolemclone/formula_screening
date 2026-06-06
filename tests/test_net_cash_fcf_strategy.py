@@ -66,7 +66,7 @@ def _build_stock(
         "cf_history": cf_history,
         "potential_equity_summary": {
             "has_potential_equity": None,
-            "total_potential_common_shares": None,
+            "total_period_end_common_shares": None,
             "has_unquantified_terms": False,
             "instrument_types": [],
         },

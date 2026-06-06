@@ -55,7 +55,12 @@ def _peg_blended_5y_actual_2f(stock: dict) -> float | None:
 
 def _potential_common_shares(stock: dict) -> float | None:
     summary = stock["potential_equity_summary"]
-    value = summary["total_potential_common_shares"]
+    value = summary["total_period_end_common_shares"]
+    return value if isinstance(value, (int, float)) else None
+
+
+def _diluted_eps_common_share_increase(stock: dict) -> float | None:
+    value = stock.get("diluted_eps_common_share_increase")
     return value if isinstance(value, (int, float)) else None
 
 
@@ -69,6 +74,7 @@ _DERIVED_SOURCES: dict[str, Callable[[dict], ColumnSourceValue]] = {
     "peg_blended_5y_actual_2f": _peg_blended_5y_actual_2f,
     "preferred_share_label": preferred_share_label,
     "potential_common_shares": _potential_common_shares,
+    "diluted_eps_common_share_increase": _diluted_eps_common_share_increase,
 }
 
 
@@ -337,6 +343,7 @@ def _stock_dict_from_api(record: stock_db_api.ScreeningStock) -> dict:
         "pl_history": record["pl_history"],
         "dividend_history": record["dividend_history"],
         "potential_equity_summary": record["potential_equity_summary"],
+        "diluted_eps_common_share_increase": record["diluted_eps_common_share_increase"],
     }
 
 

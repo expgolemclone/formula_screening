@@ -103,10 +103,11 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
             "bs": {"stockholders_equity": 100.0, "has_preferred_shares": 1.0},
             "potential_equity_summary": {
                 "has_potential_equity": True,
-                "total_potential_common_shares": 10_000.0,
+                "total_period_end_common_shares": 10_000.0,
                 "has_unquantified_terms": True,
                 "instrument_types": ["share_acquisition_right"],
             },
+            "diluted_eps_common_share_increase": 831_295.0,
         }
     )
 
@@ -125,6 +126,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
     assert payload["has_potential_equity"] is True
     assert payload["potential_common_shares"] == 10_000.0
     assert payload["has_unquantified_potential_equity"] is True
+    assert payload["diluted_eps_common_share_increase"] == 831_295.0
 
 
 def test_serialize_stock_preserves_missing_preferred_share_flag() -> None:
@@ -144,7 +146,7 @@ def test_serialize_stock_preserves_missing_preferred_share_flag() -> None:
             "bs": {},
             "potential_equity_summary": {
                 "has_potential_equity": None,
-                "total_potential_common_shares": None,
+                "total_period_end_common_shares": None,
                 "has_unquantified_terms": False,
                 "instrument_types": [],
             },

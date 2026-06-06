@@ -23,6 +23,7 @@ pub struct Stock {
     pub pl_history: Vec<HistoricalItems>,
     pub dividend_history: Vec<HistoricalItems>,
     pub potential_equity_summary: PotentialEquitySummary,
+    pub diluted_eps_common_share_increase: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -97,6 +98,7 @@ pub struct ScreeningPayload {
     pub has_potential_equity: Option<bool>,
     pub potential_common_shares: Option<f64>,
     pub has_unquantified_potential_equity: bool,
+    pub diluted_eps_common_share_increase: Option<f64>,
     pub croic: Option<f64>,
     pub fcf_cagr: Option<f64>,
     pub fcf_cagr_r2: Option<f64>,
@@ -191,6 +193,7 @@ pub fn build_stock(raw: ScreeningStock) -> Stock {
         pl_history: raw.pl_history,
         dividend_history: raw.dividend_history,
         potential_equity_summary: raw.potential_equity_summary,
+        diluted_eps_common_share_increase: raw.diluted_eps_common_share_increase,
     }
 }
 
@@ -283,8 +286,11 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
         peg_blended_5y_actual_2f_status: peg_blended.status.as_str().to_string(),
         has_preferred_shares: preferred_share_flag(stock)?,
         has_potential_equity: stock.potential_equity_summary.has_potential_equity,
-        potential_common_shares: stock.potential_equity_summary.total_potential_common_shares,
+        potential_common_shares: stock
+            .potential_equity_summary
+            .total_period_end_common_shares,
         has_unquantified_potential_equity: stock.potential_equity_summary.has_unquantified_terms,
+        diluted_eps_common_share_increase: stock.diluted_eps_common_share_increase,
         croic: croic(stock),
         fcf_cagr: fcf_cagr(stock, 10),
         fcf_cagr_r2: fcf_cagr_r2(stock, 10),
@@ -444,13 +450,21 @@ pub fn compute_all_metrics()
                 ("has_potential_equity".to_string(), potential_equity_value),
                 (
                     "potential_common_shares".to_string(),
-                    metric_value(stock.potential_equity_summary.total_potential_common_shares),
+                    metric_value(
+                        stock
+                            .potential_equity_summary
+                            .total_period_end_common_shares,
+                    ),
                 ),
                 (
                     "has_unquantified_potential_equity".to_string(),
                     Some(PublicMetricValue::Bool(
                         stock.potential_equity_summary.has_unquantified_terms,
                     )),
+                ),
+                (
+                    "diluted_eps_common_share_increase".to_string(),
+                    metric_value(stock.diluted_eps_common_share_increase),
                 ),
                 ("croic".to_string(), metric_value(croic(&stock))),
                 ("fcf_cagr".to_string(), metric_value(fcf_cagr(&stock, 10))),
@@ -480,7 +494,7 @@ pub enum PublicMetricValue {
     Text(String),
 }
 
-const PUBLIC_METRIC_PY_ORDER: [&str; 25] = [
+const PUBLIC_METRIC_PY_ORDER: [&str; 26] = [
     "price",
     "price_date",
     "net_cash_ratio",
@@ -500,6 +514,7 @@ const PUBLIC_METRIC_PY_ORDER: [&str; 25] = [
     "has_potential_equity",
     "potential_common_shares",
     "has_unquantified_potential_equity",
+    "diluted_eps_common_share_increase",
     "croic",
     "fcf_cagr",
     "fcf_cagr_r2",
@@ -672,6 +687,7 @@ fn validate_strategy(strategy: &Strategy) -> Result<(), String> {
         "has_potential_equity",
         "potential_common_shares",
         "has_unquantified_potential_equity",
+        "diluted_eps_common_share_increase",
     ]);
     for column in &strategy.columns {
         if !web_only_sources.contains(column.source.as_str())
@@ -715,6 +731,7 @@ fn valid_sources() -> HashSet<&'static str> {
         "fcf_sma_cagr",
         "peg_trailing_5",
         "peg_blended_5y_actual_2f",
+        "diluted_eps_common_share_increase",
         "preferred_share_label",
     ])
 }
@@ -728,6 +745,7 @@ fn resolve_numeric_value(stock: &Stock, source: &str) -> Option<f64> {
         "fcf_sma_cagr" => fcf_sma_cagr(stock, 10, 3),
         "peg_trailing_5" => peg_trailing(stock, 5),
         "peg_blended_5y_actual_2f" => peg_blended_2f(stock, 5),
+        "diluted_eps_common_share_increase" => stock.diluted_eps_common_share_increase,
         _ => metric(stock, source),
     }
 }
@@ -1234,6 +1252,12 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
             "has_unquantified_potential_equity",
             payload.has_unquantified_potential_equity,
         )?;
+        set_optional_float(
+            py,
+            &row,
+            "diluted_eps_common_share_increase",
+            payload.diluted_eps_common_share_increase,
+        )?;
         set_optional_float(py, &row, "croic", payload.croic)?;
         set_optional_float(py, &row, "fcf_cagr", payload.fcf_cagr)?;
         set_optional_float(py, &row, "fcf_cagr_r2", payload.fcf_cagr_r2)?;
@@ -1405,13 +1429,14 @@ mod tests {
             dividend_history,
             potential_equity_summary: PotentialEquitySummary {
                 has_potential_equity: Some(true),
-                total_potential_common_shares: Some(100_000.0),
+                total_period_end_common_shares: Some(100_000.0),
                 has_unquantified_terms: true,
                 instrument_types: vec![
                     "share_acquisition_right".to_string(),
                     "other_potential_equity".to_string(),
                 ],
             },
+            diluted_eps_common_share_increase: Some(12_345.0),
         }
     }
 
