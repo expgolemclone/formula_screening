@@ -82,6 +82,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
                 "dividend_yield": 2.0,
                 "total_payout_ratio": 30.0,
                 "retained_earnings_ratio": 0.4,
+                "provision_for_directors_retirement_benefits": 300_000_000.0,
                 "equity_ratio": 60.0,
                 "market_cap": 10000.0,
                 "free_cf": 10.0,
@@ -121,6 +122,7 @@ def test_serialize_stock_includes_peg_trailing_5() -> None:
     assert payload["metrics"]["per_next"] == 6.0
     assert payload["metrics"]["total_payout_ratio"] == 30.0
     assert payload["metrics"]["retained_earnings_ratio"] == 0.4
+    assert payload["metrics"]["provision_for_directors_retirement_benefits"] == 300_000_000.0
     assert payload["price_date"] == "2026-05-20"
     assert payload["has_preferred_shares"] is True
     assert payload["has_potential_equity"] is True

@@ -60,6 +60,7 @@ def _insert_screening_stock(
             "total_assets": 100_000.0,
             "stockholders_equity": 60_000.0,
             "retained_earnings": 7_000.0,
+            "provision_for_directors_retirement_benefits": 300.0,
             "total_equity": 60_000.0,
             "short_term_debt": 1_000.0,
             "long_term_debt": 2_000.0,
@@ -189,6 +190,7 @@ def test_rust_payload_preserves_python_screening_contract(
         "dividend_yield",
         "total_payout_ratio",
         "retained_earnings_ratio",
+        "provision_for_directors_retirement_benefits",
         "equity_ratio",
         "market_cap",
     }
@@ -207,6 +209,7 @@ def test_rust_payload_preserves_python_screening_contract(
     assert row["metrics"]["dividend_yield"] == pytest.approx(10.0)
     assert row["metrics"]["total_payout_ratio"] == pytest.approx(6.0)
     assert row["metrics"]["retained_earnings_ratio"] == pytest.approx(0.7)
+    assert row["metrics"]["provision_for_directors_retirement_benefits"] == pytest.approx(300.0)
     assert row["metrics"]["equity_ratio"] == pytest.approx(60.0)
     assert row["fcf_yield_avg"] is not None
     assert row["croic"] is not None

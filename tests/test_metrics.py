@@ -17,6 +17,7 @@ def _base_financials() -> dict:
             "total_assets": 50_000_000_000.0,
             "stockholders_equity": 25_000_000_000.0,
             "retained_earnings": 4_000_000_000.0,
+            "provision_for_directors_retirement_benefits": 300_000_000.0,
             "total_equity": 25_000_000_000.0,
             "total_debt": 10_000_000_000.0,
             "current_assets": 20_000_000_000.0,
@@ -76,6 +77,12 @@ def test_retained_earnings_ratio_none_without_retained_earnings() -> None:
     metrics = compute_metrics(financials, price=1000.0, shares_outstanding=10_000_000)
 
     assert metrics["retained_earnings_ratio"] is None
+
+
+def test_provision_for_directors_retirement_benefits_uses_balance_sheet_value() -> None:
+    metrics = compute_metrics(_base_financials(), price=1000.0, shares_outstanding=10_000_000)
+
+    assert metrics["provision_for_directors_retirement_benefits"] == pytest.approx(300_000_000.0)
 
 
 def test_per_none_when_no_forecast() -> None:

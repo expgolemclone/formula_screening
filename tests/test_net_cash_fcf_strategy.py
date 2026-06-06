@@ -48,6 +48,7 @@ def _build_stock(
             "equity_ratio": 60.0,
             "market_cap": 100.0,
             "retained_earnings_ratio": 0.4,
+            "provision_for_directors_retirement_benefits": 123.0,
             "free_cf": 10.0,
             "interest_bearing_debt": 50.0,
         },
@@ -95,6 +96,7 @@ def test_net_cash_fcf_columns_include_peg_trailing_5() -> None:
     assert "peg_5y" in columns
     assert "peg_5y2f" in columns
     assert columns["re/mcap"] == "0.40"
+    assert columns["dir_ret"] == "123"
 
 
 def test_net_cash_fcf_columns_include_preferred_share_as_web_bool() -> None:

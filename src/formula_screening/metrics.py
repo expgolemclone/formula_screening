@@ -101,6 +101,9 @@ def compute_metrics(
     metrics["per_actual"] = _safe_div(market_cap, net_income)
     metrics["pbr"] = _safe_div(market_cap, total_equity)
     metrics["retained_earnings_ratio"] = _safe_div(retained_earnings, market_cap)
+    metrics["provision_for_directors_retirement_benefits"] = bs.get(
+        "provision_for_directors_retirement_benefits"
+    )
 
     dps = financials.get("dividend", {}).get("dps")
     metrics["dividend_yield"] = _pct(dps, price)

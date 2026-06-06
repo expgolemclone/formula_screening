@@ -52,6 +52,16 @@ stock_link = "shikiho"
 toggleable = true
 
 [[columns]]
+header = "dir_ret"
+source = "provision_for_directors_retirement_benefits"
+format = "{:.0f}"
+type = "metric_num"
+metric_key = "provision_for_directors_retirement_benefits"
+decimals = 0
+title = "役員退職慰労引当金（BS）"
+toggleable = true
+
+[[columns]]
 header = "fcf_10y%"
 source = "fcf_yield_avg"
 format = "{:.2%}"

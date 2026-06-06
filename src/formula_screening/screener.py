@@ -221,6 +221,7 @@ _KNOWN_METRIC_SOURCES: frozenset[str] = frozenset(
         "dividend_yield",
         "total_payout_ratio",
         "retained_earnings_ratio",
+        "provision_for_directors_retirement_benefits",
         "gross_margin",
         "operating_margin",
         "ordinary_margin",

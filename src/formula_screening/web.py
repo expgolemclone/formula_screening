@@ -44,6 +44,7 @@ def compute_all_stock_metrics(
                      "peg_trailing_5_status", "peg_blended_5y_actual_2f",
                      "peg_blended_5y_actual_2f_status", "dividend_yield",
                      "total_payout_ratio", "retained_earnings_ratio",
+                     "provision_for_directors_retirement_benefits",
                      "has_preferred_shares", "has_potential_equity",
                      "potential_common_shares", "has_unquantified_potential_equity",
                      "diluted_eps_common_share_increase", "croic",
@@ -207,6 +208,9 @@ def _serialize_stock(stock: dict) -> dict:
             "dividend_yield": metrics.get("dividend_yield"),
             "total_payout_ratio": metrics.get("total_payout_ratio"),
             "retained_earnings_ratio": metrics.get("retained_earnings_ratio"),
+            "provision_for_directors_retirement_benefits": metrics.get(
+                "provision_for_directors_retirement_benefits"
+            ),
             "pbr": metrics.get("pbr"),
             "market_cap": metrics.get("market_cap"),
         },

@@ -130,6 +130,7 @@ pub struct PublicMetrics {
     pub dividend_yield: Option<f64>,
     pub total_payout_ratio: Option<f64>,
     pub retained_earnings_ratio: Option<f64>,
+    pub provision_for_directors_retirement_benefits: Option<f64>,
     pub pbr: Option<f64>,
     pub market_cap: Option<f64>,
 }
@@ -276,6 +277,10 @@ pub fn serialize_stock(stock: &Stock) -> Result<ScreeningPayload, String> {
             dividend_yield: metric(stock, "dividend_yield"),
             total_payout_ratio: metric(stock, "total_payout_ratio"),
             retained_earnings_ratio: metric(stock, "retained_earnings_ratio"),
+            provision_for_directors_retirement_benefits: metric(
+                stock,
+                "provision_for_directors_retirement_benefits",
+            ),
             pbr: metric(stock, "pbr"),
             market_cap: metric(stock, "market_cap"),
         },
@@ -446,6 +451,13 @@ pub fn compute_all_metrics()
                     "retained_earnings_ratio".to_string(),
                     metric_value(metric(&stock, "retained_earnings_ratio")),
                 ),
+                (
+                    "provision_for_directors_retirement_benefits".to_string(),
+                    metric_value(metric(
+                        &stock,
+                        "provision_for_directors_retirement_benefits",
+                    )),
+                ),
                 ("has_preferred_shares".to_string(), preferred_share_value),
                 ("has_potential_equity".to_string(), potential_equity_value),
                 (
@@ -494,7 +506,7 @@ pub enum PublicMetricValue {
     Text(String),
 }
 
-const PUBLIC_METRIC_PY_ORDER: [&str; 26] = [
+const PUBLIC_METRIC_PY_ORDER: [&str; 27] = [
     "price",
     "price_date",
     "net_cash_ratio",
@@ -510,6 +522,7 @@ const PUBLIC_METRIC_PY_ORDER: [&str; 26] = [
     "dividend_yield",
     "total_payout_ratio",
     "retained_earnings_ratio",
+    "provision_for_directors_retirement_benefits",
     "has_preferred_shares",
     "has_potential_equity",
     "potential_common_shares",
@@ -569,6 +582,8 @@ pub fn compute_metrics(
     let total_assets = item(bs, "total_assets");
     let stockholders_equity = item(bs, "stockholders_equity");
     let retained_earnings = item(bs, "retained_earnings");
+    let provision_for_directors_retirement_benefits =
+        item(bs, "provision_for_directors_retirement_benefits");
     let total_equity = item(bs, "total_equity");
     let total_debt = item(bs, "total_debt");
     let gross_profit = match (revenue, item(pl, "cost_of_revenue")) {
@@ -629,6 +644,10 @@ pub fn compute_metrics(
         (
             "retained_earnings_ratio".to_string(),
             safe_div(retained_earnings, market_cap),
+        ),
+        (
+            "provision_for_directors_retirement_benefits".to_string(),
+            provision_for_directors_retirement_benefits,
         ),
         ("gross_margin".to_string(), pct(gross_profit, revenue)),
         (
@@ -709,6 +728,7 @@ fn valid_sources() -> HashSet<&'static str> {
         "dividend_yield",
         "total_payout_ratio",
         "retained_earnings_ratio",
+        "provision_for_directors_retirement_benefits",
         "gross_margin",
         "operating_margin",
         "ordinary_margin",
@@ -1217,6 +1237,12 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
             "retained_earnings_ratio",
             payload.metrics.retained_earnings_ratio,
         )?;
+        set_optional_float(
+            py,
+            &metrics,
+            "provision_for_directors_retirement_benefits",
+            payload.metrics.provision_for_directors_retirement_benefits,
+        )?;
         set_optional_float(py, &metrics, "pbr", payload.metrics.pbr)?;
         set_optional_float(py, &metrics, "market_cap", payload.metrics.market_cap)?;
         row.set_item("metrics", metrics)?;
@@ -1343,6 +1369,10 @@ mod tests {
                     ("total_assets".to_string(), Some(50_000_000_000.0)),
                     ("stockholders_equity".to_string(), Some(25_000_000_000.0)),
                     ("retained_earnings".to_string(), Some(4_000_000_000.0)),
+                    (
+                        "provision_for_directors_retirement_benefits".to_string(),
+                        Some(300_000_000.0),
+                    ),
                     ("total_equity".to_string(), Some(25_000_000_000.0)),
                     ("total_debt".to_string(), Some(10_000_000_000.0)),
                     ("current_assets".to_string(), Some(20_000_000_000.0)),
@@ -1453,6 +1483,10 @@ mod tests {
             Some(10_000_000_000.0 / 8_000_000_000.0)
         );
         assert_eq!(metric(&stock, "retained_earnings_ratio"), Some(0.4));
+        assert_eq!(
+            metric(&stock, "provision_for_directors_retirement_benefits"),
+            Some(300_000_000.0)
+        );
     }
 
     #[test]
