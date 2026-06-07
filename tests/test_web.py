@@ -70,6 +70,21 @@ def test_save_stock_price_metadata_json_writes_price_date(
     }
 
 
+def test_save_index_html_includes_shared_bs_chart(tmp_path: Path) -> None:
+    output_path = tmp_path / "docs" / "index.html"
+
+    web_mod.save_index_html(
+        output_path,
+        asset_version="20260607-bs-hover",
+        shared_asset_base_url="https://expgolemclone.github.io/stock_web_ui/assets",
+    )
+
+    html = output_path.read_text(encoding="utf-8")
+    assert 'src="https://expgolemclone.github.io/stock_web_ui/assets/bs-chart.js?v=20260607-bs-hover"' in html
+    assert 'src="https://expgolemclone.github.io/stock_web_ui/assets/cf-chart.js?v=20260607-bs-hover"' in html
+    assert 'src="assets/app.js?v=20260607-bs-hover"' in html
+
+
 def test_balance_sheet_history_route_uses_stock_db_api(monkeypatch: pytest.MonkeyPatch) -> None:
     expected = {"ticker": "1301", "periods": ["2025-03"], "roots": []}
     monkeypatch.setattr(web_mod, "get_balance_sheet_history", lambda code: expected | {"code": code})

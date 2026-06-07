@@ -61,14 +61,17 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
         encoding="utf-8",
     )
     json_path = tmp_path / "screening.json"
+    gh_pages_index = tmp_path / "docs" / "index.html"
     gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
     gh_pages_metadata_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
     gh_pages_bs_history_dir = tmp_path / "docs" / "assets" / "bs-history"
     payload = [{"code": "1301", "metrics": {"net_cash_ratio": 1.0}}]
     captured_core: dict[str, object] = {}
+    saved_index: list[tuple[Path, str, str]] = []
     saved: list[tuple[list[dict], Path]] = []
     saved_metadata: list[Path] = []
     saved_bs_history: list[tuple[list[dict], Path]] = []
+    auto_push: list[tuple[list[Path], str]] = []
 
     def fake_run_screening_payload_with_diagnostics_py(
         strategy: str,
@@ -94,15 +97,21 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
         saved_bs_history.append((rows, path))
         return [path / "1301.json"]
 
+    def fake_save_index_html(path: Path, *, asset_version: str, shared_asset_base_url: str) -> None:
+        saved_index.append((path, asset_version, shared_asset_base_url))
+
     fake_core = types.ModuleType("formula_screening._core")
     fake_core.run_screening_payload_with_diagnostics_py = (
         fake_run_screening_payload_with_diagnostics_py
     )
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_INDEX", gh_pages_index)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_METADATA_JSON", gh_pages_metadata_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_BS_HISTORY_DIR", gh_pages_bs_history_dir)
     monkeypatch.setattr(cli_module, "ensure_prices_fresh", lambda **_kwargs: None)
+    monkeypatch.setattr(cli_module, "_auto_push_json", lambda paths, message: auto_push.append((paths, message)))
+    monkeypatch.setattr(web_mod, "save_index_html", fake_save_index_html)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
     monkeypatch.setattr(web_mod, "save_stock_price_metadata_json", fake_save_stock_price_metadata_json)
     monkeypatch.setattr(web_mod, "save_balance_sheet_history_json", fake_save_balance_sheet_history_json)
@@ -123,8 +132,27 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
         "return_all": True,
     }
     assert saved == [(payload, gh_pages_json), (payload, json_path)]
+    assert saved_index == [
+        (
+            gh_pages_index,
+            cli_module._GH_PAGES_ASSET_VERSION,
+            cli_module._GH_PAGES_SHARED_ASSET_BASE_URL,
+        )
+    ]
     assert saved_metadata == [gh_pages_metadata_json]
     assert saved_bs_history == [(payload, gh_pages_bs_history_dir)]
+    assert auto_push == [
+        (
+            [
+                gh_pages_index,
+                gh_pages_json,
+                gh_pages_metadata_json,
+                cli_module._GH_PAGES_COLUMN_CONFIG_JSON,
+                gh_pages_bs_history_dir / "1301.json",
+            ],
+            "Update screening data",
+        )
+    ]
 
 
 def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
@@ -141,6 +169,7 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
         encoding="utf-8",
     )
     json_path = tmp_path / "screening.json"
+    gh_pages_index = tmp_path / "docs" / "index.html"
     gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
     gh_pages_metadata_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
     gh_pages_bs_history_dir = tmp_path / "docs" / "assets" / "bs-history"
@@ -153,6 +182,7 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
         }
     ]
     saved: list[tuple[list[dict], Path]] = []
+    saved_index: list[tuple[Path, str, str]] = []
     saved_metadata: list[Path] = []
     saved_bs_history: list[tuple[list[dict], Path]] = []
 
@@ -166,16 +196,22 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
         saved_bs_history.append((rows, path))
         return [path / "1301.json"]
 
+    def fake_save_index_html(path: Path, *, asset_version: str, shared_asset_base_url: str) -> None:
+        saved_index.append((path, asset_version, shared_asset_base_url))
+
     fake_core = types.ModuleType("formula_screening._core")
     fake_core.run_screening_payload_with_diagnostics_py = lambda *_args: {
         "payload": payload,
         "diagnostics": diagnostics,
     }
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_INDEX", gh_pages_index)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_METADATA_JSON", gh_pages_metadata_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_BS_HISTORY_DIR", gh_pages_bs_history_dir)
     monkeypatch.setattr(cli_module, "ensure_prices_fresh", lambda **_kwargs: None)
+    monkeypatch.setattr(cli_module, "_auto_push_json", lambda _paths, _message: None)
+    monkeypatch.setattr(web_mod, "save_index_html", fake_save_index_html)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
     monkeypatch.setattr(web_mod, "save_stock_price_metadata_json", fake_save_stock_price_metadata_json)
     monkeypatch.setattr(web_mod, "save_balance_sheet_history_json", fake_save_balance_sheet_history_json)
@@ -193,5 +229,12 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
 
     assert "Missing screening fields for 1301 (test stock): metrics.net_cash_ratio, fcf_yield_avg" in caplog.text
     assert saved == [(payload, gh_pages_json), (payload, json_path)]
+    assert saved_index == [
+        (
+            gh_pages_index,
+            cli_module._GH_PAGES_ASSET_VERSION,
+            cli_module._GH_PAGES_SHARED_ASSET_BASE_URL,
+        )
+    ]
     assert saved_metadata == [gh_pages_metadata_json]
     assert saved_bs_history == [(payload, gh_pages_bs_history_dir)]

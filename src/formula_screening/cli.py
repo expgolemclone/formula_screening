@@ -17,6 +17,7 @@ from formula_screening.log import setup_logging
 from formula_screening.price_updates import ensure_prices_fresh
 from formula_screening.stock_db_compat import PriceRefreshError, get_all_tickers
 
+_GH_PAGES_INDEX = Path(__file__).resolve().parent.parent.parent / "docs" / "index.html"
 _GH_PAGES_JSON = Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "screening.json"
 _GH_PAGES_METADATA_JSON = (
     Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "stock-price-meta.json"
@@ -27,6 +28,8 @@ _GH_PAGES_COLUMN_CONFIG_JSON = (
 _GH_PAGES_BS_HISTORY_DIR = (
     Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "bs-history"
 )
+_GH_PAGES_ASSET_VERSION = "20260607-bs-hover"
+_GH_PAGES_SHARED_ASSET_BASE_URL = "https://expgolemclone.github.io/stock_web_ui/assets"
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -98,6 +101,7 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening._core import run_screening_payload_with_diagnostics_py
     from formula_screening.web import (
         save_balance_sheet_history_json,
+        save_index_html,
         save_screening_payload_json,
         save_stock_price_metadata_json,
         serve_screening_payload,
@@ -154,6 +158,11 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         return
 
     print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
+    save_index_html(
+        _GH_PAGES_INDEX,
+        asset_version=_GH_PAGES_ASSET_VERSION,
+        shared_asset_base_url=_GH_PAGES_SHARED_ASSET_BASE_URL,
+    )
     save_screening_payload_json(payload, _GH_PAGES_JSON)
     save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON)
     bs_history_paths = save_balance_sheet_history_json(payload, _GH_PAGES_BS_HISTORY_DIR)
@@ -161,7 +170,13 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     if column_config:
         _save_column_config_json(column_config, _GH_PAGES_COLUMN_CONFIG_JSON)
     _auto_push_json(
-        [_GH_PAGES_JSON, _GH_PAGES_METADATA_JSON, _GH_PAGES_COLUMN_CONFIG_JSON, *bs_history_paths],
+        [
+            _GH_PAGES_INDEX,
+            _GH_PAGES_JSON,
+            _GH_PAGES_METADATA_JSON,
+            _GH_PAGES_COLUMN_CONFIG_JSON,
+            *bs_history_paths,
+        ],
         "Update screening data",
     )
 

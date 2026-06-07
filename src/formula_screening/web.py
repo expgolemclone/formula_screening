@@ -8,7 +8,7 @@ from pathlib import Path
 
 from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
-from stock_web_ui.page import IndexPage
+from stock_web_ui.page import IndexPage, render_index_html
 from stock_web_ui.serve import serve as _serve
 from formula_screening.stock_db_compat import get_balance_sheet_history, get_stock_price_metadata
 from formula_screening.indicators import (
@@ -169,6 +169,28 @@ def serve_screening_payload(
         server_config=server_config,
         api_routes=create_screening_payload_api(payload),
         yazi_base_dir=_HANDBOOK_DATA_DIR,
+    )
+
+
+def save_index_html(
+    path: Path,
+    *,
+    asset_version: str,
+    shared_asset_base_url: str,
+) -> None:
+    """Save the GitHub Pages index.html rendered from stock_web_ui's template."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(
+        render_index_html(
+            IndexPage(
+                title="Formula Screening",
+                loading_message="スクリーニング結果を読み込み中です。",
+                tab_aria_label="タブ切替",
+                asset_version=asset_version,
+                shared_asset_base_url=shared_asset_base_url,
+            )
+        )
     )
 
 
