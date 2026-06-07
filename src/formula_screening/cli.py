@@ -164,11 +164,20 @@ def _cmd_screen(args: argparse.Namespace) -> None:
         shared_asset_base_url=_GH_PAGES_SHARED_ASSET_BASE_URL,
     )
     save_screening_payload_json(payload, _GH_PAGES_JSON)
-    save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON)
-    bs_history_paths = save_balance_sheet_history_json(payload, _GH_PAGES_BS_HISTORY_DIR)
+    if args.json:
+        save_screening_payload_json(payload, Path(args.json))
     column_config: list[dict] = result.get("column_config", [])
     if column_config:
         _save_column_config_json(column_config, _GH_PAGES_COLUMN_CONFIG_JSON)
+    bs_history_paths = save_balance_sheet_history_json(payload, _GH_PAGES_BS_HISTORY_DIR)
+
+    # Release Rust-held SQLite file handles before Python reopens the DB
+    # for stock price metadata (disk I/O error on 40 GB+ WAL databases).
+    del result, payload
+    import gc
+    gc.collect()
+
+    save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON)
     _auto_push_json(
         [
             _GH_PAGES_INDEX,
@@ -181,11 +190,14 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     )
 
     if args.json:
-        save_screening_payload_json(payload, Path(args.json))
         print(f"Saved to {args.json}")
         return
 
-    serve_screening_payload(payload)
+    # Reload payload from file since Rust objects were released above.
+    import json as _json
+    with _GH_PAGES_JSON.open(encoding="utf-8") as _f:
+        _reloaded = _json.load(_f)
+    serve_screening_payload(_reloaded)
 
 
 def _save_column_config_json(column_config: list[dict], path: Path) -> None:
