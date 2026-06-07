@@ -28,7 +28,7 @@ _GH_PAGES_COLUMN_CONFIG_JSON = (
 _GH_PAGES_BS_HISTORY_DIR = (
     Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "bs-history"
 )
-_GH_PAGES_ASSET_VERSION = "20260607-bs-hover"
+_GH_PAGES_ASSET_VERSION = "20260607-bs-fill"
 _GH_PAGES_SHARED_ASSET_BASE_URL = "https://expgolemclone.github.io/stock_web_ui/assets"
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
