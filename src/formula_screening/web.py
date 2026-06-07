@@ -11,13 +11,6 @@ from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage, render_index_html
 from stock_web_ui.serve import serve as _serve
 from formula_screening.stock_db_compat import get_balance_sheet_history, get_stock_price_metadata
-from formula_screening.indicators import (
-    croic,
-    fcf_yield_avg,
-    peg_blended_2f_with_status,
-    peg_trailing_with_status,
-)
-from formula_screening.preferred_shares import preferred_share_flag
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
@@ -96,25 +89,6 @@ def _balance_sheet_history_route(query_params: dict[str, list[str]]) -> dict[str
     return get_balance_sheet_history(code)
 
 
-def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
-    """Create API routes that expose screening results as JSON.
-
-    Args:
-        stocks: List of stock dicts from run_screening().
-
-    Returns:
-        Dict mapping route paths to handler callables.
-    """
-    payload: list[dict] = [_serialize_stock(s) for s in stocks]
-    metadata: StockPriceMetadata = build_stock_price_metadata()
-
-    return {
-        "/api/screening": json_route(lambda _params: payload),
-        "/api/stock-price-meta": json_route(lambda _params: metadata),
-        "/api/balance-sheet": json_route(_balance_sheet_history_route),
-    }
-
-
 def create_screening_payload_api(payload: list[dict]) -> dict[str, ApiHandler]:
     """Create API routes from an already serialized Rust payload."""
 
@@ -124,32 +98,6 @@ def create_screening_payload_api(payload: list[dict]) -> dict[str, ApiHandler]:
         "/api/stock-price-meta": json_route(lambda _params: metadata),
         "/api/balance-sheet": json_route(_balance_sheet_history_route),
     }
-
-
-def serve_screening(
-    stocks: list[dict],
-    *,
-    server_config: ServerConfig | None = None,
-) -> None:
-    """Start the web UI server with screening results.
-
-    Args:
-        stocks: Screening results to display.
-        server_config: Server host/port (loads default if omitted).
-    """
-    api_routes = create_screening_api(stocks)
-
-    _serve(
-        static_root=_STATIC_ROOT,
-        index_page=IndexPage(
-            title="Formula Screening",
-            loading_message="スクリーニング結果を読み込み中です。",
-            tab_aria_label="タブ切替",
-        ),
-        server_config=server_config,
-        api_routes=api_routes,
-        yazi_base_dir=_HANDBOOK_DATA_DIR,
-    )
 
 
 def serve_screening_payload(
@@ -194,13 +142,6 @@ def save_index_html(
     )
 
 
-def save_screening_json(stocks: list[dict], path: Path) -> None:
-    """Save screening results as a static JSON file for GitHub Pages."""
-
-    payload = [_serialize_stock(s) for s in stocks]
-    save_screening_payload_json(payload, path)
-
-
 def save_screening_payload_json(payload: list[dict], path: Path) -> None:
     """Save an already serialized Rust payload as static JSON."""
 
@@ -232,50 +173,3 @@ def save_balance_sheet_history_json(payload: list[dict], directory: Path) -> lis
         path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
         written.append(path)
     return written
-
-
-def _serialize_stock(stock: dict) -> dict:
-    """Convert a screener stock dict to the JSON shape expected by app.js."""
-    metrics = stock.get("metrics", {})
-    potential_equity_summary = stock["potential_equity_summary"]
-
-    fcf_value = fcf_yield_avg(stock)
-    croic_value = croic(stock)
-    peg_trailing_5_result = peg_trailing_with_status(stock, 5)
-    peg_blended_result = peg_blended_2f_with_status(stock, 5)
-
-    return {
-        "code": stock.get("ticker", ""),
-        "name": stock.get("name", ""),
-        "price": stock.get("price"),
-        "price_date": stock.get("price_date"),
-        "metrics": {
-            "net_cash_ratio": metrics.get("net_cash_ratio"),
-            "per_actual": metrics.get("per_actual"),
-            "per": metrics.get("per"),
-            "per_next": metrics.get("per_next"),
-            "equity_ratio": metrics.get("equity_ratio"),
-            "dividend_yield": metrics.get("dividend_yield"),
-            "total_payout_ratio": metrics.get("total_payout_ratio"),
-            "retained_earnings_ratio": metrics.get("retained_earnings_ratio"),
-            "provision_for_directors_retirement_benefits": metrics.get(
-                "provision_for_directors_retirement_benefits"
-            ),
-            "pbr": metrics.get("pbr"),
-            "market_cap": metrics.get("market_cap"),
-        },
-        "fcf_yield_avg": fcf_value,
-        "peg_trailing_5": peg_trailing_5_result.value,
-        "peg_trailing_5_status": peg_trailing_5_result.status,
-        "peg_blended_5y_actual_2f": peg_blended_result.value,
-        "peg_blended_5y_actual_2f_status": peg_blended_result.status,
-        "has_preferred_shares": preferred_share_flag(stock),
-        "has_potential_equity": potential_equity_summary["has_potential_equity"],
-        "potential_common_shares": potential_equity_summary["total_period_end_common_shares"],
-        "has_unquantified_potential_equity": bool(
-            potential_equity_summary["has_unquantified_terms"]
-        ),
-        "diluted_eps_common_share_increase": stock.get("diluted_eps_common_share_increase"),
-        "croic": croic_value,
-        "cf_history": stock.get("cf_history"),
-    }

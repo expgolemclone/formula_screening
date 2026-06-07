@@ -1,0 +1,136 @@
+required_sources = ["edinet_xbrl", "shikiho", "prices"]
+sort = "gross_margin"
+
+# 1. 粗利率 > 40%
+[[filters]]
+source = "gross_margin"
+operator = ">"
+threshold = 40.0
+
+# 2. 販管費/粗利益 < 80%
+[[filters]]
+source = "sga_ratio"
+operator = "<"
+threshold = 80.0
+
+# 3. 減価償却費/粗利益 < 10%
+[[filters]]
+source = "depreciation_ratio"
+operator = "<"
+threshold = 10.0
+
+# 4. 支払利息/粗利益 < 15%
+[[filters]]
+source = "interest_ratio"
+operator = "<"
+threshold = 15.0
+
+[[columns]]
+source = "code"
+type = "code"
+
+[[columns]]
+source = "name"
+type = "name"
+
+[[columns]]
+header = "gm%"
+source = "gross_margin"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "gross_margin"
+decimals = 1
+suffix = "%"
+title = "粗利率 = (売上 - 売上原価) / 売上 * 100"
+toggleable = false
+
+[[columns]]
+header = "sga%"
+source = "sga_ratio"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "sga_ratio"
+decimals = 1
+suffix = "%"
+title = "販管費 / 粗利益 * 100"
+toggleable = false
+
+[[columns]]
+header = "rd%"
+source = "rd_ratio"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "rd_ratio"
+decimals = 1
+suffix = "%"
+title = "研究開発費 / 粗利益 * 100"
+toggleable = true
+
+[[columns]]
+header = "dep%"
+source = "depreciation_ratio"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "depreciation_ratio"
+decimals = 1
+suffix = "%"
+title = "減価償却費 / 粗利益 * 100"
+toggleable = false
+
+[[columns]]
+header = "int%"
+source = "interest_ratio"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "interest_ratio"
+decimals = 1
+suffix = "%"
+title = "支払利息 / 粗利益 * 100"
+toggleable = false
+
+[[columns]]
+source = "price"
+type = "price"
+toggleable = true
+
+[[columns]]
+header = "per"
+source = "per"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "per"
+decimals = 1
+title = "時価総額 / 四季報今期予想純利益"
+toggleable = true
+
+[[columns]]
+header = "pbr"
+source = "pbr"
+format = "{:.2f}"
+type = "metric_num"
+metric_key = "pbr"
+decimals = 2
+title = "時価総額 / 純資産"
+toggleable = true
+
+[[columns]]
+header = "roe%"
+source = "roe"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "roe"
+decimals = 1
+suffix = "%"
+title = "純利益 / 自己資本 * 100"
+toggleable = true
+
+[[columns]]
+header = "equity%"
+source = "equity_ratio"
+format = "{:.1f}"
+type = "metric_num"
+metric_key = "equity_ratio"
+decimals = 1
+suffix = "%"
+title = "自己資本 / 総資産 * 100"
+toggleable = true
