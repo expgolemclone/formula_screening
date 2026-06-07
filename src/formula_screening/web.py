@@ -10,7 +10,7 @@ from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage
 from stock_web_ui.serve import serve as _serve
-from formula_screening.stock_db_compat import get_stock_price_metadata
+from formula_screening.stock_db_compat import get_balance_sheet_history, get_stock_price_metadata
 from formula_screening.indicators import (
     croic,
     fcf_yield_avg,
@@ -88,6 +88,14 @@ def build_stock_price_metadata() -> StockPriceMetadata:
     return get_stock_price_metadata()
 
 
+def _balance_sheet_history_route(query_params: dict[str, list[str]]) -> dict[str, object]:
+    code_values = query_params.get("code", [])
+    code = code_values[0].strip() if code_values else ""
+    if not code:
+        return {"error": "missing_code"}
+    return get_balance_sheet_history(code)
+
+
 def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
     """Create API routes that expose screening results as JSON.
 
@@ -103,6 +111,7 @@ def create_screening_api(stocks: list[dict]) -> dict[str, ApiHandler]:
     return {
         "/api/screening": json_route(lambda _params: payload),
         "/api/stock-price-meta": json_route(lambda _params: metadata),
+        "/api/balance-sheet": json_route(_balance_sheet_history_route),
     }
 
 
@@ -113,6 +122,7 @@ def create_screening_payload_api(payload: list[dict]) -> dict[str, ApiHandler]:
     return {
         "/api/screening": json_route(lambda _params: payload),
         "/api/stock-price-meta": json_route(lambda _params: metadata),
+        "/api/balance-sheet": json_route(_balance_sheet_history_route),
     }
 
 
@@ -182,6 +192,24 @@ def save_stock_price_metadata_json(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     metadata: StockPriceMetadata = build_stock_price_metadata()
     path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_balance_sheet_history_json(payload: list[dict], directory: Path) -> list[Path]:
+    """Save one balance-sheet history JSON per stock code for GitHub Pages."""
+
+    directory.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    seen: set[str] = set()
+    for row in payload:
+        code = str(row.get("code") or "").strip()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        path = directory / f"{code}.json"
+        history = get_balance_sheet_history(code)
+        path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+        written.append(path)
+    return written
 
 
 def _serialize_stock(stock: dict) -> dict:

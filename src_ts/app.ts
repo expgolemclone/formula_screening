@@ -286,6 +286,9 @@ async function bootstrap(): Promise<void> {
     defaultSortDirection: "desc",
     tabMode: false,
     githubPages: IS_GITHUB_PAGES,
+    balanceSheetHistoryUrl: (code: string): string => IS_GITHUB_PAGES
+      ? `assets/bs-history/${encodeURIComponent(code)}.json`
+      : `/api/balance-sheet?code=${encodeURIComponent(code)}`,
   });
 }
 

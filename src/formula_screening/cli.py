@@ -24,6 +24,9 @@ _GH_PAGES_METADATA_JSON = (
 _GH_PAGES_COLUMN_CONFIG_JSON = (
     Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "column-config.json"
 )
+_GH_PAGES_BS_HISTORY_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "docs" / "assets" / "bs-history"
+)
 
 _ExtraColsFn = Callable[[dict], list[tuple[str, str]]]
 logger = logging.getLogger("formula_screening.cli")
@@ -94,6 +97,7 @@ def _parse_ticker_spec(spec: str) -> list[str]:
 def _cmd_screen(args: argparse.Namespace) -> None:
     from formula_screening._core import run_screening_payload_with_diagnostics_py
     from formula_screening.web import (
+        save_balance_sheet_history_json,
         save_screening_payload_json,
         save_stock_price_metadata_json,
         serve_screening_payload,
@@ -152,11 +156,12 @@ def _cmd_screen(args: argparse.Namespace) -> None:
     print(f"{len(payload)} stocks matched ({elapsed:.1f}s)", flush=True)
     save_screening_payload_json(payload, _GH_PAGES_JSON)
     save_stock_price_metadata_json(_GH_PAGES_METADATA_JSON)
+    bs_history_paths = save_balance_sheet_history_json(payload, _GH_PAGES_BS_HISTORY_DIR)
     column_config: list[dict] = result.get("column_config", [])
     if column_config:
         _save_column_config_json(column_config, _GH_PAGES_COLUMN_CONFIG_JSON)
     _auto_push_json(
-        [_GH_PAGES_JSON, _GH_PAGES_METADATA_JSON, _GH_PAGES_COLUMN_CONFIG_JSON],
+        [_GH_PAGES_JSON, _GH_PAGES_METADATA_JSON, _GH_PAGES_COLUMN_CONFIG_JSON, *bs_history_paths],
         "Update screening data",
     )
 

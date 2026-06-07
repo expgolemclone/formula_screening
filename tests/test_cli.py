@@ -63,10 +63,12 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
     json_path = tmp_path / "screening.json"
     gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
     gh_pages_metadata_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
+    gh_pages_bs_history_dir = tmp_path / "docs" / "assets" / "bs-history"
     payload = [{"code": "1301", "metrics": {"net_cash_ratio": 1.0}}]
     captured_core: dict[str, object] = {}
     saved: list[tuple[list[dict], Path]] = []
     saved_metadata: list[Path] = []
+    saved_bs_history: list[tuple[list[dict], Path]] = []
 
     def fake_run_screening_payload_with_diagnostics_py(
         strategy: str,
@@ -88,6 +90,10 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
     def fake_save_stock_price_metadata_json(path: Path) -> None:
         saved_metadata.append(path)
 
+    def fake_save_balance_sheet_history_json(rows: list[dict], path: Path) -> list[Path]:
+        saved_bs_history.append((rows, path))
+        return [path / "1301.json"]
+
     fake_core = types.ModuleType("formula_screening._core")
     fake_core.run_screening_payload_with_diagnostics_py = (
         fake_run_screening_payload_with_diagnostics_py
@@ -95,9 +101,11 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_METADATA_JSON", gh_pages_metadata_json)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_BS_HISTORY_DIR", gh_pages_bs_history_dir)
     monkeypatch.setattr(cli_module, "ensure_prices_fresh", lambda **_kwargs: None)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
     monkeypatch.setattr(web_mod, "save_stock_price_metadata_json", fake_save_stock_price_metadata_json)
+    monkeypatch.setattr(web_mod, "save_balance_sheet_history_json", fake_save_balance_sheet_history_json)
 
     args = argparse.Namespace(
         strategy=str(strategy_path),
@@ -116,6 +124,7 @@ def test_cmd_screen_delegates_to_rust_payload_without_reserializing(
     }
     assert saved == [(payload, gh_pages_json), (payload, json_path)]
     assert saved_metadata == [gh_pages_metadata_json]
+    assert saved_bs_history == [(payload, gh_pages_bs_history_dir)]
 
 
 def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
@@ -134,6 +143,7 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
     json_path = tmp_path / "screening.json"
     gh_pages_json = tmp_path / "docs" / "assets" / "screening.json"
     gh_pages_metadata_json = tmp_path / "docs" / "assets" / "stock-price-meta.json"
+    gh_pages_bs_history_dir = tmp_path / "docs" / "assets" / "bs-history"
     payload = [{"code": "1301", "metrics": {"net_cash_ratio": None}}]
     diagnostics = [
         {
@@ -144,12 +154,17 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
     ]
     saved: list[tuple[list[dict], Path]] = []
     saved_metadata: list[Path] = []
+    saved_bs_history: list[tuple[list[dict], Path]] = []
 
     def fake_save_screening_payload_json(rows: list[dict], path: Path) -> None:
         saved.append((rows, path))
 
     def fake_save_stock_price_metadata_json(path: Path) -> None:
         saved_metadata.append(path)
+
+    def fake_save_balance_sheet_history_json(rows: list[dict], path: Path) -> list[Path]:
+        saved_bs_history.append((rows, path))
+        return [path / "1301.json"]
 
     fake_core = types.ModuleType("formula_screening._core")
     fake_core.run_screening_payload_with_diagnostics_py = lambda *_args: {
@@ -159,9 +174,11 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
     monkeypatch.setitem(sys.modules, "formula_screening._core", fake_core)
     monkeypatch.setattr(cli_module, "_GH_PAGES_JSON", gh_pages_json)
     monkeypatch.setattr(cli_module, "_GH_PAGES_METADATA_JSON", gh_pages_metadata_json)
+    monkeypatch.setattr(cli_module, "_GH_PAGES_BS_HISTORY_DIR", gh_pages_bs_history_dir)
     monkeypatch.setattr(cli_module, "ensure_prices_fresh", lambda **_kwargs: None)
     monkeypatch.setattr(web_mod, "save_screening_payload_json", fake_save_screening_payload_json)
     monkeypatch.setattr(web_mod, "save_stock_price_metadata_json", fake_save_stock_price_metadata_json)
+    monkeypatch.setattr(web_mod, "save_balance_sheet_history_json", fake_save_balance_sheet_history_json)
 
     args = argparse.Namespace(
         strategy=str(strategy_path),
@@ -177,3 +194,4 @@ def test_cmd_screen_logs_missing_fields_and_keeps_writing_results(
     assert "Missing screening fields for 1301 (test stock): metrics.net_cash_ratio, fcf_yield_avg" in caplog.text
     assert saved == [(payload, gh_pages_json), (payload, json_path)]
     assert saved_metadata == [gh_pages_metadata_json]
+    assert saved_bs_history == [(payload, gh_pages_bs_history_dir)]

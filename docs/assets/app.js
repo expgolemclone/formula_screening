@@ -209,6 +209,9 @@ async function bootstrap() {
         defaultSortDirection: "desc",
         tabMode: false,
         githubPages: IS_GITHUB_PAGES,
+        balanceSheetHistoryUrl: (code) => IS_GITHUB_PAGES
+            ? `assets/bs-history/${encodeURIComponent(code)}.json`
+            : `/api/balance-sheet?code=${encodeURIComponent(code)}`,
     });
 }
 if (document.readyState === "loading") {

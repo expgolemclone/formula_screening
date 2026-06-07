@@ -34,7 +34,11 @@ def test_serve_screening_passes_handbook_dir_to_stock_web_ui(
 
     assert captured["static_root"] == web_mod._STATIC_ROOT
     assert isinstance(api_routes, Mapping)
-    assert set(api_routes) == {"/api/screening", "/api/stock-price-meta"}
+    assert set(api_routes) == {
+        "/api/screening",
+        "/api/stock-price-meta",
+        "/api/balance-sheet",
+    }
     assert captured["server_config"] == server_config
     assert captured["yazi_base_dir"] == web_mod._HANDBOOK_DATA_DIR
 
@@ -63,6 +67,40 @@ def test_save_stock_price_metadata_json_writes_price_date(
     assert metadata == {
         "price_date": "2026-05-20",
         "target_price_date": "2026-05-20",
+    }
+
+
+def test_balance_sheet_history_route_uses_stock_db_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected = {"ticker": "1301", "periods": ["2025-03"], "roots": []}
+    monkeypatch.setattr(web_mod, "get_balance_sheet_history", lambda code: expected | {"code": code})
+
+    result = web_mod._balance_sheet_history_route({"code": ["1301"]})
+
+    assert result == expected | {"code": "1301"}
+    assert web_mod._balance_sheet_history_route({}) == {"error": "missing_code"}
+
+
+def test_save_balance_sheet_history_json_writes_per_code_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        web_mod,
+        "get_balance_sheet_history",
+        lambda code: {"ticker": code, "periods": ["2025-03"], "roots": []},
+    )
+    output_dir = tmp_path / "bs-history"
+
+    written = web_mod.save_balance_sheet_history_json(
+        [{"code": "1301"}, {"code": "1301"}, {"code": "7203"}],
+        output_dir,
+    )
+
+    assert written == [output_dir / "1301.json", output_dir / "7203.json"]
+    assert json.loads((output_dir / "1301.json").read_text(encoding="utf-8")) == {
+        "ticker": "1301",
+        "periods": ["2025-03"],
+        "roots": [],
     }
 
 
