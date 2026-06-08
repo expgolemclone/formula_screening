@@ -7,8 +7,10 @@ def test_runtime_code_uses_stock_db_public_api() -> None:
     root = Path(__file__).resolve().parent.parent
     banned = (
         "STOCKS_DB_PATH",
+        "stock_db.api",
         "stock_db.paths",
         "stock_db.storage",
+        "stock_db.cli",
         "stock_db.sources.price_refresh",
         "sqlite3.connect",
         "var/db/stocks.db",

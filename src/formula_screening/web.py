@@ -10,7 +10,11 @@ from stock_web_ui.config import ServerConfig
 from stock_web_ui.handler import ApiHandler, json_route
 from stock_web_ui.page import IndexPage, render_index_html
 from stock_web_ui.serve import serve as _serve
-from formula_screening.stock_db_compat import get_balance_sheet_history, get_stock_price_metadata
+from formula_screening.stock_db_compat import (
+    get_balance_sheet_histories,
+    get_balance_sheet_history,
+    get_stock_price_metadata,
+)
 
 _PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR: Path = _PROJECT_ROOT / "docs"
@@ -163,13 +167,19 @@ def save_balance_sheet_history_json(payload: list[dict], directory: Path) -> lis
     directory.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     seen: set[str] = set()
+    codes: list[str] = []
     for row in payload:
         code = str(row.get("code") or "").strip()
         if not code or code in seen:
             continue
         seen.add(code)
+        codes.append(code)
+    histories = get_balance_sheet_histories(codes)
+    for code in codes:
         path = directory / f"{code}.json"
-        history = get_balance_sheet_history(code)
+        history = histories.get(code)
+        if not isinstance(history, dict):
+            raise ValueError(f"missing balance-sheet history for {code}")
         path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
         written.append(path)
     return written

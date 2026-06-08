@@ -30,7 +30,7 @@ uv run python -m formula_screening screen \
   -s strategies/net_cash_fcf.toml -t 1867 --json /tmp/screening.json
 ```
 
-Rust バイナリ単体でも同じスクリーニング core を実行できます。この経路でも `stock_db` の Rust screening API が `refresh-prices --if-needed` を呼び、DB 読み取り前に価格鮮度を確認します。
+Rust バイナリ単体でも同じスクリーニング core を実行できます。この経路は `stock_db` の Rust crate `edinet-xbrl` から screening read model を読むため、DB パスや内部テーブルを `formula_screening` 側の公開契約にしません。
 
 ```bash
 cargo run --manifest-path rust/Cargo.toml --bin formula-screening -- \
@@ -256,8 +256,8 @@ XBRL タグから canonical financial item への取り込み漏れは `stock_db
 - `cli_defaults.toml`: CLI 既定値
 - `path.toml`: データ・ログ系パス
 
-DB パスは `formula_screening` の設定では扱わず、`stock_db` の公開 API が内部で解決します。`path.toml` は `formula_screening` 自身の `data/` と `logs/` の管理に使われます。
+DB パスは `formula_screening` の設定では扱わず、`stock_db` の Rust crate と `edinet-xbrl downstream-*` JSON CLI が内部で解決します。`path.toml` は `formula_screening` 自身の `data/` と `logs/` の管理に使われます。
 
 ## 補助モジュール
 
-`validation.py` は、`formula_screening.stock_db_compat.get_validation_targets()` と `formula_screening.stock_db_compat.get_latest_balance_sheet()` を使って、`net_cash_ratio` 検証用のスナップショットを作る補助モジュールです。現時点では CLI から直接呼ばれていませんが、テストで振る舞いが固定されています。
+`formula_screening.stock_db_compat` は、株価更新、社名、株価 metadata、screening stock、BS 履歴を `stock_db` の `edinet-xbrl downstream-*` JSON CLI 経由で取得する境界モジュールです。`stock_db.api` は使いません。

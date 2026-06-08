@@ -1,7 +1,6 @@
 {
   "ticker": "7544",
   "periods": [
-    "2016-02",
     "2017-02",
     "2018-02",
     "2019-02",
@@ -10,12 +9,12 @@
     "2022-02",
     "2023-02",
     "2024-02",
-    "2025-02"
+    "2025-02",
+    "2026-02"
   ],
-  "baseline_period": "2016-02",
-  "baseline_total_assets": 13577000000.0,
+  "baseline_period": "2017-02",
+  "baseline_total_assets": 11615000000.0,
   "total_assets": [
-    13577000000.0,
     11615000000.0,
     6227000000.0,
     4804000000.0,
@@ -24,12 +23,13 @@
     4885000000.0,
     4347000000.0,
     4987000000.0,
-    5113000000.0
+    5113000000.0,
+    5758000000.0
   ],
   "unit": "JPY",
   "roots": [
     {
-      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
       "concept_name": "BalanceSheetHeading",
       "label": "BalanceSheetHeading",
       "values": [
@@ -46,7 +46,7 @@
       ],
       "children": [
         {
-          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
           "concept_name": "BalanceSheetLineItems",
           "label": "BalanceSheetLineItems",
           "values": [
@@ -63,7 +63,7 @@
           ],
           "children": [
             {
-              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
               "concept_name": "AssetsAbstract",
               "label": "AssetsAbstract",
               "values": [
@@ -80,7 +80,7 @@
               ],
               "children": [
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "CurrentAssetsAbstract",
                   "label": "CurrentAssetsAbstract",
                   "values": [
@@ -97,11 +97,10 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CashAndDeposits",
                       "label": "CashAndDeposits",
                       "values": [
-                        1002000000.0,
                         2656000000.0,
                         4863000000.0,
                         3612000000.0,
@@ -110,16 +109,16 @@
                         3841000000.0,
                         3407000000.0,
                         4075000000.0,
-                        4157000000.0
+                        4157000000.0,
+                        4768000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "Merchandise",
                       "label": "Merchandise",
                       "values": [
-                        187000000.0,
                         128000000.0,
                         73000000.0,
                         86000000.0,
@@ -128,18 +127,19 @@
                         100000000.0,
                         108000000.0,
                         99000000.0,
-                        92000000.0
+                        92000000.0,
+                        123000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "Supplies",
                       "label": "Supplies",
                       "values": [
                         5000000.0,
-                        5000000.0,
                         1000000.0,
+                        0.0,
                         0.0,
                         0.0,
                         0.0,
@@ -151,11 +151,10 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "PrepaidExpenses",
                       "label": "PrepaidExpenses",
                       "values": [
-                        369000000.0,
                         244000000.0,
                         19000000.0,
                         7000000.0,
@@ -164,16 +163,16 @@
                         9000000.0,
                         9000000.0,
                         8000000.0,
-                        7000000.0
+                        7000000.0,
+                        8000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AccountsReceivableOther",
                       "label": "AccountsReceivableOther",
                       "values": [
-                        759000000.0,
                         790000000.0,
                         131000000.0,
                         133000000.0,
@@ -182,16 +181,16 @@
                         100000000.0,
                         98000000.0,
                         198000000.0,
-                        225000000.0
+                        225000000.0,
+                        215000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "OtherCA",
                       "label": "OtherCA",
                       "values": [
-                        101000000.0,
                         67000000.0,
                         13000000.0,
                         0.0,
@@ -200,16 +199,16 @@
                         41000000.0,
                         90000000.0,
                         26000000.0,
-                        5000000.0
+                        5000000.0,
+                        1000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CurrentAssets",
                       "label": "CurrentAssets",
                       "values": [
-                        3601000000.0,
                         4747000000.0,
                         5098000000.0,
                         3840000000.0,
@@ -218,14 +217,15 @@
                         4092000000.0,
                         3714000000.0,
                         4408000000.0,
-                        4485000000.0
+                        4485000000.0,
+                        5113000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "NoncurrentAssetsAbstract",
                   "label": "NoncurrentAssetsAbstract",
                   "values": [
@@ -242,7 +242,7 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "PropertyPlantAndEquipmentAbstract",
                       "label": "PropertyPlantAndEquipmentAbstract",
                       "values": [
@@ -259,7 +259,7 @@
                       ],
                       "children": [
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "Buildings",
                           "label": "Buildings",
                           "values": [
@@ -269,14 +269,14 @@
                             null,
                             null,
                             null,
-                            null,
                             226000000.0,
                             183000000.0,
-                            171000000.0
+                            171000000.0,
+                            174000000.0
                           ],
                           "children": [
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "AccumulatedDepreciationBuildings",
                               "label": "AccumulatedDepreciationBuildings",
                               "values": [
@@ -286,15 +286,15 @@
                                 null,
                                 null,
                                 null,
-                                null,
                                 -194000000.0,
                                 -158000000.0,
-                                -120000000.0
+                                -120000000.0,
+                                -123000000.0
                               ],
                               "children": []
                             },
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "BuildingsNet",
                               "label": "BuildingsNet",
                               "values": [
@@ -304,9 +304,9 @@
                                 null,
                                 null,
                                 null,
-                                null,
                                 32000000.0,
                                 25000000.0,
+                                51000000.0,
                                 51000000.0
                               ],
                               "children": []
@@ -314,11 +314,10 @@
                           ]
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "ToolsFurnitureAndFixtures",
                           "label": "ToolsFurnitureAndFixtures",
                           "values": [
-                            52000000.0,
                             34000000.0,
                             91000000.0,
                             151000000.0,
@@ -327,15 +326,15 @@
                             194000000.0,
                             176000000.0,
                             176000000.0,
-                            186000000.0
+                            186000000.0,
+                            185000000.0
                           ],
                           "children": [
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "AccumulatedDepreciationToolsFurnitureAndFixtures",
                               "label": "AccumulatedDepreciationToolsFurnitureAndFixtures",
                               "values": [
-                                -49000000.0,
                                 -33000000.0,
                                 -3000000.0,
                                 -18000000.0,
@@ -344,16 +343,16 @@
                                 -122000000.0,
                                 -160000000.0,
                                 -175000000.0,
-                                -171000000.0
+                                -171000000.0,
+                                -172000000.0
                               ],
                               "children": []
                             },
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "ToolsFurnitureAndFixturesNet",
                               "label": "ToolsFurnitureAndFixturesNet",
                               "values": [
-                                2000000.0,
                                 1000000.0,
                                 88000000.0,
                                 132000000.0,
@@ -362,23 +361,24 @@
                                 71000000.0,
                                 15000000.0,
                                 0.0,
-                                14000000.0
+                                14000000.0,
+                                12000000.0
                               ],
                               "children": []
                             }
                           ]
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "MachineryAndEquipment",
                           "label": "MachineryAndEquipment",
                           "values": [
                             null,
                             null,
-                            null,
                             19000000.0,
                             19000000.0,
                             19000000.0,
+                            3000000.0,
                             3000000.0,
                             3000000.0,
                             3000000.0,
@@ -386,11 +386,10 @@
                           ],
                           "children": [
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "AccumulatedDepreciationMachineryAndEquipment",
                               "label": "AccumulatedDepreciationMachineryAndEquipment",
                               "values": [
-                                null,
                                 null,
                                 null,
                                 0.0,
@@ -399,21 +398,22 @@
                                 -3000000.0,
                                 -3000000.0,
                                 -3000000.0,
+                                -3000000.0,
                                 -3000000.0
                               ],
                               "children": []
                             },
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "MachineryAndEquipmentNet",
                               "label": "MachineryAndEquipmentNet",
                               "values": [
                                 null,
                                 null,
-                                null,
                                 19000000.0,
                                 18000000.0,
                                 16000000.0,
+                                null,
                                 null,
                                 null,
                                 null,
@@ -424,14 +424,14 @@
                           ]
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "Land",
                           "label": "Land",
                           "values": [
-                            624000000.0,
                             420000000.0,
                             420000000.0,
                             304000000.0,
+                            293000000.0,
                             293000000.0,
                             293000000.0,
                             293000000.0,
@@ -442,11 +442,10 @@
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "PropertyPlantAndEquipment",
                           "label": "PropertyPlantAndEquipment",
                           "values": [
-                            3586000000.0,
                             2426000000.0,
                             602000000.0,
                             564000000.0,
@@ -455,14 +454,15 @@
                             492000000.0,
                             341000000.0,
                             319000000.0,
-                            358000000.0
+                            358000000.0,
+                            357000000.0
                           ],
                           "children": []
                         }
                       ]
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "InvestmentsAndOtherAssetsAbstract",
                       "label": "InvestmentsAndOtherAssetsAbstract",
                       "values": [
@@ -479,11 +479,10 @@
                       ],
                       "children": [
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "InvestmentSecurities",
                           "label": "InvestmentSecurities",
                           "values": [
-                            58000000.0,
                             53000000.0,
                             49000000.0,
                             40000000.0,
@@ -492,16 +491,16 @@
                             39000000.0,
                             38000000.0,
                             41000000.0,
+                            38000000.0,
                             38000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "LeaseAndGuaranteeDeposits",
                           "label": "LeaseAndGuaranteeDeposits",
                           "values": [
-                            5654000000.0,
                             3610000000.0,
                             470000000.0,
                             353000000.0,
@@ -510,16 +509,16 @@
                             254000000.0,
                             235000000.0,
                             195000000.0,
-                            189000000.0
+                            189000000.0,
+                            183000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "OtherIOA",
                           "label": "OtherIOA",
                           "values": [
-                            23000000.0,
                             22000000.0,
                             9000000.0,
                             18000000.0,
@@ -528,16 +527,16 @@
                             19000000.0,
                             30000000.0,
                             36000000.0,
-                            23000000.0
+                            23000000.0,
+                            32000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "AllowanceForDoubtfulAccountsIOAByGroup",
                           "label": "AllowanceForDoubtfulAccountsIOAByGroup",
                           "values": [
-                            -3000000.0,
                             -3000000.0,
                             -3000000.0,
                             -13000000.0,
@@ -546,16 +545,16 @@
                             -44000000.0,
                             -44000000.0,
                             -50000000.0,
-                            -34000000.0
+                            -34000000.0,
+                            -40000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "InvestmentsAndOtherAssets",
                           "label": "InvestmentsAndOtherAssets",
                           "values": [
-                            5732000000.0,
                             3682000000.0,
                             526000000.0,
                             399000000.0,
@@ -564,18 +563,18 @@
                             300000000.0,
                             291000000.0,
                             260000000.0,
-                            269000000.0
+                            269000000.0,
+                            287000000.0
                           ],
                           "children": []
                         }
                       ]
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "NoncurrentAssets",
                       "label": "NoncurrentAssets",
                       "values": [
-                        9975000000.0,
                         6867000000.0,
                         1129000000.0,
                         963000000.0,
@@ -584,18 +583,18 @@
                         792000000.0,
                         633000000.0,
                         579000000.0,
-                        628000000.0
+                        628000000.0,
+                        644000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "Assets",
                   "label": "Assets",
                   "values": [
-                    13577000000.0,
                     11615000000.0,
                     6227000000.0,
                     4804000000.0,
@@ -604,14 +603,15 @@
                     4885000000.0,
                     4347000000.0,
                     4987000000.0,
-                    5113000000.0
+                    5113000000.0,
+                    5758000000.0
                   ],
                   "children": []
                 }
               ]
             },
             {
-              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
               "concept_name": "LiabilitiesAbstract",
               "label": "LiabilitiesAbstract",
               "values": [
@@ -628,7 +628,7 @@
               ],
               "children": [
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "CurrentLiabilitiesAbstract",
                   "label": "CurrentLiabilitiesAbstract",
                   "values": [
@@ -645,11 +645,10 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AccountsPayableTrade",
                       "label": "AccountsPayableTrade",
                       "values": [
-                        300000000.0,
                         223000000.0,
                         87000000.0,
                         74000000.0,
@@ -658,16 +657,16 @@
                         60000000.0,
                         61000000.0,
                         52000000.0,
-                        54000000.0
+                        54000000.0,
+                        56000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AccountsPayableOther",
                       "label": "AccountsPayableOther",
                       "values": [
-                        1123000000.0,
                         507000000.0,
                         1561000000.0,
                         294000000.0,
@@ -676,16 +675,16 @@
                         203000000.0,
                         204000000.0,
                         189000000.0,
-                        192000000.0
+                        192000000.0,
+                        184000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "IncomeTaxesPayable",
                       "label": "IncomeTaxesPayable",
                       "values": [
-                        24000000.0,
                         40000000.0,
                         31000000.0,
                         6000000.0,
@@ -694,16 +693,16 @@
                         66000000.0,
                         89000000.0,
                         322000000.0,
-                        192000000.0
+                        192000000.0,
+                        370000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "DepositsReceived",
                       "label": "DepositsReceived",
                       "values": [
-                        2757000000.0,
                         1430000000.0,
                         28000000.0,
                         7000000.0,
@@ -712,16 +711,16 @@
                         15000000.0,
                         14000000.0,
                         13000000.0,
+                        15000000.0,
                         15000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "ProvisionForBonuses",
                       "label": "ProvisionForBonuses",
                       "values": [
-                        181000000.0,
                         166000000.0,
                         71000000.0,
                         84000000.0,
@@ -730,16 +729,16 @@
                         90000000.0,
                         85000000.0,
                         91000000.0,
-                        96000000.0
+                        96000000.0,
+                        102000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "OtherCL",
                       "label": "OtherCL",
                       "values": [
-                        44000000.0,
                         46000000.0,
                         12000000.0,
                         16000000.0,
@@ -748,16 +747,16 @@
                         13000000.0,
                         14000000.0,
                         14000000.0,
-                        15000000.0
+                        15000000.0,
+                        16000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CurrentLiabilities",
                       "label": "CurrentLiabilities",
                       "values": [
-                        8888000000.0,
                         6801000000.0,
                         1793000000.0,
                         577000000.0,
@@ -766,14 +765,15 @@
                         496000000.0,
                         503000000.0,
                         790000000.0,
-                        642000000.0
+                        642000000.0,
+                        874000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "NoncurrentLiabilitiesAbstract",
                   "label": "NoncurrentLiabilitiesAbstract",
                   "values": [
@@ -790,12 +790,12 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AssetRetirementObligationsNCL",
                       "label": "AssetRetirementObligationsNCL",
                       "values": [
-                        789000000.0,
                         null,
+                        9000000.0,
                         9000000.0,
                         9000000.0,
                         9000000.0,
@@ -808,11 +808,10 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "LongTermGuaranteeDeposited",
                       "label": "LongTermGuaranteeDeposited",
                       "values": [
-                        614000000.0,
                         78000000.0,
                         119000000.0,
                         50000000.0,
@@ -821,16 +820,16 @@
                         26000000.0,
                         23000000.0,
                         18000000.0,
+                        18000000.0,
                         18000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "OtherNCL",
                       "label": "OtherNCL",
                       "values": [
-                        32000000.0,
                         44000000.0,
                         6000000.0,
                         3000000.0,
@@ -839,16 +838,16 @@
                         3000000.0,
                         3000000.0,
                         4000000.0,
-                        3000000.0
+                        3000000.0,
+                        2000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "NoncurrentLiabilities",
                       "label": "NoncurrentLiabilities",
                       "values": [
-                        3233000000.0,
                         3975000000.0,
                         135000000.0,
                         63000000.0,
@@ -857,6 +856,7 @@
                         39000000.0,
                         36000000.0,
                         32000000.0,
+                        31000000.0,
                         31000000.0
                       ],
                       "children": []
@@ -864,11 +864,10 @@
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "Liabilities",
                   "label": "Liabilities",
                   "values": [
-                    12122000000.0,
                     10777000000.0,
                     1929000000.0,
                     640000000.0,
@@ -877,14 +876,15 @@
                     536000000.0,
                     539000000.0,
                     823000000.0,
-                    673000000.0
+                    673000000.0,
+                    905000000.0
                   ],
                   "children": []
                 }
               ]
             },
             {
-              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
               "concept_name": "NetAssetsAbstract",
               "label": "NetAssetsAbstract",
               "values": [
@@ -901,7 +901,7 @@
               ],
               "children": [
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "ShareholdersEquityAbstract",
                   "label": "ShareholdersEquityAbstract",
                   "values": [
@@ -918,12 +918,12 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CapitalStock",
                       "label": "CapitalStock",
                       "values": [
                         1396000000.0,
-                        1396000000.0,
+                        100000000.0,
                         100000000.0,
                         100000000.0,
                         100000000.0,
@@ -936,7 +936,7 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CapitalSurplusAbstract",
                       "label": "CapitalSurplusAbstract",
                       "values": [
@@ -953,12 +953,12 @@
                       ],
                       "children": [
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "CapitalSurplus",
                           "label": "CapitalSurplus",
                           "values": [
                             1645000000.0,
-                            1645000000.0,
+                            5814000000.0,
                             5814000000.0,
                             5814000000.0,
                             5814000000.0,
@@ -973,7 +973,7 @@
                       ]
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "RetainedEarningsAbstract",
                       "label": "RetainedEarningsAbstract",
                       "values": [
@@ -990,11 +990,10 @@
                       ],
                       "children": [
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "RetainedEarnings",
                           "label": "RetainedEarnings",
                           "values": [
-                            -1613000000.0,
                             -2336000000.0,
                             -1767000000.0,
                             -1934000000.0,
@@ -1003,14 +1002,15 @@
                             -2100000000.0,
                             -2340000000.0,
                             -2198000000.0,
-                            -1984000000.0
+                            -1984000000.0,
+                            -1693000000.0
                           ],
                           "children": []
                         }
                       ]
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "TreasuryStock",
                       "label": "TreasuryStock",
                       "values": [
@@ -1028,11 +1028,10 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "ShareholdersEquity",
                       "label": "ShareholdersEquity",
                       "values": [
-                        1341000000.0,
                         619000000.0,
                         4061000000.0,
                         3893000000.0,
@@ -1041,14 +1040,15 @@
                         3728000000.0,
                         3488000000.0,
                         3629000000.0,
-                        3843000000.0
+                        3843000000.0,
+                        4135000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "ValuationAndTranslationAdjustmentsAbstract",
                   "label": "ValuationAndTranslationAdjustmentsAbstract",
                   "values": [
@@ -1065,11 +1065,10 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "ValuationDifferenceOnAvailableForSaleSecurities",
                       "label": "ValuationDifferenceOnAvailableForSaleSecurities",
                       "values": [
-                        7000000.0,
                         11000000.0,
                         13000000.0,
                         7000000.0,
@@ -1078,16 +1077,16 @@
                         6000000.0,
                         6000000.0,
                         8000000.0,
-                        6000000.0
+                        6000000.0,
+                        5000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "ValuationAndTranslationAdjustments",
                       "label": "ValuationAndTranslationAdjustments",
                       "values": [
-                        7000000.0,
                         11000000.0,
                         13000000.0,
                         7000000.0,
@@ -1096,18 +1095,18 @@
                         6000000.0,
                         6000000.0,
                         8000000.0,
-                        6000000.0
+                        6000000.0,
+                        5000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "NetAssets",
                   "label": "NetAssets",
                   "values": [
-                    1454000000.0,
                     837000000.0,
                     4298000000.0,
                     4163000000.0,
@@ -1116,18 +1115,18 @@
                     4348000000.0,
                     3807000000.0,
                     4164000000.0,
-                    4440000000.0
+                    4440000000.0,
+                    4852000000.0
                   ],
                   "children": []
                 }
               ]
             },
             {
-              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
               "concept_name": "LiabilitiesAndNetAssets",
               "label": "LiabilitiesAndNetAssets",
               "values": [
-                13577000000.0,
                 11615000000.0,
                 6227000000.0,
                 4804000000.0,
@@ -1136,7 +1135,8 @@
                 4885000000.0,
                 4347000000.0,
                 4987000000.0,
-                5113000000.0
+                5113000000.0,
+                5758000000.0
               ],
               "children": []
             }
@@ -1145,7 +1145,7 @@
       ]
     },
     {
-      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
       "concept_name": "ConsolidatedBalanceSheetHeading",
       "label": "ConsolidatedBalanceSheetHeading",
       "values": [
@@ -1162,7 +1162,7 @@
       ],
       "children": [
         {
-          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
           "concept_name": "BalanceSheetLineItems",
           "label": "BalanceSheetLineItems",
           "values": [
@@ -1179,7 +1179,7 @@
           ],
           "children": [
             {
-              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
               "concept_name": "AssetsAbstract",
               "label": "AssetsAbstract",
               "values": [
@@ -1196,7 +1196,7 @@
               ],
               "children": [
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "CurrentAssetsAbstract",
                   "label": "CurrentAssetsAbstract",
                   "values": [
@@ -1213,11 +1213,10 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CashAndDeposits",
                       "label": "CashAndDeposits",
                       "values": [
-                        1002000000.0,
                         2656000000.0,
                         4863000000.0,
                         3612000000.0,
@@ -1226,16 +1225,16 @@
                         3841000000.0,
                         3407000000.0,
                         4075000000.0,
-                        4157000000.0
+                        4157000000.0,
+                        4768000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "Merchandise",
                       "label": "Merchandise",
                       "values": [
-                        187000000.0,
                         128000000.0,
                         73000000.0,
                         86000000.0,
@@ -1244,18 +1243,19 @@
                         100000000.0,
                         108000000.0,
                         99000000.0,
-                        92000000.0
+                        92000000.0,
+                        123000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "Supplies",
                       "label": "Supplies",
                       "values": [
                         5000000.0,
-                        5000000.0,
                         1000000.0,
+                        0.0,
                         0.0,
                         0.0,
                         0.0,
@@ -1267,11 +1267,10 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "PrepaidExpenses",
                       "label": "PrepaidExpenses",
                       "values": [
-                        369000000.0,
                         244000000.0,
                         19000000.0,
                         7000000.0,
@@ -1280,16 +1279,16 @@
                         9000000.0,
                         9000000.0,
                         8000000.0,
-                        7000000.0
+                        7000000.0,
+                        8000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AccountsReceivableOther",
                       "label": "AccountsReceivableOther",
                       "values": [
-                        759000000.0,
                         790000000.0,
                         131000000.0,
                         133000000.0,
@@ -1298,16 +1297,16 @@
                         100000000.0,
                         98000000.0,
                         198000000.0,
-                        225000000.0
+                        225000000.0,
+                        215000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "OtherCA",
                       "label": "OtherCA",
                       "values": [
-                        101000000.0,
                         67000000.0,
                         13000000.0,
                         0.0,
@@ -1316,16 +1315,16 @@
                         41000000.0,
                         90000000.0,
                         26000000.0,
-                        5000000.0
+                        5000000.0,
+                        1000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AllowanceForDoubtfulAccountsCA",
                       "label": "AllowanceForDoubtfulAccountsCA",
                       "values": [
-                        -2000000.0,
                         -2000000.0,
                         -4000000.0,
                         0.0,
@@ -1334,16 +1333,16 @@
                         null,
                         null,
                         null,
+                        -3000000.0,
                         -3000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CurrentAssets",
                       "label": "CurrentAssets",
                       "values": [
-                        3601000000.0,
                         4747000000.0,
                         5098000000.0,
                         3840000000.0,
@@ -1352,14 +1351,15 @@
                         4092000000.0,
                         3714000000.0,
                         4408000000.0,
-                        4485000000.0
+                        4485000000.0,
+                        5113000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "NoncurrentAssetsAbstract",
                   "label": "NoncurrentAssetsAbstract",
                   "values": [
@@ -1376,7 +1376,7 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "PropertyPlantAndEquipmentAbstract",
                       "label": "PropertyPlantAndEquipmentAbstract",
                       "values": [
@@ -1393,7 +1393,7 @@
                       ],
                       "children": [
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "Buildings",
                           "label": "Buildings",
                           "values": [
@@ -1403,14 +1403,14 @@
                             null,
                             null,
                             null,
-                            null,
                             226000000.0,
                             183000000.0,
-                            171000000.0
+                            171000000.0,
+                            174000000.0
                           ],
                           "children": [
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "AccumulatedDepreciationBuildings",
                               "label": "AccumulatedDepreciationBuildings",
                               "values": [
@@ -1420,15 +1420,15 @@
                                 null,
                                 null,
                                 null,
-                                null,
                                 -194000000.0,
                                 -158000000.0,
-                                -120000000.0
+                                -120000000.0,
+                                -123000000.0
                               ],
                               "children": []
                             },
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "BuildingsNet",
                               "label": "BuildingsNet",
                               "values": [
@@ -1438,9 +1438,9 @@
                                 null,
                                 null,
                                 null,
-                                null,
                                 32000000.0,
                                 25000000.0,
+                                51000000.0,
                                 51000000.0
                               ],
                               "children": []
@@ -1448,11 +1448,10 @@
                           ]
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "ToolsFurnitureAndFixtures",
                           "label": "ToolsFurnitureAndFixtures",
                           "values": [
-                            52000000.0,
                             34000000.0,
                             91000000.0,
                             151000000.0,
@@ -1461,15 +1460,15 @@
                             194000000.0,
                             176000000.0,
                             176000000.0,
-                            186000000.0
+                            186000000.0,
+                            185000000.0
                           ],
                           "children": [
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "AccumulatedDepreciationToolsFurnitureAndFixtures",
                               "label": "AccumulatedDepreciationToolsFurnitureAndFixtures",
                               "values": [
-                                -49000000.0,
                                 -33000000.0,
                                 -3000000.0,
                                 -18000000.0,
@@ -1478,16 +1477,16 @@
                                 -122000000.0,
                                 -160000000.0,
                                 -175000000.0,
-                                -171000000.0
+                                -171000000.0,
+                                -172000000.0
                               ],
                               "children": []
                             },
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "ToolsFurnitureAndFixturesNet",
                               "label": "ToolsFurnitureAndFixturesNet",
                               "values": [
-                                2000000.0,
                                 1000000.0,
                                 88000000.0,
                                 132000000.0,
@@ -1496,23 +1495,24 @@
                                 71000000.0,
                                 15000000.0,
                                 0.0,
-                                14000000.0
+                                14000000.0,
+                                12000000.0
                               ],
                               "children": []
                             }
                           ]
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "MachineryAndEquipment",
                           "label": "MachineryAndEquipment",
                           "values": [
                             null,
                             null,
-                            null,
                             19000000.0,
                             19000000.0,
                             19000000.0,
+                            3000000.0,
                             3000000.0,
                             3000000.0,
                             3000000.0,
@@ -1520,11 +1520,10 @@
                           ],
                           "children": [
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "AccumulatedDepreciationMachineryAndEquipment",
                               "label": "AccumulatedDepreciationMachineryAndEquipment",
                               "values": [
-                                null,
                                 null,
                                 null,
                                 0.0,
@@ -1533,21 +1532,22 @@
                                 -3000000.0,
                                 -3000000.0,
                                 -3000000.0,
+                                -3000000.0,
                                 -3000000.0
                               ],
                               "children": []
                             },
                             {
-                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                               "concept_name": "MachineryAndEquipmentNet",
                               "label": "MachineryAndEquipmentNet",
                               "values": [
                                 null,
                                 null,
-                                null,
                                 19000000.0,
                                 18000000.0,
                                 16000000.0,
+                                null,
                                 null,
                                 null,
                                 null,
@@ -1558,14 +1558,14 @@
                           ]
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "Land",
                           "label": "Land",
                           "values": [
-                            624000000.0,
                             420000000.0,
                             420000000.0,
                             304000000.0,
+                            293000000.0,
                             293000000.0,
                             293000000.0,
                             293000000.0,
@@ -1576,11 +1576,10 @@
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "PropertyPlantAndEquipment",
                           "label": "PropertyPlantAndEquipment",
                           "values": [
-                            3586000000.0,
                             2426000000.0,
                             602000000.0,
                             564000000.0,
@@ -1589,14 +1588,15 @@
                             492000000.0,
                             341000000.0,
                             319000000.0,
-                            358000000.0
+                            358000000.0,
+                            357000000.0
                           ],
                           "children": []
                         }
                       ]
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "InvestmentsAndOtherAssetsAbstract",
                       "label": "InvestmentsAndOtherAssetsAbstract",
                       "values": [
@@ -1613,11 +1613,10 @@
                       ],
                       "children": [
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "InvestmentSecurities",
                           "label": "InvestmentSecurities",
                           "values": [
-                            58000000.0,
                             53000000.0,
                             49000000.0,
                             40000000.0,
@@ -1626,16 +1625,16 @@
                             39000000.0,
                             38000000.0,
                             41000000.0,
+                            38000000.0,
                             38000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "LeaseAndGuaranteeDeposits",
                           "label": "LeaseAndGuaranteeDeposits",
                           "values": [
-                            5654000000.0,
                             3610000000.0,
                             470000000.0,
                             353000000.0,
@@ -1644,16 +1643,16 @@
                             254000000.0,
                             235000000.0,
                             195000000.0,
-                            189000000.0
+                            189000000.0,
+                            183000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "DeferredTaxAssets",
                           "label": "DeferredTaxAssets",
                           "values": [
-                            null,
                             null,
                             null,
                             null,
@@ -1662,16 +1661,16 @@
                             32000000.0,
                             30000000.0,
                             36000000.0,
-                            52000000.0
+                            52000000.0,
+                            74000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "OtherIOA",
                           "label": "OtherIOA",
                           "values": [
-                            23000000.0,
                             22000000.0,
                             9000000.0,
                             18000000.0,
@@ -1680,16 +1679,16 @@
                             19000000.0,
                             30000000.0,
                             36000000.0,
-                            23000000.0
+                            23000000.0,
+                            32000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "AllowanceForDoubtfulAccountsIOAByGroup",
                           "label": "AllowanceForDoubtfulAccountsIOAByGroup",
                           "values": [
-                            -3000000.0,
                             -3000000.0,
                             -3000000.0,
                             -13000000.0,
@@ -1698,16 +1697,16 @@
                             -44000000.0,
                             -44000000.0,
                             -50000000.0,
-                            -34000000.0
+                            -34000000.0,
+                            -40000000.0
                           ],
                           "children": []
                         },
                         {
-                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                          "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                           "concept_name": "InvestmentsAndOtherAssets",
                           "label": "InvestmentsAndOtherAssets",
                           "values": [
-                            5732000000.0,
                             3682000000.0,
                             526000000.0,
                             399000000.0,
@@ -1716,18 +1715,18 @@
                             300000000.0,
                             291000000.0,
                             260000000.0,
-                            269000000.0
+                            269000000.0,
+                            287000000.0
                           ],
                           "children": []
                         }
                       ]
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "NoncurrentAssets",
                       "label": "NoncurrentAssets",
                       "values": [
-                        9975000000.0,
                         6867000000.0,
                         1129000000.0,
                         963000000.0,
@@ -1736,18 +1735,18 @@
                         792000000.0,
                         633000000.0,
                         579000000.0,
-                        628000000.0
+                        628000000.0,
+                        644000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "Assets",
                   "label": "Assets",
                   "values": [
-                    13577000000.0,
                     11615000000.0,
                     6227000000.0,
                     4804000000.0,
@@ -1756,14 +1755,15 @@
                     4885000000.0,
                     4347000000.0,
                     4987000000.0,
-                    5113000000.0
+                    5113000000.0,
+                    5758000000.0
                   ],
                   "children": []
                 }
               ]
             },
             {
-              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
               "concept_name": "LiabilitiesAbstract",
               "label": "LiabilitiesAbstract",
               "values": [
@@ -1780,7 +1780,7 @@
               ],
               "children": [
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "CurrentLiabilitiesAbstract",
                   "label": "CurrentLiabilitiesAbstract",
                   "values": [
@@ -1797,11 +1797,10 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AccountsPayableTrade",
                       "label": "AccountsPayableTrade",
                       "values": [
-                        300000000.0,
                         223000000.0,
                         87000000.0,
                         74000000.0,
@@ -1810,16 +1809,16 @@
                         60000000.0,
                         61000000.0,
                         52000000.0,
-                        54000000.0
+                        54000000.0,
+                        56000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AccountsPayableOther",
                       "label": "AccountsPayableOther",
                       "values": [
-                        1123000000.0,
                         507000000.0,
                         1561000000.0,
                         294000000.0,
@@ -1828,16 +1827,16 @@
                         203000000.0,
                         204000000.0,
                         189000000.0,
-                        192000000.0
+                        192000000.0,
+                        184000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "IncomeTaxesPayable",
                       "label": "IncomeTaxesPayable",
                       "values": [
-                        24000000.0,
                         40000000.0,
                         31000000.0,
                         6000000.0,
@@ -1846,16 +1845,16 @@
                         66000000.0,
                         89000000.0,
                         322000000.0,
-                        192000000.0
+                        192000000.0,
+                        370000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AccruedConsumptionTaxes",
                       "label": "AccruedConsumptionTaxes",
                       "values": [
-                        75000000.0,
                         0.0,
                         2000000.0,
                         93000000.0,
@@ -1864,16 +1863,16 @@
                         46000000.0,
                         34000000.0,
                         105000000.0,
-                        75000000.0
+                        75000000.0,
+                        128000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "DepositsReceived",
                       "label": "DepositsReceived",
                       "values": [
-                        2757000000.0,
                         1430000000.0,
                         28000000.0,
                         7000000.0,
@@ -1882,16 +1881,16 @@
                         15000000.0,
                         14000000.0,
                         13000000.0,
+                        15000000.0,
                         15000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "ProvisionForBonuses",
                       "label": "ProvisionForBonuses",
                       "values": [
-                        181000000.0,
                         166000000.0,
                         71000000.0,
                         84000000.0,
@@ -1900,16 +1899,16 @@
                         90000000.0,
                         85000000.0,
                         91000000.0,
-                        96000000.0
+                        96000000.0,
+                        102000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "OtherCL",
                       "label": "OtherCL",
                       "values": [
-                        44000000.0,
                         46000000.0,
                         12000000.0,
                         16000000.0,
@@ -1918,16 +1917,16 @@
                         13000000.0,
                         14000000.0,
                         14000000.0,
-                        15000000.0
+                        15000000.0,
+                        16000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CurrentLiabilities",
                       "label": "CurrentLiabilities",
                       "values": [
-                        8888000000.0,
                         6801000000.0,
                         1793000000.0,
                         577000000.0,
@@ -1936,14 +1935,15 @@
                         496000000.0,
                         503000000.0,
                         790000000.0,
-                        642000000.0
+                        642000000.0,
+                        874000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "NoncurrentLiabilitiesAbstract",
                   "label": "NoncurrentLiabilitiesAbstract",
                   "values": [
@@ -1960,12 +1960,12 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "AssetRetirementObligationsNCL",
                       "label": "AssetRetirementObligationsNCL",
                       "values": [
-                        789000000.0,
                         null,
+                        9000000.0,
                         9000000.0,
                         9000000.0,
                         9000000.0,
@@ -1978,11 +1978,10 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "LongTermGuaranteeDeposited",
                       "label": "LongTermGuaranteeDeposited",
                       "values": [
-                        614000000.0,
                         78000000.0,
                         119000000.0,
                         50000000.0,
@@ -1991,16 +1990,16 @@
                         26000000.0,
                         23000000.0,
                         18000000.0,
+                        18000000.0,
                         18000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "OtherNCL",
                       "label": "OtherNCL",
                       "values": [
-                        32000000.0,
                         44000000.0,
                         6000000.0,
                         3000000.0,
@@ -2009,16 +2008,16 @@
                         3000000.0,
                         3000000.0,
                         4000000.0,
-                        3000000.0
+                        3000000.0,
+                        2000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "NoncurrentLiabilities",
                       "label": "NoncurrentLiabilities",
                       "values": [
-                        3233000000.0,
                         3975000000.0,
                         135000000.0,
                         63000000.0,
@@ -2027,6 +2026,7 @@
                         39000000.0,
                         36000000.0,
                         32000000.0,
+                        31000000.0,
                         31000000.0
                       ],
                       "children": []
@@ -2034,11 +2034,10 @@
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "Liabilities",
                   "label": "Liabilities",
                   "values": [
-                    12122000000.0,
                     10777000000.0,
                     1929000000.0,
                     640000000.0,
@@ -2047,14 +2046,15 @@
                     536000000.0,
                     539000000.0,
                     823000000.0,
-                    673000000.0
+                    673000000.0,
+                    905000000.0
                   ],
                   "children": []
                 }
               ]
             },
             {
-              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
               "concept_name": "NetAssetsAbstract",
               "label": "NetAssetsAbstract",
               "values": [
@@ -2071,7 +2071,7 @@
               ],
               "children": [
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "ShareholdersEquityAbstract",
                   "label": "ShareholdersEquityAbstract",
                   "values": [
@@ -2088,12 +2088,12 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CapitalStock",
                       "label": "CapitalStock",
                       "values": [
                         1396000000.0,
-                        1396000000.0,
+                        100000000.0,
                         100000000.0,
                         100000000.0,
                         100000000.0,
@@ -2106,12 +2106,12 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "CapitalSurplus",
                       "label": "CapitalSurplus",
                       "values": [
                         1645000000.0,
-                        1645000000.0,
+                        5814000000.0,
                         5814000000.0,
                         5814000000.0,
                         5814000000.0,
@@ -2124,11 +2124,10 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "RetainedEarnings",
                       "label": "RetainedEarnings",
                       "values": [
-                        -1613000000.0,
                         -2336000000.0,
                         -1767000000.0,
                         -1934000000.0,
@@ -2137,12 +2136,13 @@
                         -2100000000.0,
                         -2340000000.0,
                         -2198000000.0,
-                        -1984000000.0
+                        -1984000000.0,
+                        -1693000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "TreasuryStock",
                       "label": "TreasuryStock",
                       "values": [
@@ -2160,11 +2160,10 @@
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "ShareholdersEquity",
                       "label": "ShareholdersEquity",
                       "values": [
-                        1341000000.0,
                         619000000.0,
                         4061000000.0,
                         3893000000.0,
@@ -2173,14 +2172,15 @@
                         3728000000.0,
                         3488000000.0,
                         3629000000.0,
-                        3843000000.0
+                        3843000000.0,
+                        4135000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "ValuationAndTranslationAdjustmentsAbstract",
                   "label": "ValuationAndTranslationAdjustmentsAbstract",
                   "values": [
@@ -2197,11 +2197,10 @@
                   ],
                   "children": [
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "ValuationDifferenceOnAvailableForSaleSecurities",
                       "label": "ValuationDifferenceOnAvailableForSaleSecurities",
                       "values": [
-                        7000000.0,
                         11000000.0,
                         13000000.0,
                         7000000.0,
@@ -2210,16 +2209,16 @@
                         6000000.0,
                         6000000.0,
                         8000000.0,
-                        6000000.0
+                        6000000.0,
+                        5000000.0
                       ],
                       "children": []
                     },
                     {
-                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                      "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                       "concept_name": "ValuationAndTranslationAdjustments",
                       "label": "ValuationAndTranslationAdjustments",
                       "values": [
-                        7000000.0,
                         11000000.0,
                         13000000.0,
                         7000000.0,
@@ -2228,18 +2227,18 @@
                         6000000.0,
                         6000000.0,
                         8000000.0,
-                        6000000.0
+                        6000000.0,
+                        5000000.0
                       ],
                       "children": []
                     }
                   ]
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "NonControllingInterests",
                   "label": "NonControllingInterests",
                   "values": [
-                    105000000.0,
                     207000000.0,
                     222000000.0,
                     261000000.0,
@@ -2248,16 +2247,16 @@
                     613000000.0,
                     313000000.0,
                     526000000.0,
-                    589000000.0
+                    589000000.0,
+                    712000000.0
                   ],
                   "children": []
                 },
                 {
-                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+                  "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
                   "concept_name": "NetAssets",
                   "label": "NetAssets",
                   "values": [
-                    1454000000.0,
                     837000000.0,
                     4298000000.0,
                     4163000000.0,
@@ -2266,18 +2265,18 @@
                     4348000000.0,
                     3807000000.0,
                     4164000000.0,
-                    4440000000.0
+                    4440000000.0,
+                    4852000000.0
                   ],
                   "children": []
                 }
               ]
             },
             {
-              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2023-12-01/jppfs_cor",
+              "concept_namespace": "http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor",
               "concept_name": "LiabilitiesAndNetAssets",
               "label": "LiabilitiesAndNetAssets",
               "values": [
-                13577000000.0,
                 11615000000.0,
                 6227000000.0,
                 4804000000.0,
@@ -2286,7 +2285,8 @@
                 4885000000.0,
                 4347000000.0,
                 4987000000.0,
-                5113000000.0
+                5113000000.0,
+                5758000000.0
               ],
               "children": []
             }
