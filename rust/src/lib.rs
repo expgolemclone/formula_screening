@@ -1117,9 +1117,9 @@ pub fn preferred_share_flag(stock: &Stock) -> Result<Option<bool>, String> {
 }
 
 #[pyfunction]
-fn compute_all_stock_metrics(py: Python<'_>) -> PyResult<PyObject> {
+fn compute_all_stock_metrics(py: Python<'_>) -> PyResult<Py<pyo3::types::PyAny>> {
     let metrics = py
-        .allow_threads(compute_all_metrics)
+        .detach(compute_all_metrics)
         .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
     metrics_to_py(py, &metrics)
 }
@@ -1131,11 +1131,9 @@ fn run_screening_payload_py(
     strategy_path: String,
     tickers: Option<Vec<String>>,
     return_all: bool,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<pyo3::types::PyAny>> {
     let payload = py
-        .allow_threads(|| {
-            run_screening_payload(Path::new(&strategy_path), tickers.as_deref(), return_all)
-        })
+        .detach(|| run_screening_payload(Path::new(&strategy_path), tickers.as_deref(), return_all))
         .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
     payloads_to_py(py, &payload)
 }
@@ -1147,9 +1145,9 @@ fn run_screening_payload_with_diagnostics_py(
     strategy_path: String,
     tickers: Option<Vec<String>>,
     return_all: bool,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<pyo3::types::PyAny>> {
     let result = py
-        .allow_threads(|| {
+        .detach(|| {
             run_screening_payload_with_diagnostics(
                 Path::new(&strategy_path),
                 tickers.as_deref(),
@@ -1174,7 +1172,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 fn metrics_to_py(
     py: Python<'_>,
     metrics: &HashMap<String, HashMap<String, Option<PublicMetricValue>>>,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<pyo3::types::PyAny>> {
     let outer = pyo3::types::PyDict::new(py);
     for (ticker, values) in metrics {
         let inner = pyo3::types::PyDict::new(py);
@@ -1193,10 +1191,13 @@ fn metrics_to_py(
         }
         outer.set_item(ticker, inner)?;
     }
-    Ok(outer.into())
+    Ok(outer.into_any().unbind())
 }
 
-fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyObject> {
+fn payloads_to_py(
+    py: Python<'_>,
+    payloads: &[ScreeningPayload],
+) -> PyResult<Py<pyo3::types::PyAny>> {
     let rows = pyo3::types::PyList::empty(py);
     for payload in payloads {
         let row = pyo3::types::PyDict::new(py);
@@ -1307,10 +1308,13 @@ fn payloads_to_py(py: Python<'_>, payloads: &[ScreeningPayload]) -> PyResult<PyO
 
         rows.append(row)?;
     }
-    Ok(rows.into())
+    Ok(rows.into_any().unbind())
 }
 
-fn run_result_to_py(py: Python<'_>, result: &ScreeningRunResult) -> PyResult<PyObject> {
+fn run_result_to_py(
+    py: Python<'_>,
+    result: &ScreeningRunResult,
+) -> PyResult<Py<pyo3::types::PyAny>> {
     let row = pyo3::types::PyDict::new(py);
     row.set_item("payload", payloads_to_py(py, &result.payload)?)?;
 
@@ -1333,7 +1337,7 @@ fn run_result_to_py(py: Python<'_>, result: &ScreeningRunResult) -> PyResult<PyO
     let column_config_py = json_module.call_method1("loads", (column_config_json,))?;
     row.set_item("column_config", column_config_py)?;
 
-    Ok(row.into())
+    Ok(row.into_any().unbind())
 }
 
 fn set_optional_float(
